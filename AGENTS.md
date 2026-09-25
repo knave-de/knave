@@ -134,6 +134,25 @@ Comments explain why, not obvious mechanics. Use short comments for invariants,
 protocol sequencing, safety assumptions, compatibility reasons, and non-obvious
 workarounds. Do not write essay-length comments or narrate the code.
 
+## Performance and resource usage
+
+Before adding a watcher, timer, event subscription, background task, thread,
+process, cache, buffer, or parallel work, review its resource behavior.
+
+- Give every activity an explicit lifetime, cancellation path, and cleanup
+  path on reload, failure, and shutdown.
+- Bound concurrency, queue size, memory growth, retries, and spawned work. Do
+  not use unbounded task or thread creation as a default parallelism strategy.
+- Prefer event-driven notifications, debouncing, and backoff over busy loops or
+  high-frequency polling. Check that a simple watcher cannot wake continuously.
+- Measure CPU, resident memory, threads, processes, file descriptors, and
+  wakeups under idle, normal, and stress workloads when the change can affect
+  them.
+- Record a baseline and expected change. If no baseline exists, mark the
+  behavior unknown and measure it before treating the change as complete.
+
+Compilation and functional tests do not establish acceptable performance.
+
 ## Documentation
 
 README files contain the short user-facing build and run workflow. Architecture

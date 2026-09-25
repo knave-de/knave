@@ -7,6 +7,7 @@ versioning, build, and change-impact policy.
 - [Configuration](configuration.md)
 - [Versioning and compatibility](versioning.md)
 - [Build and packaging](build-and-packaging.md)
+- [Performance and resource usage](performance.md)
 - [Change impact](change-impact.md)
 - [ADR 0001: environment boundaries](decisions/0001-knave-environment-boundaries.md)
 
