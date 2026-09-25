@@ -50,8 +50,9 @@ JSON response. `KNAVE_SOCKET` overrides socket discovery for isolated tests.
 | `knavectl dispatch quit` | Ask the compositor to shut down. |
 
 The `dispatch reload` spelling remains accepted as an explicit dispatch form;
-`knavectl reload` is the short form. Unknown commands, missing arguments, and
-invalid numeric IDs return a non-zero exit status and a usage diagnostic.
+`knavectl reload` is the short form. Unknown commands, missing arguments, trailing arguments for fixed-arity commands,
+invalid numeric IDs, and workspace IDs outside 1-10 return a non-zero exit status
+and a usage diagnostic.
 
 ## Compatibility policy
 
