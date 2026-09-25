@@ -353,6 +353,8 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
             "environment_file",
             value(environment_file.clone()),
         );
+    } else if let Some(compositor) = document["compositor"].as_table_mut() {
+        compositor.remove("environment_file");
     }
     set_table_value(
         document,
@@ -545,5 +547,24 @@ dispatch = "close"
         assert_eq!(document.config().compositor.bind.len(), 1);
         assert_eq!(document.config().compositor.bind[0].dispatch, "close");
         assert!(document.source().contains("legacy_only = \"keep\""));
+    }
+
+    #[test]
+    fn clearing_optional_environment_file_removes_known_key() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(
+            &path,
+            "schema_version = 1\n[compositor]\nenvironment_file = \"environment\"\n",
+        )
+        .unwrap();
+
+        let mut document = ConfigDocument::load(&path).unwrap();
+        let mut config = document.config().clone();
+        config.compositor.environment_file = None;
+        document.write(config).unwrap();
+
+        let output = fs::read_to_string(path).unwrap();
+        assert!(!output.contains("environment_file"));
     }
 }

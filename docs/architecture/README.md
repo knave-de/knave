@@ -7,6 +7,7 @@ versioning, build, and change-impact policy.
 - [Configuration](configuration.md)
 - [Session lifecycle](session.md)
 - [Versioning and compatibility](versioning.md)
+- [CLI contract](cli.md)
 - [Build and packaging](build-and-packaging.md)
 - [Performance and resource usage](performance.md)
 - [Change impact](change-impact.md)

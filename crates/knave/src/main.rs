@@ -17,6 +17,11 @@ fn usage() -> &'static str {
 
 fn run() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
+    if matches!(args.next().as_deref(), Some("--help" | "-h")) {
+        println!("{}", usage());
+        return Ok(());
+    }
+    let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
         Some("version") => {
             println!(

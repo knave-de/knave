@@ -38,13 +38,17 @@ Build and test it with:
 
 The CLI exposes configuration and session operations:
 
-    cargo run -- version
-    cargo run -- session start
-    cargo run -- session check
-    cargo run -- config path
-    cargo run -- config init
-    cargo run -- config check
-    cargo run -- config print
+    cargo run -p knave -- version
+    cargo run -p knave -- session start
+    cargo run -p knave -- session check
+    cargo run -p knave -- config path
+    cargo run -p knave -- config init
+    cargo run -p knave -- config check
+    cargo run -p knave -- config print
+
+The public compositor control client is a separate installed binary:
+
+    cargo run -p knavectl -- --help
 
 session start loads ~/.config/knave/config.toml, starts the configured Villain
 binary, waits for a newly-created wayland-* socket, and starts the configured
@@ -96,6 +100,7 @@ Installation is explicit and never writes to /usr/local without --system.
 - [Configuration](docs/architecture/configuration.md)
 - [Session lifecycle](docs/architecture/session.md)
 - [Versioning](docs/architecture/versioning.md)
+- [CLI contract](docs/architecture/cli.md)
 - [Build and packaging](docs/architecture/build-and-packaging.md)
 - [Performance](docs/architecture/performance.md)
 - [Change impact](docs/architecture/change-impact.md)
