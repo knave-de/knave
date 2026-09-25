@@ -1,0 +1,9 @@
+[package]
+name = "knave-desktop-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Versioned public desktop contracts shared by Knave components"
+
+[dependencies]
+serde.workspace = true
