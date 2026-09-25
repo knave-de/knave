@@ -28,7 +28,10 @@ The [session] table is owned by Knave:
 - shell_binary: executable used for Knave Shell; and
 - restart_on_failure: whether failed components may be restarted.
 
-The [shell] table controls the bar and overview roles. Runtime state and socket
+The [shell] table controls session-owned shell roles. `start_bar` is normally
+true. `start_overview_service` defaults to false because the overview is an
+exclusive layer and is normally launched transiently by Villain's keybind.
+Setting it true is an explicit always-open mode. Runtime state and socket
 identity are discovered at startup; they are not persisted in config.toml.
 
 ## Failure and shutdown behavior

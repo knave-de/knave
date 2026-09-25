@@ -31,7 +31,7 @@ unclear. Perform read-only investigation first.
 The intended boundaries are:
 
 - `knave-session`: session lifecycle and process supervision;
-- `knave-settings`: typed configuration and settings operations;
+- `knave-config`: typed configuration and settings operations;
 - `knave-desktop-api`: public runtime desktop contracts;
 - `knave-wayland`: Wayland client and layer-shell integration;
 - `knave-renderer`: wgpu rendering;
@@ -107,14 +107,10 @@ passes tests.
 
 ## Build policy
 
-The new Knave stack is Rust/Cargo-first. Use Cargo for Rust libraries,
-binaries, tests, and workspace orchestration.
-
-The current Qt shell is transitional and may continue using CMake until the
-Rust/wgpu shell replaces it. Do not claim that CMake has been removed while it
-still builds the shell. Transitional native builds should use Ninja rather than
-direct Make invocations, isolated build directories, debug/release profiles,
-and staged installation prefixes.
+The Knave stack is Rust/Cargo-first. Use Cargo for libraries, binaries, tests,
+and workspace orchestration across the environment. The Rust/wgpu shell is the
+supported shell implementation; no Qt/CMake build is part of the supported
+runtime.
 
 Build changes must check debug/release artifact paths, generated files,
 dependency discovery, reproducibility, and installed-versus-workspace artifact

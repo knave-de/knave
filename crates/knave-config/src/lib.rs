@@ -70,7 +70,7 @@ impl Default for ShellConfig {
     fn default() -> Self {
         Self {
             start_bar: true,
-            start_overview_service: true,
+            start_overview_service: false,
         }
     }
 }

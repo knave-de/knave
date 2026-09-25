@@ -19,7 +19,9 @@ or reuse case justifies a new repository.
 
 The canonical configuration remains `~/.config/knave/config.toml`. The settings
 API operates on that file; it does not introduce a second canonical store.
-Rust/Cargo is the target build model, while the Qt shell remains transitional.
+Rust/Cargo is the supported build model, and the Rust/wgpu shell is the
+supported shell implementation. Knave is independent of GNOME, KDE, Qt, and
+other host desktop environments.
 
 ## Consequences
 
@@ -30,6 +32,7 @@ changes. Compatibility and rollback are part of each change's design.
 
 ## Non-goals
 
-This ADR does not remove Qt, `villainctl`, or existing configuration readers.
-Those removals require later implementation decisions and verified migration
-paths.
+This ADR does not define the compositor's private implementation or replace the
+canonical Knave configuration with a second store. Removal of a public command
+or configuration key still requires consumer discovery, migration support, and
+verified rollback behavior.

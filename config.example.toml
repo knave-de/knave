@@ -29,4 +29,6 @@ restart_on_failure = true
 
 [shell]
 start_bar = true
-start_overview_service = true
+# The overview is normally launched on demand by the compositor keybind.
+# Set this true only for a deliberately always-open overview session.
+start_overview_service = false

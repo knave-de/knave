@@ -20,6 +20,6 @@ through the session runtime directory or a typed service interface. Shell code
 does not reach into Villain's private implementation, and Villain does not
 write competing user-facing configuration.
 
-The current Qt shell is transitional. The planned Rust/wgpu shell replaces its
-implementation without changing ownership boundaries or silently changing the
-public desktop contract.
+The Rust/wgpu shell is the supported implementation. It replaces the removed
+Qt path without changing ownership boundaries or silently changing the public
+desktop contract.
