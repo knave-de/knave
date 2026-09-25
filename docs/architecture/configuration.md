@@ -4,9 +4,18 @@ The canonical user configuration is:
 
     ~/.config/knave/config.toml
 
-`knave-settings` is the typed API for reading and modifying that file. It is
+`knave-config` is the typed API for reading and modifying that file. It is
 not a second persistence system. Every setting has a schema, validation rules,
 and an explicit default.
+
+The top-level sections are owned by Knave:
+
+- [compositor] is the typed projection consumed by Villain.
+- [session] controls environment startup and process supervision.
+- [shell] controls which Knave shell surfaces are started.
+
+Villain and the shell receive typed projections from Knave. They do not create
+competing user-facing configuration files.
 
 Configuration changes must:
 
@@ -16,9 +25,12 @@ Configuration changes must:
    migration policy permits them; and
 4. record or expose the schema version used for the file.
 
-Legacy Villain configuration may be read by an explicitly scoped compatibility
-adapter during migration. New code must not create new competing config files,
-silently delete legacy data, or treat runtime state as persistent settings.
+Legacy Villain root-level `modkey`, `environment_file`, `[input]`, and
+`[[bind]]` values are read as a compatibility projection when no `[compositor]`
+table exists. The original keys remain in the editable TOML document, so
+loading or rewriting the file does not silently delete legacy data. New
+configuration is written under `[compositor]`.
 
 Schema migrations need a defined forward path, backup/recovery behavior, and a
-rollback story before they become the default writer behavior.
+rollback story. Version domains are tracked independently for configuration,
+the public desktop API, the shell/UI protocol, and the private compositor protocol.

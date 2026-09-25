@@ -9,7 +9,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use toml_edit::{DocumentMut, Item, Table, value};
+use toml_edit::{Array, ArrayOfTables, DocumentMut, Item, Table, value};
 
 pub const CURRENT_SCHEMA_VERSION: u32 = 1;
 
@@ -74,11 +74,64 @@ impl Default for ShellConfig {
         }
     }
 }
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CompositorInputConfig {
+    #[serde(default = "default_true")]
+    pub tap_to_click: bool,
+    #[serde(default = "default_true")]
+    pub natural_scroll: bool,
+}
+
+impl Default for CompositorInputConfig {
+    fn default() -> Self {
+        Self {
+            tap_to_click: true,
+            natural_scroll: true,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CompositorBinding {
+    pub keys: String,
+    pub dispatch: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CompositorConfig {
+    #[serde(default = "default_modkey")]
+    pub modkey: String,
+    #[serde(default)]
+    pub environment_file: Option<String>,
+    #[serde(default)]
+    pub input: CompositorInputConfig,
+    #[serde(default)]
+    pub bind: Vec<CompositorBinding>,
+}
+
+fn default_modkey() -> String {
+    "Super".into()
+}
+
+impl Default for CompositorConfig {
+    fn default() -> Self {
+        Self {
+            modkey: default_modkey(),
+            environment_file: None,
+            input: CompositorInputConfig::default(),
+            bind: Vec::new(),
+        }
+    }
+}
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Config {
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
+    #[serde(default)]
+    pub compositor: CompositorConfig,
     #[serde(default)]
     pub session: SessionConfig,
     #[serde(default)]
@@ -92,6 +145,7 @@ fn default_schema_version() -> u32 {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            compositor: CompositorConfig::default(),
             schema_version: CURRENT_SCHEMA_VERSION,
             session: SessionConfig::default(),
             shell: ShellConfig::default(),
@@ -114,6 +168,9 @@ impl Config {
         }
         if self.session.shell_binary.trim().is_empty() {
             return Err(ConfigError::Invalid("session.shell_binary is empty".into()));
+        }
+        if self.compositor.modkey.trim().is_empty() {
+            return Err(ConfigError::Invalid("compositor.modkey is empty".into()));
         }
         Ok(())
     }
@@ -148,6 +205,48 @@ pub enum ConfigError {
         source: std::io::Error,
     },
 }
+#[derive(Debug, Default, Deserialize)]
+struct LegacyCompositorConfig {
+    modkey: Option<String>,
+    environment_file: Option<String>,
+    input: Option<CompositorInputConfig>,
+    bind: Option<Vec<CompositorBinding>>,
+}
+
+fn migrate_legacy_compositor(
+    document: &DocumentMut,
+    source: &str,
+    config: &mut Config,
+) -> Result<(), ConfigError> {
+    if document.get("compositor").is_some() {
+        return Ok(());
+    }
+    let legacy =
+        toml::from_str::<LegacyCompositorConfig>(source).map_err(|source| ConfigError::Parse {
+            path: PathBuf::from("<legacy compositor>"),
+            source,
+        })?;
+    if legacy.modkey.is_none()
+        && legacy.environment_file.is_none()
+        && legacy.input.is_none()
+        && legacy.bind.is_none()
+    {
+        return Ok(());
+    }
+    if let Some(modkey) = legacy.modkey {
+        config.compositor.modkey = modkey;
+    }
+    if let Some(environment_file) = legacy.environment_file {
+        config.compositor.environment_file = Some(environment_file);
+    }
+    if let Some(input) = legacy.input {
+        config.compositor.input = input;
+    }
+    if let Some(bind) = legacy.bind {
+        config.compositor.bind = bind;
+    }
+    Ok(())
+}
 
 pub struct ConfigDocument {
     path: PathBuf,
@@ -176,7 +275,7 @@ impl ConfigDocument {
                     source,
                 })?
         };
-        let config = if source.trim().is_empty() {
+        let mut config = if source.trim().is_empty() {
             Config::default()
         } else {
             toml::from_str::<Config>(&source).map_err(|source| ConfigError::Parse {
@@ -184,6 +283,9 @@ impl ConfigDocument {
                 source,
             })?
         };
+        if !source.trim().is_empty() {
+            migrate_legacy_compositor(&document, &source, &mut config)?;
+        }
         config.validate()?;
 
         Ok(Self {
@@ -238,6 +340,44 @@ impl ConfigDocument {
 
 fn apply_config(document: &mut DocumentMut, config: &Config) {
     document["schema_version"] = value(i64::from(config.schema_version));
+    set_table_value(
+        document,
+        "compositor",
+        "modkey",
+        value(config.compositor.modkey.clone()),
+    );
+    if let Some(environment_file) = &config.compositor.environment_file {
+        set_table_value(
+            document,
+            "compositor",
+            "environment_file",
+            value(environment_file.clone()),
+        );
+    }
+    set_table_value(
+        document,
+        "compositor",
+        "input",
+        Item::Table({
+            let mut input = Table::new();
+            input["tap_to_click"] = value(config.compositor.input.tap_to_click);
+            input["natural_scroll"] = value(config.compositor.input.natural_scroll);
+            input
+        }),
+    );
+    let mut bindings = ArrayOfTables::new();
+    for binding in &config.compositor.bind {
+        let mut table = Table::new();
+        table["keys"] = value(binding.keys.clone());
+        table["dispatch"] = value(binding.dispatch.clone());
+        let mut args = Array::new();
+        for arg in &binding.args {
+            args.push(arg.clone());
+        }
+        table["args"] = Item::Value(args.into());
+        bindings.push(table);
+    }
+    document["compositor"]["bind"] = Item::ArrayOfTables(bindings);
     set_table_value(
         document,
         "session",
@@ -364,10 +504,46 @@ mod tests {
         let mut document = ConfigDocument::load(&path).unwrap();
         let mut config = document.config().clone();
         config.session.restart_on_failure = false;
+        config.compositor.bind.push(CompositorBinding {
+            keys: "MOD+Q".into(),
+            dispatch: "close".into(),
+            args: vec!["--force".into()],
+        });
+
         document.write(config).unwrap();
 
         let output = fs::read_to_string(path).unwrap();
         assert!(output.contains("custom_value = \"keep\""));
         assert!(output.contains("restart_on_failure = false"));
+        assert!(output.contains("[compositor]"));
+        assert!(output.contains("[[compositor.bind]]"));
+        assert!(output.contains(r#"args = ["--force"]"#));
+    }
+    #[test]
+    fn legacy_root_compositor_settings_are_projected() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(
+            &path,
+            r#"schema_version = 1
+legacy_only = "keep"
+modkey = "Alt"
+[input]
+tap_to_click = false
+natural_scroll = false
+[[bind]]
+keys = "MOD+Q"
+dispatch = "close"
+"#,
+        )
+        .unwrap();
+
+        let document = ConfigDocument::load(&path).unwrap();
+        assert_eq!(document.config().compositor.modkey, "Alt");
+        assert!(!document.config().compositor.input.tap_to_click);
+        assert!(!document.config().compositor.input.natural_scroll);
+        assert_eq!(document.config().compositor.bind.len(), 1);
+        assert_eq!(document.config().compositor.bind[0].dispatch, "close");
+        assert!(document.source().contains("legacy_only = \"keep\""));
     }
 }

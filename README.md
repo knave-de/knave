@@ -63,8 +63,9 @@ Initialize and validate an isolated configuration:
 
 The schema is versioned and written atomically. Known values are typed and
 validated; unknown TOML values are preserved when known settings are changed.
-Legacy Villain configuration migration is planned but is not implemented by
-this foundation slice.
+Villain’s legacy root-level compositor settings are projected into the typed
+compositor section when needed, while the original TOML remains recoverable.
+New writes use Knave-owned compositor settings.
 
 See [config.example.toml](config.example.toml) and
 [configuration.md](docs/architecture/configuration.md).

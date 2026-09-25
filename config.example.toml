@@ -5,6 +5,20 @@
 
 schema_version = 1
 
+[compositor]
+# Villain consumes this typed projection; it does not own a second config file.
+modkey = "Super"
+environment_file = "environment"
+
+[compositor.input]
+tap_to_click = true
+natural_scroll = true
+
+[[compositor.bind]]
+keys = "MOD+Q"
+dispatch = "close"
+args = []
+
 [session]
 # auto selects the production backend once the session supervisor is complete.
 # Other accepted values are tty and winit.
