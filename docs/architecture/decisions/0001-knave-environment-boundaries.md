@@ -25,7 +25,7 @@ other host desktop environments.
 
 ## Consequences
 
-Changes cross an explicit typed contract or adapter. Configuration migration,
+Changes cross an explicit typed contract or process boundary. Configuration migration,
 session supervision, public API creation, UI replacement, compositor behavior,
 build replacement, packaging, and legacy-tool removal are separate reviewed
 changes. Compatibility and rollback are part of each change's design.
