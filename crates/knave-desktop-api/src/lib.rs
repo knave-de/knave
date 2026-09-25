@@ -31,7 +31,7 @@ pub struct WorkspaceId(pub u32);
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WorkspaceSummary {
-    pub id: WorkspaceId,
+    pub workspace: WorkspaceId,
     pub active: bool,
     pub window_count: u32,
     pub visible_window_count: u32,
