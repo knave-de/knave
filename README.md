@@ -43,6 +43,7 @@ The CLI exposes configuration and session operations:
     cargo run -p knave -- session check
     cargo run -p knave -- config path
     cargo run -p knave -- config init
+    cargo run -p knave -- config migrate
     cargo run -p knave -- config check
     cargo run -p knave -- config print
 

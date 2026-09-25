@@ -11,6 +11,7 @@ fn usage() -> &'static str {
   knave session check
   knave config path
   knave config init
+  knave config migrate
   knave config check
   knave config print"
 }
@@ -58,6 +59,27 @@ fn run() -> Result<(), String> {
                 ConfigDocument::write_default_at(path.clone())
                     .map_err(|error| error.to_string())?;
                 println!("created {}", path.display());
+            }
+            Some("migrate") => {
+                let path = ConfigDocument::default_path().map_err(|error| error.to_string())?;
+                if !path.exists() {
+                    return Err(format!(
+                        "configuration does not exist at {}; run `knave config init` first",
+                        path.display()
+                    ));
+                }
+                let mut document = ConfigDocument::load(path).map_err(|error| error.to_string())?;
+                if document
+                    .migrate_legacy()
+                    .map_err(|error| error.to_string())?
+                {
+                    println!(
+                        "migrated legacy compositor settings in {}",
+                        document.path().display()
+                    );
+                } else {
+                    println!("no legacy compositor settings require migration");
+                }
             }
             Some("check") => {
                 let document =

@@ -41,7 +41,11 @@ Legacy Villain root-level `modkey`, `environment_file`, `[input]`, and
 `[[bind]]` values are read as a compatibility projection when no `[compositor]`
 table exists. The original keys remain in the editable TOML document, so
 loading or rewriting the file does not silently delete legacy data. New
-configuration is written under `[compositor]`.
+configuration is written under `[compositor]`. Run `knave config migrate`
+explicitly to materialize that projection in an existing legacy file. The
+command refuses to create a missing file, writes atomically, and leaves legacy
+keys and unknown TOML values in place for rollback. `knave config check` remains
+read-only.
 
 Schema migrations need a defined forward path, backup/recovery behavior, and a
 rollback story. Version domains are tracked independently for configuration,

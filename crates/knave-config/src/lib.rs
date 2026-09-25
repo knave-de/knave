@@ -324,6 +324,25 @@ impl ConfigDocument {
         Ok(())
     }
 
+    /// Materialize legacy root-level compositor settings under [compositor].
+    ///
+    /// Legacy keys remain in the editable document so users can roll back
+    /// without losing values that were not understood by Knave.
+    pub fn migrate_legacy(&mut self) -> Result<bool, ConfigError> {
+        if !self.needs_legacy_migration() {
+            return Ok(false);
+        }
+        self.write(self.config.clone())?;
+        Ok(true)
+    }
+
+    fn needs_legacy_migration(&self) -> bool {
+        self.document.get("compositor").is_none()
+            && ["modkey", "environment_file", "input", "bind"]
+                .iter()
+                .any(|key| self.document.get(key).is_some())
+    }
+
     pub fn write_default_at(path: impl Into<PathBuf>) -> Result<Self, ConfigError> {
         let path = path.into();
         if path.exists() {
@@ -547,6 +566,37 @@ dispatch = "close"
         assert_eq!(document.config().compositor.bind.len(), 1);
         assert_eq!(document.config().compositor.bind[0].dispatch, "close");
         assert!(document.source().contains("legacy_only = \"keep\""));
+    }
+
+    #[test]
+    fn legacy_migration_writes_typed_projection_and_preserves_source() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(
+            &path,
+            r#"schema_version = 1
+legacy_only = "keep"
+modkey = "Alt"
+[input]
+tap_to_click = false
+natural_scroll = false
+[[bind]]
+keys = "MOD+Q"
+dispatch = "close"
+"#,
+        )
+        .unwrap();
+
+        let mut document = ConfigDocument::load(&path).unwrap();
+        assert!(document.migrate_legacy().unwrap());
+
+        let output = fs::read_to_string(&path).unwrap();
+        assert!(output.contains("[compositor]"));
+        assert_eq!(output.matches("modkey = \"Alt\"").count(), 2);
+        assert!(output.contains("legacy_only = \"keep\""));
+        assert!(output.contains("[input]"));
+        assert!(output.contains("[[bind]]"));
+        assert!(!document.migrate_legacy().unwrap());
     }
 
     #[test]
