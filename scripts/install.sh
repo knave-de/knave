@@ -34,5 +34,7 @@ fi
 root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 cargo build --release --locked --manifest-path "$root/Cargo.toml"
 install -Dm755 "$root/target/release/knave" "$prefix/bin/knave"
+install -Dm755 "$root/target/release/knavectl" "$prefix/bin/knavectl"
+install -Dm755 "$root/target/release/knave-session" "$prefix/bin/knave-session"
 install -Dm644 "$root/README.md" "$prefix/share/doc/knave/README.md"
-printf 'installed knave to %s/bin/knave\n' "$prefix"
+printf 'installed Knave binaries to %s/bin\n' "$prefix"

@@ -11,4 +11,5 @@ path = "src/main.rs"
 
 [dependencies]
 knave-config.workspace = true
+knave-session.workspace = true
 knave-desktop-api.workspace = true

@@ -14,6 +14,14 @@ The top-level sections are owned by Knave:
 - [session] controls environment startup and process supervision.
 - [shell] controls which Knave shell surfaces are started.
 
+The session fields are:
+
+- backend: auto, tty, or winit;
+- compositor_binary and shell_binary: the supervised executables; and
+- restart_on_failure: whether bounded component restart is enabled.
+
+The shell fields start the bar and overview roles sequentially. These settings
+
 Villain and the shell receive typed projections from Knave. They do not create
 competing user-facing configuration files.
 

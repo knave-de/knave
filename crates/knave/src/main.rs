@@ -2,10 +2,13 @@ use std::process::ExitCode;
 
 use knave_config::ConfigDocument;
 use knave_desktop_api::API_VERSION;
+use knave_session::run_default;
 
 fn usage() -> &'static str {
     "usage:
   knave version
+  knave session start
+  knave session check
   knave config path
   knave config init
   knave config check
@@ -21,6 +24,23 @@ fn run() -> Result<(), String> {
                 API_VERSION.major, API_VERSION.minor
             );
         }
+        Some("session") => match args.next().as_deref() {
+            Some("start") => run_default().map_err(|error| error.to_string())?,
+            Some("check") => {
+                let document =
+                    ConfigDocument::at_default_path().map_err(|error| error.to_string())?;
+                let config = document.config();
+                println!(
+                    "valid {} (schema {}, backend {:?}, compositor {}, shell {})",
+                    document.path().display(),
+                    config.schema_version,
+                    config.session.backend,
+                    config.session.compositor_binary,
+                    config.session.shell_binary
+                );
+            }
+            _ => return Err(usage().into()),
+        },
         Some("config") => match args.next().as_deref() {
             Some("path") => println!(
                 "{}",

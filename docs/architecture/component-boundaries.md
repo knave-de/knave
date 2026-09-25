@@ -7,7 +7,7 @@ are developed together.
 | Component | Owns |
 | --- | --- |
 | `knave-session` | Session startup, supervision, shutdown, signals, and reaping |
-| `knave-settings` | Typed access to the canonical Knave configuration |
+| `knave-config` | Typed access to the canonical Knave configuration |
 | `knave-desktop-api` | Versioned public runtime desktop contracts |
 | `knave-wayland` | Wayland client and layer-shell integration |
 | `knave-renderer` | wgpu device, surfaces, rendering, and frame scheduling |

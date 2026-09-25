@@ -75,6 +75,7 @@ version = "0.1.0"
 dependencies = [
  "knave-config",
  "knave-desktop-api",
+ "knave-session",
 ]
 
 [[package]]
@@ -94,6 +95,16 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "knave-session"
+version = "0.1.0"
+dependencies = [
+ "knave-config",
+ "libc",
+ "tempfile",
  "thiserror",
 ]
 

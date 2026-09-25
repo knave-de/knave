@@ -5,6 +5,7 @@ versioning, build, and change-impact policy.
 
 - [Component boundaries](component-boundaries.md)
 - [Configuration](configuration.md)
+- [Session lifecycle](session.md)
 - [Versioning and compatibility](versioning.md)
 - [Build and packaging](build-and-packaging.md)
 - [Performance and resource usage](performance.md)

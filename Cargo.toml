@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/knave-session",
     "crates/knave",
     "crates/knave-config",
     "crates/knavectl",
@@ -13,6 +14,8 @@ edition = "2024"
 license = "MIT"
 
 [workspace.dependencies]
+knave-session = { path = "crates/knave-session" }
+libc = "0.2"
 knave-config = { path = "crates/knave-config" }
 knavectl = { path = "crates/knavectl" }
 knave-desktop-api = { path = "crates/knave-desktop-api" }

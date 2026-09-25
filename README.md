@@ -12,9 +12,9 @@ The compositor and shell remain separate processes and repositories:
 | Knave Shell | Rust UI library, wgpu renderer, Wayland client, shell |
 | Villain | Wayland compositor and window manager |
 
-The rewrite is in progress. This repository currently provides the first
-working configuration and contract foundation; the unified session launcher
-and the Rust/wgpu shell are not complete yet.
+The rewrite is in progress. The Rust session path and typed cross-repository
+contracts are implemented; direct TTY/DRM and GPU smoke coverage remains a
+separate live-desktop verification step.
 
 ## Workspace
 
@@ -24,6 +24,7 @@ The current Knave Cargo workspace contains:
 | --- | --- |
 | knave-desktop-api | Versioned desktop IDs, snapshots, requests, events, and errors |
 | knave-config | Typed schema, validation, preservation-aware TOML writes |
+| knave-session | Compositor and shell startup, supervision, restart, and cleanup |
 | knave | Configuration and environment control CLI |
 
 Build and test it with:
@@ -35,17 +36,22 @@ Build and test it with:
 
 ## CLI
 
-The current CLI exposes configuration operations:
+The CLI exposes configuration and session operations:
 
     cargo run -- version
+    cargo run -- session start
+    cargo run -- session check
     cargo run -- config path
     cargo run -- config init
     cargo run -- config check
     cargo run -- config print
 
-The session commands will be added only when the supervisor has real readiness,
-shutdown, restart, and rollback behavior. The CLI must not claim to start an
-environment before that implementation exists.
+session start loads ~/.config/knave/config.toml, starts the configured Villain
+binary, waits for a newly-created wayland-* socket, and starts the configured
+shell roles. SIGINT and SIGTERM stop the children with a bounded grace period.
+Failed components are restarted with capped exponential backoff when
+restart_on_failure is enabled; the current supervisor permits at most three
+restart attempts per session.
 
 ## Configuration
 
@@ -72,21 +78,23 @@ See [config.example.toml](config.example.toml) and
 
 ## Installation
 
-The installer builds a release binary and supports all three requested modes:
+The installer builds and installs the release CLI, public control client, and
+session supervisor. It supports all three requested modes:
 
     scripts/install.sh --user
     scripts/install.sh --system
     scripts/install.sh --prefix /chosen/prefix
 
-User installation places knave in ~/.local/bin. System installation uses
-/usr/local/bin and requests sudo when necessary. Installation is explicit and
-never writes to /usr/local without --system.
+User installation places knave, knavectl, and knave-session in ~/.local/bin.
+System installation uses /usr/local/bin and requests sudo when necessary.
+Installation is explicit and never writes to /usr/local without --system.
 
 ## Architecture and change policy
 
 - [Architecture index](docs/architecture/README.md)
 - [Component boundaries](docs/architecture/component-boundaries.md)
 - [Configuration](docs/architecture/configuration.md)
+- [Session lifecycle](docs/architecture/session.md)
 - [Versioning](docs/architecture/versioning.md)
 - [Build and packaging](docs/architecture/build-and-packaging.md)
 - [Performance](docs/architecture/performance.md)
