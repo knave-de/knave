@@ -35,6 +35,7 @@ JSON response. `KNAVE_SOCKET` overrides socket discovery for isolated tests.
 | Command | Request |
 | --- | --- |
 | `knavectl reload` | Reload compositor-owned settings. |
+| `knavectl dispatch reload` | Explicit dispatch spelling for reloading compositor-owned settings. |
 | `knavectl snapshot` | Print the complete desktop snapshot. |
 | `knavectl windows` | List window summaries. |
 | `knavectl workspaces` | List workspace summaries. |
