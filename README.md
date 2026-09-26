@@ -51,6 +51,13 @@ The public compositor control client is a separate installed binary:
 
     cargo run -p knavectl -- --help
 
+After `knave session start`, query and control the running desktop with:
+
+    knavectl snapshot
+    knavectl workspaces
+    knavectl dispatch workspace 2
+    knavectl dispatch reload
+
 session start loads ~/.config/knave/config.toml, starts the configured Villain
 binary, waits for a newly-created wayland-* socket, and starts the configured
 shell roles. SIGINT and SIGTERM stop the children with a bounded grace period.
