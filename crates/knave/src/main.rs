@@ -70,15 +70,15 @@ fn run() -> Result<(), String> {
                 }
                 let mut document = ConfigDocument::load(path).map_err(|error| error.to_string())?;
                 if document
-                    .migrate_legacy()
+                    .materialize_root_compositor()
                     .map_err(|error| error.to_string())?
                 {
                     println!(
-                        "migrated legacy compositor settings in {}",
+                        "materialized root compositor settings in {}",
                         document.path().display()
                     );
                 } else {
-                    println!("no legacy compositor settings require migration");
+                    println!("no root compositor settings require migration");
                 }
             }
             Some("check") => {

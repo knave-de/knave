@@ -58,7 +58,7 @@ this file, not a second canonical persistence system.
 
 Configuration must be schema-versioned, typed, validated, written atomically,
 and migrated explicitly. Preserve user-defined values, bindings, and unknown
-legacy data during migration. Never silently overwrite or delete legacy
+source data during migration. Never silently overwrite or delete source
 Villain configuration.
 
 Components consume typed configuration projections supplied by Knave. They do
@@ -119,7 +119,7 @@ drift. Do not install to `/usr/local` implicitly.
 ## Code quality and comments
 
 Prefer small, coherent modules with one clear responsibility. Do not perform
-opportunistic rewrites, broad renames, or unrelated cleanup.
+opportunistic refactors, broad renames, or unrelated cleanup.
 
 Runtime code must make ownership, lifecycle, cleanup, permissions, process
 handling, shutdown, and compatibility behavior explicit. Use typed errors for
@@ -200,4 +200,4 @@ compilation alone.
 
 Do not combine configuration migration, session supervision, public API
 creation, UI toolkit replacement, compositor behavior changes, build-system
-replacement, packaging, and legacy-binary removal into one unreviewable change.
+replacement, packaging, and old-binary removal into one unreviewable change.

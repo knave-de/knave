@@ -33,17 +33,17 @@ Configuration changes must:
 
 1. parse and validate before writing;
 2. write through a temporary file and atomically replace the target;
-3. preserve user-defined values, bindings, and unknown legacy fields when the
-   migration policy permits them; and
+3. preserve user-defined values, bindings, and unknown fields when the
+   preservation policy permits them; and
 4. record or expose the schema version used for the file.
 
-Legacy Villain root-level `modkey`, `environment_file`, `[input]`, and
+Villain root-level `modkey`, `environment_file`, `[input]`, and
 `[[bind]]` values are read as a compatibility projection when no `[compositor]`
 table exists. The original keys remain in the editable TOML document, so
-loading or rewriting the file does not silently delete legacy data. New
+loading or writing the file does not silently delete source data. New
 configuration is written under `[compositor]`. Run `knave config migrate`
-explicitly to materialize that projection in an existing legacy file. The
-command refuses to create a missing file, writes atomically, and leaves legacy
+explicitly to materialize that projection in an existing file. The
+command refuses to create a missing file, writes atomically, and leaves root-level
 keys and unknown TOML values in place for rollback. `knave config check` remains
 read-only.
 

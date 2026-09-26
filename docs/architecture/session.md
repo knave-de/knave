@@ -69,4 +69,4 @@ Compilation does not prove direct TTY, DRM, Wayland, GPU, or installed-binary
 behavior. Before rollout, exercise knave session check, an isolated Winit
 session, and a real logged-in TTY session with signal and child-failure tests.
 Rollback is the prior Knave/Villain/Shell version combination and the
-unchanged canonical config file; no migration deletes legacy values.
+unchanged canonical config file; no migration deletes source values.
