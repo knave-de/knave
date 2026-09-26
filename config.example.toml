@@ -1,0 +1,34 @@
+# Knave configuration schema 1
+#
+# Copy to ~/.config/knave/config.toml or run:
+#   knave config init
+
+schema_version = 1
+
+[compositor]
+# Villain consumes this typed projection; it does not own a second config file.
+modkey = "Super"
+environment_file = "environment"
+
+[compositor.input]
+tap_to_click = true
+natural_scroll = true
+
+[[compositor.bind]]
+keys = "MOD+Q"
+dispatch = "close"
+args = []
+
+[session]
+# auto selects the production backend once the session supervisor is complete.
+# Other accepted values are tty and winit.
+backend = "auto"
+compositor_binary = "villain"
+shell_binary = "knave-shell"
+restart_on_failure = true
+
+[shell]
+start_bar = true
+# The overview is normally launched on demand by the compositor keybind.
+# Set this true only for a deliberately always-open overview session.
+start_overview_service = false

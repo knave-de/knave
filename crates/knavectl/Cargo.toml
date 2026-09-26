@@ -1,0 +1,14 @@
+[package]
+name = "knavectl"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Control CLI for the Knave desktop environment"
+
+[[bin]]
+name = "knavectl"
+path = "src/main.rs"
+
+[dependencies]
+knave-desktop-api.workspace = true
+serde_json.workspace = true

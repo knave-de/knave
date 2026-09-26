@@ -1,12 +1,12 @@
 # Build and packaging
 
-The new Knave stack is Rust/Cargo-first. Cargo owns Rust libraries, binaries,
-tests, and workspace orchestration. The intended Rust shell and wgpu renderer
-must be buildable without a Make-based orchestration layer.
+The Knave stack is Rust/Cargo-only for the supported environment. Cargo owns
+libraries, binaries, tests, and workspace orchestration across Knave and the
+Rust/wgpu shell. No Make, CMake, Qt, or native plugin build is required by the
+supported runtime.
 
-The current Qt shell is transitional and may continue using CMake. Transitional
-native builds use Ninja, isolated debug/release directories, and a staged
-installation prefix. They must not install implicitly into `/usr/local`.
+Installers use isolated release artifacts and an explicit user, system, or
+staged prefix. They must not install implicitly into `/usr/local`.
 
 Every build change checks:
 

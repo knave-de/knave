@@ -1,0 +1,15 @@
+[package]
+name = "knave"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Knave desktop environment control CLI"
+
+[[bin]]
+name = "knave"
+path = "src/main.rs"
+
+[dependencies]
+knave-config.workspace = true
+knave-session.workspace = true
+knave-desktop-api.workspace = true

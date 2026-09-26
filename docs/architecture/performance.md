@@ -31,6 +31,17 @@ The evidence may be a focused benchmark, profiler capture, resource sample, or
 repeatable integration test. Compilation, unit-test success, and a short manual
 smoke test do not establish acceptable resource behavior.
 
+## Nested baseline
+
+A release nested-session sample on 2026-09-26 used Knave with Villain in Winit
+mode and the Rust/wgpu Shell bar. After two seconds of startup, six one-second
+process samples recorded process-lifetime CPU values falling from 2.4% to 0.8%
+for Villain and from 8.0% to 2.4% for Knave Shell; Knave stayed at 0.0%. RSS
+remained around 121 MiB for Villain, 189 MiB for Knave Shell, and 3 MiB for
+Knave. The processes used 9, 38, and 1 threads respectively. Shutdown left no
+project child processes. These are host-specific nested baselines, not
+acceptance thresholds; direct TTY/DRM/GPU behavior remains unverified.
+
 Performance regressions require explanation, mitigation, or an explicit
 reviewed exception. Do not hide them by weakening the workload or omitting the
 measurement.

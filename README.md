@@ -1,112 +1,119 @@
 # Knave Desktop Environment
 
-Knave is the umbrella project for a cohesive Linux desktop environment. This
-repository owns desktop-wide contracts and the long-term Rust/Cargo-first shell
-direction. The compositor and current shell are developed separately.
+Knave is the umbrella project for an independent Linux desktop environment.
+This repository owns the desktop-wide contracts, configuration, session
+lifecycle, and the long-term Rust/Cargo-first environment.
 
-## Repository role
+The compositor and shell remain separate processes and repositories:
 
-Knave owns:
-
-- user-facing configuration and typed settings;
-- session lifecycle and process supervision;
-- versioned public desktop contracts;
-- build and release orchestration; and
-- the Rust shell, renderer, UI, and Wayland component boundaries.
-
-Villain owns compositor and window-manager behavior: surfaces, outputs, input,
-focus, layout, workspaces, activation, and composition. Knave Shell owns
-desktop-facing presentation and interaction.
-
-See [component boundaries](docs/architecture/component-boundaries.md) and
-[ADR 0001](docs/architecture/decisions/0001-knave-environment-boundaries.md).
-
-## Repository map
-
-| Repository | Current responsibility |
+| Repository | Responsibility |
 | --- | --- |
-| Knave | Umbrella contracts, architecture, settings, session, and future Rust shell |
-| Knave Shell | Current Qt/QML shell, Rust shell core, and layer-shell plugin |
-| Villain | Rust/Smithay compositor and window manager |
+| Knave | Settings, session supervisor, public desktop API, protocol, CLI |
+| Knave Shell | Rust UI library, wgpu renderer, Wayland client, shell |
+| Villain | Wayland compositor and window manager |
 
-Knave currently contains architecture and governance documentation. It is not
-yet a root Cargo workspace and has no root runtime binary.
+The rewrite is in progress. The Rust session path, Rust/wgpu shell, and typed
+cross-repository contracts are implemented; direct TTY/DRM and GPU smoke
+coverage remains a separate live-desktop verification step.
 
-## Current implementation state
+## Workspace
 
-The working system is transitional:
+The current Knave Cargo workspace contains:
 
-- Villain is a Rust/Smithay compositor with nested Winit and direct TTY
-  backends.
-- Knave Shell is a Qt Quick application with a Rust core and a private Qt
-  Wayland layer-shell plugin.
-- Shell state crosses the repository boundary through the versioned Villain
-  IPC contract.
-- The planned Rust/wgpu shell, unified session environment, Knave-owned
-  settings writer, and replacement for villainctl are not complete.
-- villainctl remains a transitional developer client.
+| Crate | Responsibility |
+| --- | --- |
+| knave-desktop-api | Versioned desktop IDs, snapshots, requests, events, and errors |
+| knave-config | Typed schema, validation, preservation-aware TOML writes |
+| knave-session | Compositor and shell startup, supervision, restart, and cleanup |
+| knave | Configuration and environment control CLI |
 
-Do not describe the target Rust/wgpu environment or Knave configuration
-migration as implemented until the corresponding runtime and migration tests
-exist.
+Build and test it with:
+
+    cargo fmt --all -- --check
+    cargo test --workspace
+    cargo clippy --workspace --all-targets -- -D warnings
+    cargo build --workspace --release --locked
+
+## CLI
+
+The CLI exposes configuration and session operations:
+
+    cargo run -p knave -- version
+    cargo run -p knave -- session start
+    cargo run -p knave -- session check
+    cargo run -p knave -- config path
+    cargo run -p knave -- config init
+    cargo run -p knave -- config migrate
+    cargo run -p knave -- config check
+    cargo run -p knave -- config print
+
+The public compositor control client is a separate installed binary:
+
+    cargo run -p knavectl -- --help
+
+After `knave session start`, query and control the running desktop with:
+
+    knavectl snapshot
+    knavectl workspaces
+    knavectl dispatch workspace 2
+    knavectl dispatch reload
+
+session start loads ~/.config/knave/config.toml, starts the configured Villain
+binary, waits for a newly-created wayland-* socket, and starts the configured
+shell roles. SIGINT and SIGTERM stop the children with a bounded grace period.
+Failed components are restarted with capped exponential backoff when
+restart_on_failure is enabled; the current supervisor permits at most three
+restart attempts per session.
 
 ## Configuration
 
-The target canonical configuration is:
+The canonical target path is:
 
     ~/.config/knave/config.toml
 
-Knave settings will own typed parsing, validation, atomic writing, schema
-migration, and compatibility preservation. Runtime state belongs in the
-session runtime directory, not persistent configuration.
+The path can be overridden with KNAVE_CONFIG. If XDG_CONFIG_HOME is set, Knave
+uses XDG_CONFIG_HOME/knave/config.toml.
 
-The current Villain implementation still reads its legacy configuration path:
-~/.config/villain/config.toml, or the VILLAIN_CONFIG override. That reader is
-compatibility behavior during migration. Do not add another user-facing
-configuration store.
+Initialize and validate an isolated configuration:
 
-See [configuration.md](docs/architecture/configuration.md).
+    KNAVE_CONFIG=/tmp/knave/config.toml target/release/knave config init
+    KNAVE_CONFIG=/tmp/knave/config.toml target/release/knave config check
 
-## Build and run
+The schema is versioned and written atomically. Known values are typed and
+validated; unknown TOML values are preserved when known settings are changed.
+Villain’s legacy root-level compositor settings are projected into the typed
+compositor section when needed, while the original TOML remains recoverable.
+New writes use Knave-owned compositor settings.
 
-There is no root build command yet. Build the current components from their
-repositories:
+See [config.example.toml](config.example.toml) and
+[configuration.md](docs/architecture/configuration.md).
 
-    # Villain
-    cd ../abhiwm
-    cargo build --workspace --locked
+## Installation
 
-    # Knave Shell
-    cd ../knaveshell
-    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
-    cmake --build build
+The installer builds and installs the release CLI, public control client, and
+session supervisor. It supports all three requested modes:
 
-The component READMEs document runtime prerequisites, backend selection,
-installation, and live verification. Compilation alone does not verify a real
-Wayland session, GPU, VT, or installed startup.
+    scripts/install.sh --user
+    scripts/install.sh --system
+    scripts/install.sh --prefix /chosen/prefix
 
-## Documentation
+User installation places knave, knavectl, and knave-session in ~/.local/bin.
+System installation uses /usr/local/bin and requests sudo when necessary.
+Installation is explicit and never writes to /usr/local without --system.
+
+## Architecture and change policy
 
 - [Architecture index](docs/architecture/README.md)
 - [Component boundaries](docs/architecture/component-boundaries.md)
 - [Configuration](docs/architecture/configuration.md)
-- [Versioning and compatibility](docs/architecture/versioning.md)
+- [Session lifecycle](docs/architecture/session.md)
+- [Versioning](docs/architecture/versioning.md)
+- [CLI contract](docs/architecture/cli.md)
 - [Build and packaging](docs/architecture/build-and-packaging.md)
-- [Performance and resource usage](docs/architecture/performance.md)
-- [Change-impact procedure](docs/architecture/change-impact.md)
+- [Performance](docs/architecture/performance.md)
+- [Change impact](docs/architecture/change-impact.md)
+- [Agent instructions](AGENTS.md)
 
-These documents are concise design contracts, not a claim that every target
-component already exists.
-
-## Cross-repository changes
-
-Before changing a shared type, configuration key, binary, protocol, lifecycle
-path, or build target:
-
-1. identify the owner and every consumer;
-2. record compatibility, migration, version, and performance impact;
-3. update both sides of the contract;
-4. verify in dependency order; and
-5. document rollout and rollback behavior.
-
-Read [AGENTS.md](AGENTS.md) before making changes.
+Before changing a shared contract, inspect every consumer in all three
+repositories. Keep protocol, configuration, session, UI, compositor, and
+installation changes in defined PRs with compatibility and rollback evidence.

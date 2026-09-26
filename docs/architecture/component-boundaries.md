@@ -7,7 +7,7 @@ are developed together.
 | Component | Owns |
 | --- | --- |
 | `knave-session` | Session startup, supervision, shutdown, signals, and reaping |
-| `knave-settings` | Typed access to the canonical Knave configuration |
+| `knave-config` | Typed access to the canonical Knave configuration |
 | `knave-desktop-api` | Versioned public runtime desktop contracts |
 | `knave-wayland` | Wayland client and layer-shell integration |
 | `knave-renderer` | wgpu device, surfaces, rendering, and frame scheduling |
@@ -20,6 +20,6 @@ through the session runtime directory or a typed service interface. Shell code
 does not reach into Villain's private implementation, and Villain does not
 write competing user-facing configuration.
 
-The current Qt shell is transitional. The planned Rust/wgpu shell replaces its
-implementation without changing ownership boundaries or silently changing the
-public desktop contract.
+The Rust/wgpu shell is the supported implementation. It replaces the removed
+Qt path without changing ownership boundaries or silently changing the public
+desktop contract.
