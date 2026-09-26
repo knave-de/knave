@@ -206,14 +206,14 @@ pub enum ConfigError {
     },
 }
 #[derive(Debug, Default, Deserialize)]
-struct LegacyCompositorConfig {
+struct RootCompositorConfig {
     modkey: Option<String>,
     environment_file: Option<String>,
     input: Option<CompositorInputConfig>,
     bind: Option<Vec<CompositorBinding>>,
 }
 
-fn migrate_legacy_compositor(
+fn project_root_compositor(
     document: &DocumentMut,
     source: &str,
     config: &mut Config,
@@ -221,28 +221,28 @@ fn migrate_legacy_compositor(
     if document.get("compositor").is_some() {
         return Ok(());
     }
-    let legacy =
-        toml::from_str::<LegacyCompositorConfig>(source).map_err(|source| ConfigError::Parse {
-            path: PathBuf::from("<legacy compositor>"),
+    let root =
+        toml::from_str::<RootCompositorConfig>(source).map_err(|source| ConfigError::Parse {
+            path: PathBuf::from("<root compositor>"),
             source,
         })?;
-    if legacy.modkey.is_none()
-        && legacy.environment_file.is_none()
-        && legacy.input.is_none()
-        && legacy.bind.is_none()
+    if root.modkey.is_none()
+        && root.environment_file.is_none()
+        && root.input.is_none()
+        && root.bind.is_none()
     {
         return Ok(());
     }
-    if let Some(modkey) = legacy.modkey {
+    if let Some(modkey) = root.modkey {
         config.compositor.modkey = modkey;
     }
-    if let Some(environment_file) = legacy.environment_file {
+    if let Some(environment_file) = root.environment_file {
         config.compositor.environment_file = Some(environment_file);
     }
-    if let Some(input) = legacy.input {
+    if let Some(input) = root.input {
         config.compositor.input = input;
     }
-    if let Some(bind) = legacy.bind {
+    if let Some(bind) = root.bind {
         config.compositor.bind = bind;
     }
     Ok(())
@@ -284,7 +284,7 @@ impl ConfigDocument {
             })?
         };
         if !source.trim().is_empty() {
-            migrate_legacy_compositor(&document, &source, &mut config)?;
+            project_root_compositor(&document, &source, &mut config)?;
         }
         config.validate()?;
 
@@ -324,19 +324,19 @@ impl ConfigDocument {
         Ok(())
     }
 
-    /// Materialize legacy root-level compositor settings under [compositor].
+    /// Materialize root-level compositor settings under [compositor].
     ///
-    /// Legacy keys remain in the editable document so users can roll back
+    /// Root-level keys remain in the editable document so users can roll back
     /// without losing values that were not understood by Knave.
-    pub fn migrate_legacy(&mut self) -> Result<bool, ConfigError> {
-        if !self.needs_legacy_migration() {
+    pub fn materialize_root_compositor(&mut self) -> Result<bool, ConfigError> {
+        if !self.needs_root_compositor_materialization() {
             return Ok(false);
         }
         self.write(self.config.clone())?;
         Ok(true)
     }
 
-    fn needs_legacy_migration(&self) -> bool {
+    fn needs_root_compositor_materialization(&self) -> bool {
         self.document.get("compositor").is_none()
             && ["modkey", "environment_file", "input", "bind"]
                 .iter()
@@ -541,13 +541,13 @@ mod tests {
         assert!(output.contains(r#"args = ["--force"]"#));
     }
     #[test]
-    fn legacy_root_compositor_settings_are_projected() {
+    fn root_compositor_settings_are_projected() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("config.toml");
         fs::write(
             &path,
             r#"schema_version = 1
-legacy_only = "keep"
+preserved_only = "keep"
 modkey = "Alt"
 [input]
 tap_to_click = false
@@ -565,17 +565,17 @@ dispatch = "close"
         assert!(!document.config().compositor.input.natural_scroll);
         assert_eq!(document.config().compositor.bind.len(), 1);
         assert_eq!(document.config().compositor.bind[0].dispatch, "close");
-        assert!(document.source().contains("legacy_only = \"keep\""));
+        assert!(document.source().contains("preserved_only = \"keep\""));
     }
 
     #[test]
-    fn legacy_migration_writes_typed_projection_and_preserves_source() {
+    fn root_compositor_materialization_writes_typed_projection_and_preserves_source() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("config.toml");
         fs::write(
             &path,
             r#"schema_version = 1
-legacy_only = "keep"
+preserved_only = "keep"
 modkey = "Alt"
 [input]
 tap_to_click = false
@@ -588,15 +588,15 @@ dispatch = "close"
         .unwrap();
 
         let mut document = ConfigDocument::load(&path).unwrap();
-        assert!(document.migrate_legacy().unwrap());
+        assert!(document.materialize_root_compositor().unwrap());
 
         let output = fs::read_to_string(&path).unwrap();
         assert!(output.contains("[compositor]"));
         assert_eq!(output.matches("modkey = \"Alt\"").count(), 2);
-        assert!(output.contains("legacy_only = \"keep\""));
+        assert!(output.contains("preserved_only = \"keep\""));
         assert!(output.contains("[input]"));
         assert!(output.contains("[[bind]]"));
-        assert!(!document.migrate_legacy().unwrap());
+        assert!(!document.materialize_root_compositor().unwrap());
     }
 
     #[test]

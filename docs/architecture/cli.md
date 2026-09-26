@@ -15,7 +15,7 @@ The `knave` binary owns configuration and session operations:
 | `knave session check` | Validate the canonical configuration and report its backend and component binaries. |
 | `knave config path` | Print the resolved configuration path. |
 | `knave config init` | Create a default configuration; fail if the target already exists. |
-| `knave config migrate` | Materialize legacy root compositor settings under `[compositor]` while preserving the source keys. |
+| `knave config migrate` | Materialize root-level compositor settings under `[compositor]` while preserving the source keys. |
 | `knave config check` | Parse and validate the configuration without writing it. |
 | `knave config print` | Print the preserved editable TOML document. |
 

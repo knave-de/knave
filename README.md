@@ -77,7 +77,7 @@ Initialize and validate an isolated configuration:
 
 The schema is versioned and written atomically. Known values are typed and
 validated; unknown TOML values are preserved when known settings are changed.
-Villain’s legacy root-level compositor settings are projected into the typed
+Villain’s root-level compositor settings are projected into the typed
 compositor section when needed, while the original TOML remains recoverable.
 New writes use Knave-owned compositor settings.
 
