@@ -163,8 +163,13 @@ migration/rollback, and verification.
 ## Git and GitHub workflow
 
 Create a focused branch for each task. Preserve unrelated dirty changes. Use
-Conventional Commits, commit coherent slices, inspect the final diff, and
-squash merge.
+Conventional Commits, commit coherent slices, and inspect the final diff.
+
+Do not merge, squash-merge, or otherwise integrate a branch or pull request
+unless the user explicitly requests the merge. Creating or approving a pull
+request, passing checks, or repository conventions do not authorize a merge.
+When the user explicitly requests a merge, follow their specified method; if
+they do not specify one, use squash merge.
 
 For cross-repository changes:
 
@@ -174,7 +179,8 @@ For cross-repository changes:
 4. Update all consumers.
 5. Link the pull requests.
 6. Verify the supported version combination.
-7. Merge in dependency order.
+7. Merge in dependency order only after the user explicitly requests the
+   merge; otherwise leave the pull requests open.
 8. Remove compatibility code only in a later cleanup change.
 
 Cross-repository pull requests must describe scope, affected contracts,
