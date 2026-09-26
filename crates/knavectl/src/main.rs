@@ -8,6 +8,7 @@ use knave_desktop_api::{
 fn usage() -> &'static str {
     "usage:
   knavectl reload
+  knavectl dispatch reload
   knavectl snapshot
   knavectl dispatch close
   knavectl dispatch minimize
