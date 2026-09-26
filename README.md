@@ -12,11 +12,6 @@ The compositor and shell remain separate processes and repositories:
 | Knave Shell | Rust UI library, wgpu renderer, Wayland client, shell |
 | Villain | Wayland compositor and window manager |
 
-The rewrite is complete for the supported code path. The Rust session path,
-Rust/wgpu shell, typed cross-repository contracts, and Cargo-first build are
-implemented; direct TTY/DRM and GPU smoke coverage remains a separate
-live-desktop verification step, not unfinished rewrite work.
-
 ## Workspace
 
 The current Knave Cargo workspace contains:
