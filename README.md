@@ -12,9 +12,10 @@ The compositor and shell remain separate processes and repositories:
 | Knave Shell | Rust UI library, wgpu renderer, Wayland client, shell |
 | Villain | Wayland compositor and window manager |
 
-The rewrite is in progress. The Rust session path, Rust/wgpu shell, and typed
-cross-repository contracts are implemented; direct TTY/DRM and GPU smoke
-coverage remains a separate live-desktop verification step.
+The rewrite is complete for the supported code path. The Rust session path,
+Rust/wgpu shell, typed cross-repository contracts, and Cargo-first build are
+implemented; direct TTY/DRM and GPU smoke coverage remains a separate
+live-desktop verification step, not unfinished rewrite work.
 
 ## Workspace
 
