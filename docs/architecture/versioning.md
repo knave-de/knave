@@ -40,3 +40,5 @@ Deploy the Knave API/client commit before the matching Villain dependency pin.
 Rollback both binaries together to remove new commands; no persisted window
 state or configuration migration needs rollback. The independent library and
 binary package versions remain 0.1.0 during this unreleased development change.
+
+API 1.2 adds [desktop state subscriptions](decisions/0002-desktop-state-subscriptions.md).
