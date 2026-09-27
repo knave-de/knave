@@ -101,6 +101,9 @@ pub struct CompositorBinding {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CompositorConfig {
+    /// Default master width as a percentage of usable workspace width (10..=90).
+    #[serde(default = "default_master_percent")]
+    pub master_percent: u8,
     #[serde(default = "default_modkey")]
     pub modkey: String,
     #[serde(default)]
@@ -111,6 +114,10 @@ pub struct CompositorConfig {
     pub bind: Vec<CompositorBinding>,
 }
 
+fn default_master_percent() -> u8 {
+    50
+}
+
 fn default_modkey() -> String {
     "Super".into()
 }
@@ -118,6 +125,7 @@ fn default_modkey() -> String {
 impl Default for CompositorConfig {
     fn default() -> Self {
         Self {
+            master_percent: default_master_percent(),
             modkey: default_modkey(),
             environment_file: None,
             input: CompositorInputConfig::default(),
@@ -168,6 +176,11 @@ impl Config {
         }
         if self.session.shell_binary.trim().is_empty() {
             return Err(ConfigError::Invalid("session.shell_binary is empty".into()));
+        }
+        if !(10..=90).contains(&self.compositor.master_percent) {
+            return Err(ConfigError::Invalid(
+                "compositor.master_percent must be between 10 and 90".into(),
+            ));
         }
         if self.compositor.modkey.trim().is_empty() {
             return Err(ConfigError::Invalid("compositor.modkey is empty".into()));
@@ -362,6 +375,12 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
     set_table_value(
         document,
         "compositor",
+        "master_percent",
+        value(i64::from(config.compositor.master_percent)),
+    );
+    set_table_value(
+        document,
+        "compositor",
         "modkey",
         value(config.compositor.modkey.clone()),
     );
@@ -506,6 +525,37 @@ fn config_path() -> Result<PathBuf, ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn master_percentage_defaults_validates_and_round_trips() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(
+            &path,
+            "schema_version = 1\n[compositor]\nunknown_layout_option = 42\n",
+        )
+        .unwrap();
+        let mut document = ConfigDocument::load(&path).unwrap();
+        assert_eq!(document.config().compositor.master_percent, 50);
+        let mut config = document.config().clone();
+        for invalid in [0, 9, 91, 255] {
+            config.compositor.master_percent = invalid;
+            assert!(document.write(config.clone()).is_err());
+        }
+        for valid in [10, 60, 90] {
+            config.compositor.master_percent = valid;
+            document.write(config.clone()).unwrap();
+            assert_eq!(
+                ConfigDocument::load(&path)
+                    .unwrap()
+                    .config()
+                    .compositor
+                    .master_percent,
+                valid
+            );
+            assert!(document.source().contains("unknown_layout_option = 42"));
+        }
+    }
 
     #[test]
     fn defaults_validate() {

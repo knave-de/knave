@@ -50,3 +50,25 @@ read-only.
 Schema migrations need a defined forward path, backup/recovery behavior, and a
 rollback story. Version domains are tracked independently for configuration,
 the public desktop API, the shell/UI protocol, and the private compositor protocol.
+
+## Master/stack width
+
+Schema 1 accepts the additive `[compositor] master_percent` setting: an integer
+from 10 through 90, default 50. The master receives this percentage of usable
+workspace width, excluding reserved panels; the stack receives the remainder.
+One tiled window still fills the usable area. Villain owns layout and input;
+Knave only validates, preserves and writes the setting. Existing schema-1 files
+need no migration, and unknown TOML entries remain preserved.
+
+Villain's matching `feat/layout-split-resize` change consumes this projection.
+Older Villain binaries ignore the new setting. Session and Shell behavior and
+desktop API 1.1 are unchanged. Rebuilding Rust consumers that use complete
+`CompositorConfig` literals requires initializing the new field. Deploy this
+Knave configuration library before the matching Villain dependency pin.
+
+Dragging the master/stack divider or using `resize-master` creates a workspace
+session override; it never writes configuration. Reload updates workspaces
+without overrides. `reset-master` clears the active override and uses the latest
+configured default. Restart discards all overrides. To roll back, restore the
+previous Villain binary and remove `resize-master`/`reset-master` entries from
+custom bindings; the new percentage key may remain for a later upgrade.

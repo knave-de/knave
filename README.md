@@ -113,3 +113,46 @@ Installation is explicit and never writes to /usr/local without --system.
 Before changing a shared contract, inspect every consumer in all three
 repositories. Keep protocol, configuration, session, UI, compositor, and
 installation changes in defined PRs with compatibility and rollback evidence.
+
+### Master/stack resizing
+
+With the matching Villain layout-resize implementation, edit the existing
+`[compositor]` table in `~/.config/knave/config.toml`:
+
+```toml
+[compositor]
+master_percent = 60 # 60% master, 40% stack; default 50, valid range 10..90
+```
+
+Left-drag within five logical pixels of the main vertical divider. The cursor
+changes to a horizontal resize cursor. Default shortcuts are `MOD+Ctrl+Left`
+(shrink master by 5 percentage points), `MOD+Ctrl+Right` (grow by 5), and
+`MOD+Ctrl+R` (reset to the configured default). Each key press makes one step.
+`MOD` is the configured modkey, normally Super.
+
+Custom binding sets replace defaults. Append these entries to your existing
+configuration if you use custom bindings; change the keys or signed step size
+as desired:
+
+```toml
+[[compositor.bind]]
+keys = "MOD+CTRL+LEFT"
+dispatch = "resize-master"
+args = ["-5"]
+
+[[compositor.bind]]
+keys = "MOD+CTRL+RIGHT"
+dispatch = "resize-master"
+args = ["5"]
+
+[[compositor.bind]]
+keys = "MOD+CTRL+R"
+dispatch = "reset-master"
+```
+
+Run `knavectl reload` after editing. Resizing is per workspace and lasts
+until reset or restart; reload preserves manual overrides. The percentage is
+clamped to 10–90%. Resize actions do nothing with fewer than two tiled windows
+or while a maximized/fullscreen window covers the layout. Floating windows and
+individual stack dividers are unchanged. These are Villain keybinding actions,
+not new desktop IPC commands.
