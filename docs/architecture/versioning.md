@@ -20,3 +20,23 @@ cleanup step after the replacement has been deployed and observed.
 Cross-repository changes must identify the supported Knave/Villain version
 combination and merge in dependency order. A library passing its own tests is
 not evidence that the ecosystem remains compatible.
+
+## Desktop API 1.1: maximization
+
+API 1.1 adds `maximize-focused`, `unmaximize-focused`, and
+`toggle-maximize-focused` dispatch actions and a default-false `maximized`
+window-summary field. Fullscreen takes precedence over saved maximization;
+unmaximizing does not exit fullscreen or restore a minimized window.
+Existing commands retain their behavior. No configuration schema change occurs.
+
+API 1.0 clients may keep using existing actions with a 1.1 server and ignore
+unknown summary fields. A 1.1 client can read 1.0 summaries; new commands require
+a 1.1 server. Query `version` before offering them to mixed-version deployments;
+there is no automatic negotiation or downgrade. Rust consumers rebuilding with
+the updated crate must initialize `maximized` in summary literals and handle
+new command variants. Existing pinned Shell binaries need no update.
+
+Deploy the Knave API/client commit before the matching Villain dependency pin.
+Rollback both binaries together to remove new commands; no persisted window
+state or configuration migration needs rollback. The independent library and
+binary package versions remain 0.1.0 during this unreleased development change.

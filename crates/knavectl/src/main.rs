@@ -12,6 +12,9 @@ fn usage() -> &'static str {
   knavectl snapshot
   knavectl dispatch close
   knavectl dispatch minimize
+  knavectl dispatch maximize
+  knavectl dispatch unmaximize
+  knavectl dispatch toggle-maximize
   knavectl dispatch restore-minimized
   knavectl dispatch workspace <1-10>
   knavectl dispatch focus-window <id>
@@ -76,6 +79,20 @@ fn parse_request(mut args: impl Iterator<Item = String>) -> Result<DesktopReques
             Some("minimize") => {
                 ensure_no_args(&mut args, "dispatch minimize")?;
                 Ok(DesktopRequest::Dispatch(DesktopCommand::MinimizeFocused))
+            }
+            Some("maximize") => {
+                ensure_no_args(&mut args, "dispatch maximize")?;
+                Ok(DesktopRequest::Dispatch(DesktopCommand::MaximizeFocused))
+            }
+            Some("unmaximize") => {
+                ensure_no_args(&mut args, "dispatch unmaximize")?;
+                Ok(DesktopRequest::Dispatch(DesktopCommand::UnmaximizeFocused))
+            }
+            Some("toggle-maximize") => {
+                ensure_no_args(&mut args, "dispatch toggle-maximize")?;
+                Ok(DesktopRequest::Dispatch(
+                    DesktopCommand::ToggleMaximizeFocused,
+                ))
             }
             Some("restore-minimized") => {
                 ensure_no_args(&mut args, "dispatch restore-minimized")?;
@@ -202,6 +219,23 @@ mod tests {
             parse_request(["snapshot"].map(str::to_owned).into_iter()).unwrap(),
             DesktopRequest::Query(DesktopQuery::Snapshot)
         );
+    }
+
+    #[test]
+    fn maximize_commands_reject_extra_arguments() {
+        for (name, command) in [
+            ("maximize", DesktopCommand::MaximizeFocused),
+            ("unmaximize", DesktopCommand::UnmaximizeFocused),
+            ("toggle-maximize", DesktopCommand::ToggleMaximizeFocused),
+        ] {
+            assert_eq!(
+                parse_request(["dispatch", name].map(str::to_owned).into_iter()).unwrap(),
+                DesktopRequest::Dispatch(command)
+            );
+            assert!(
+                parse_request(["dispatch", name, "extra"].map(str::to_owned).into_iter()).is_err()
+            );
+        }
     }
 
     #[test]
