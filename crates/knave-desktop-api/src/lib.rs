@@ -12,7 +12,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub const API_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 0 };
+pub const API_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 1 };
 pub const SOCKET_ENVIRONMENT_VARIABLE: &str = "KNAVE_SOCKET";
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -49,6 +49,9 @@ pub struct WindowSummary {
     pub floating: bool,
     #[serde(default)]
     pub fullscreen: bool,
+    /// Saved maximization state; fullscreen takes precedence while active.
+    #[serde(default)]
+    pub maximized: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -72,6 +75,9 @@ pub enum DesktopCommand {
     ReloadConfiguration,
     CloseFocused,
     MinimizeFocused,
+    MaximizeFocused,
+    UnmaximizeFocused,
+    ToggleMaximizeFocused,
     RestoreLastMinimized,
     FocusWorkspace { workspace: WorkspaceId },
     FocusWindow { window: WindowId },
@@ -233,6 +239,38 @@ mod tests {
             serde_json::from_str::<DesktopRequest>(&encoded).unwrap(),
             request
         );
+    }
+
+    #[test]
+    fn old_window_summaries_default_to_unmaximized() {
+        let old = r#"{"id":1,"title":"Window","app_id":"app","workspace":1,"focused":true,"minimized":false,"floating":false,"fullscreen":false}"#;
+        let mut window: WindowSummary = serde_json::from_str(old).unwrap();
+        assert!(!window.maximized);
+        window.maximized = true;
+        let encoded = serde_json::to_string(&window).unwrap();
+        assert_eq!(
+            serde_json::from_str::<WindowSummary>(&encoded).unwrap(),
+            window
+        );
+    }
+
+    #[test]
+    fn maximize_commands_have_distinct_wire_actions() {
+        for (command, action) in [
+            (DesktopCommand::MaximizeFocused, "maximize-focused"),
+            (DesktopCommand::UnmaximizeFocused, "unmaximize-focused"),
+            (
+                DesktopCommand::ToggleMaximizeFocused,
+                "toggle-maximize-focused",
+            ),
+        ] {
+            let value = serde_json::to_value(&command).unwrap();
+            assert_eq!(value["action"], action);
+            assert_eq!(
+                serde_json::from_value::<DesktopCommand>(value).unwrap(),
+                command
+            );
+        }
     }
 
     #[test]

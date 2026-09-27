@@ -43,6 +43,9 @@ JSON response. `KNAVE_SOCKET` overrides socket discovery for isolated tests.
 | `knavectl active-workspace` | Print the active workspace. |
 | `knavectl version` | Query the desktop API and compositor version. |
 | `knavectl dispatch close` | Close the focused window. |
+| `knavectl dispatch maximize` | Maximize the focused window within the usable workspace area. |
+| `knavectl dispatch unmaximize` | Restore its underlying tiled/floating layout without changing fullscreen or minimization. |
+| `knavectl dispatch toggle-maximize` | Toggle the focused window's saved maximization state. |
 | `knavectl dispatch minimize` | Minimize the focused window. |
 | `knavectl dispatch restore-minimized` | Restore the most recently minimized window. |
 | `knavectl dispatch workspace <1-10>` | Focus a workspace. |
