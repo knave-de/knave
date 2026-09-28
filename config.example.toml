@@ -8,6 +8,8 @@ schema_version = 1
 [compositor]
 # Villain consumes this typed projection; it does not own a second config file.
 modkey = "Super"
+# Master width in percent; stack receives the remainder (10..90).
+master_percent = 50
 environment_file = "environment"
 
 [compositor.input]
