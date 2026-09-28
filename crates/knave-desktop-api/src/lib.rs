@@ -247,6 +247,7 @@ impl SubscriptionCancel {
 pub struct DesktopSubscription {
     reader: BufReader<UnixStream>,
     initial: Option<DesktopSnapshot>,
+    poisoned: bool,
 }
 impl DesktopSubscription {
     pub fn connect() -> Result<Self, ClientError> {
@@ -263,6 +264,7 @@ impl DesktopSubscription {
         let mut subscription = Self {
             reader: BufReader::new(stream),
             initial: None,
+            poisoned: false,
         };
         subscription.initial = Some(subscription.read_snapshot()?);
         // A healthy idle desktop sends nothing. Cancellation shuts down this socket.
@@ -283,6 +285,9 @@ impl DesktopSubscription {
 
     fn read_snapshot(&mut self) -> Result<DesktopSnapshot, ClientError> {
         use std::io::Read;
+        if self.poisoned {
+            return Err(ClientError::FrameTooLarge);
+        }
         let mut line = String::new();
         let bytes = self
             .reader
@@ -293,6 +298,9 @@ impl DesktopSubscription {
             return Err(ClientError::Disconnected);
         }
         if bytes as u64 > MAX_SNAPSHOT_FRAME_BYTES {
+            // The unread tail still belongs to this frame; it cannot be parsed safely.
+            self.poisoned = true;
+            let _ = self.reader.get_ref().shutdown(Shutdown::Both);
             return Err(ClientError::FrameTooLarge);
         }
         if !line.ends_with('\n') {
