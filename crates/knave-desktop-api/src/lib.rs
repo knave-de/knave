@@ -13,7 +13,10 @@ use std::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub const API_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 2 };
+pub const API_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 3 };
+/// The snapshot stream has not changed since API 1.2. A current client can
+/// subscribe to a 1.2 compositor while newer requests negotiate separately.
+pub const SUBSCRIPTION_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 2 };
 pub const SOCKET_ENVIRONMENT_VARIABLE: &str = "KNAVE_SOCKET";
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -61,6 +64,17 @@ pub struct WorkspacePreview {
     pub width: u32,
     pub height: u32,
     pub png_base64: String,
+}
+
+/// A logical-output rectangle where the compositor displays one workspace.
+/// Window surfaces are visual only; the shell keeps all pointer and keyboard input.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct OverviewPane {
+    pub workspace: WorkspaceId,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -111,6 +125,10 @@ pub enum DesktopRequest {
     /// Converts a dedicated connection to a stream of replacement snapshots.
     Subscribe {
         protocol: ProtocolVersion,
+    },
+    /// Replace the compositor overview panes; an empty list clears them.
+    SetOverviewPanes {
+        panes: Vec<OverviewPane>,
     },
 }
 
@@ -241,7 +259,7 @@ impl SubscriptionCancel {
     }
 }
 
-/// API 1.2 snapshot stream. The first frame is a complete initial state;
+/// API 1.2+ snapshot stream. The first frame is a complete initial state;
 /// subsequent frames replace it. Intermediate states may be coalesced.
 /// Use a separate DesktopClient for commands and preview requests.
 pub struct DesktopSubscription {
@@ -257,7 +275,7 @@ impl DesktopSubscription {
         serde_json::to_writer(
             &mut stream,
             &DesktopRequest::Subscribe {
-                protocol: API_VERSION,
+                protocol: SUBSCRIPTION_VERSION,
             },
         )?;
         stream.write_all(b"\n")?;

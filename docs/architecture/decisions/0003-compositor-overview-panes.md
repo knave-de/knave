@@ -1,0 +1,7 @@
+# Compositor overview panes (desktop API 1.3)
+
+The shell previously fetched full-output PNGs for every visible workspace card. GPU readback, PNG encoding, transport, decoding, and upload delayed opening and browsing.
+
+The shell now sends at most three logical-output `OverviewPane` rectangles through `set_overview_panes`. Villain validates and replaces the whole list, then renders existing Wayland window textures into those rectangles during the normal output frame. A pane is display-only: the overlay layer shell surface retains pointer and keyboard input, and window activation still uses existing desktop commands. The empty list clears the mode; destroying or unmapping the `knave-shell-overview` surface clears it too. No persistent configuration or screenshot cache is introduced.
+
+This is an additive 1.3 request. Older request types and 1.2 subscription clients remain accepted by a 1.3 compositor. The snapshot client continues to request the unchanged 1.2 subscription version when rebuilt with API 1.3, so a 1.2 compositor can still publish desktop state; live pane requests require the 1.3 implementation. Deploy Knave API and Villain before the new shell. A new shell talking to an old compositor cannot use live panes. Roll back the shell first; the old PNG preview query remains available for existing clients. The direct render path uses the same bounded workspace layout on Winit and TTY; GPU/Wayland behavior requires live smoke verification.
