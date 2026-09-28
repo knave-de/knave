@@ -42,3 +42,4 @@ state or configuration migration needs rollback. The independent library and
 binary package versions remain 0.1.0 during this unreleased development change.
 
 API 1.2 adds [desktop state subscriptions](decisions/0002-desktop-state-subscriptions.md).
+API 1.3 adds [compositor overview panes](decisions/0003-compositor-overview-panes.md).
