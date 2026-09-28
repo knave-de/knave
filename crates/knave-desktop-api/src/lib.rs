@@ -14,6 +14,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub const API_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 3 };
+/// The snapshot stream has not changed since API 1.2. A current client can
+/// subscribe to a 1.2 compositor while newer requests negotiate separately.
+pub const SUBSCRIPTION_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 2 };
 pub const SOCKET_ENVIRONMENT_VARIABLE: &str = "KNAVE_SOCKET";
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -272,7 +275,7 @@ impl DesktopSubscription {
         serde_json::to_writer(
             &mut stream,
             &DesktopRequest::Subscribe {
-                protocol: API_VERSION,
+                protocol: SUBSCRIPTION_VERSION,
             },
         )?;
         stream.write_all(b"\n")?;
