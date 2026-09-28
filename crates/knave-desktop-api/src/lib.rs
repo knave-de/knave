@@ -4,6 +4,7 @@ use std::{
     env,
     ffi::OsStr,
     io::{self, BufRead, BufReader, Write},
+    net::Shutdown,
     os::unix::net::UnixStream,
     path::PathBuf,
     time::Duration,
@@ -12,7 +13,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub const API_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 1 };
+pub const API_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 2 };
 pub const SOCKET_ENVIRONMENT_VARIABLE: &str = "KNAVE_SOCKET";
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -107,6 +108,10 @@ pub enum DesktopQuery {
 pub enum DesktopRequest {
     Dispatch(DesktopCommand),
     Query(DesktopQuery),
+    /// Converts a dedicated connection to a stream of replacement snapshots.
+    Subscribe {
+        protocol: ProtocolVersion,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -168,6 +173,10 @@ pub enum ClientError {
     Disconnected,
     #[error("Knave returned an error: {0:?}")]
     Remote(DesktopError),
+    #[error("unexpected desktop subscription response")]
+    UnexpectedResponse,
+    #[error("desktop snapshot exceeds the subscription frame limit")]
+    FrameTooLarge,
 }
 
 pub fn socket_path() -> Result<PathBuf, ClientError> {
@@ -217,6 +226,90 @@ impl DesktopClient {
         match response {
             DesktopResponse::Error(error) => Err(ClientError::Remote(error)),
             response => Ok(response),
+        }
+    }
+}
+
+/// Maximum UTF-8 bytes in one subscription snapshot, including its newline.
+pub const MAX_SNAPSHOT_FRAME_BYTES: u64 = 16 * 1024 * 1024;
+
+/// Dropping the stream disconnects; this handle also interrupts a blocked reader.
+pub struct SubscriptionCancel(UnixStream);
+impl SubscriptionCancel {
+    pub fn cancel(&self) -> io::Result<()> {
+        self.0.shutdown(Shutdown::Both)
+    }
+}
+
+/// API 1.2 snapshot stream. The first frame is a complete initial state;
+/// subsequent frames replace it. Intermediate states may be coalesced.
+/// Use a separate DesktopClient for commands and preview requests.
+pub struct DesktopSubscription {
+    reader: BufReader<UnixStream>,
+    initial: Option<DesktopSnapshot>,
+    poisoned: bool,
+}
+impl DesktopSubscription {
+    pub fn connect() -> Result<Self, ClientError> {
+        let mut stream = UnixStream::connect(socket_path()?)?;
+        stream.set_read_timeout(Some(Duration::from_secs(2)))?;
+        stream.set_write_timeout(Some(Duration::from_secs(2)))?;
+        serde_json::to_writer(
+            &mut stream,
+            &DesktopRequest::Subscribe {
+                protocol: API_VERSION,
+            },
+        )?;
+        stream.write_all(b"\n")?;
+        let mut subscription = Self {
+            reader: BufReader::new(stream),
+            initial: None,
+            poisoned: false,
+        };
+        subscription.initial = Some(subscription.read_snapshot()?);
+        // A healthy idle desktop sends nothing. Cancellation shuts down this socket.
+        subscription.reader.get_ref().set_read_timeout(None)?;
+        Ok(subscription)
+    }
+
+    pub fn cancel_handle(&self) -> Result<SubscriptionCancel, ClientError> {
+        Ok(SubscriptionCancel(self.reader.get_ref().try_clone()?))
+    }
+
+    pub fn next_snapshot(&mut self) -> Result<DesktopSnapshot, ClientError> {
+        match self.initial.take() {
+            Some(snapshot) => Ok(snapshot),
+            None => self.read_snapshot(),
+        }
+    }
+
+    fn read_snapshot(&mut self) -> Result<DesktopSnapshot, ClientError> {
+        use std::io::Read;
+        if self.poisoned {
+            return Err(ClientError::FrameTooLarge);
+        }
+        let mut line = String::new();
+        let bytes = self
+            .reader
+            .by_ref()
+            .take(MAX_SNAPSHOT_FRAME_BYTES + 1)
+            .read_line(&mut line)?;
+        if bytes == 0 {
+            return Err(ClientError::Disconnected);
+        }
+        if bytes as u64 > MAX_SNAPSHOT_FRAME_BYTES {
+            // The unread tail still belongs to this frame; it cannot be parsed safely.
+            self.poisoned = true;
+            let _ = self.reader.get_ref().shutdown(Shutdown::Both);
+            return Err(ClientError::FrameTooLarge);
+        }
+        if !line.ends_with('\n') {
+            return Err(ClientError::Disconnected);
+        }
+        match serde_json::from_str(&line)? {
+            DesktopResponse::Snapshot(snapshot) => Ok(snapshot),
+            DesktopResponse::Error(error) => Err(ClientError::Remote(error)),
+            _ => Err(ClientError::UnexpectedResponse),
         }
     }
 }
