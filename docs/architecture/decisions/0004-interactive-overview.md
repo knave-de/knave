@@ -1,0 +1,9 @@
+# Interactive overview selection (desktop API 1.4)
+
+The overview displays compositor-rendered windows, but its full-screen shell surface owns input. A card-wide click cannot identify the window under the pointer. Repeated Super releases also launched multiple overview surfaces, and restoring a minimized window did not focus it.
+
+Villain owns the Super toggle and allows one overview layer surface or pending launch. A second Super closes the surface, or cancels an opening launch when its surface arrives. Modifier combinations retain their existing bindings. The shell owns overview controls: arrows and dots browse; clicking a preview selects its topmost visible window or its workspace if the point is empty; clicking a minimized entry restores and focuses it; Escape and background clicks dismiss immediately. Selection closes the shell only after a successful desktop response.
+
+API 1.4 adds `focus-overview-point` with a workspace and logical-output point, `restore-and-focus-window` with a window ID, and `toggle-overview`. Villain resolves the point against its current pane and workspace layout using the same fit transform as rendering. The point must lie inside the active pane. The existing `focus-window`, `focus-workspace`, and `restore-window` commands remain unchanged. Snapshot subscriptions remain at 1.2; older clients continue to work with a 1.4 compositor. A new shell requires a 1.4 compositor for clicks inside preview panes; on an older compositor, the action fails and the overview remains open with an error. No configuration schema or persistent data changes.
+
+Deploy the API, then Villain, then Shell. Roll back Shell first, then Villain. The former commands and preview API remain available. Unit tests cover the wire actions, shell click routing and dismissal, and compositor dispatch; nested Wayland and direct-TTY input and focus require live smoke tests.

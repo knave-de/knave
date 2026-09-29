@@ -13,7 +13,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub const API_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 3 };
+pub const API_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 4 };
 /// The snapshot stream has not changed since API 1.2. A current client can
 /// subscribe to a 1.2 compositor while newer requests negotiate separately.
 pub const SUBSCRIPTION_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 2 };
@@ -94,10 +94,30 @@ pub enum DesktopCommand {
     UnmaximizeFocused,
     ToggleMaximizeFocused,
     RestoreLastMinimized,
-    FocusWorkspace { workspace: WorkspaceId },
-    FocusWindow { window: WindowId },
-    RestoreWindow { window: WindowId },
-    Spawn { argv: Vec<String> },
+    FocusWorkspace {
+        workspace: WorkspaceId,
+    },
+    FocusWindow {
+        window: WindowId,
+    },
+    RestoreWindow {
+        window: WindowId,
+    },
+    /// Select the topmost rendered window at a point in an overview pane, or its workspace.
+    FocusOverviewPoint {
+        workspace: WorkspaceId,
+        x: i32,
+        y: i32,
+    },
+    /// Restore a minimized window and focus it, switching workspaces if needed.
+    RestoreAndFocusWindow {
+        window: WindowId,
+    },
+    /// Toggle the single overview surface.
+    ToggleOverview,
+    Spawn {
+        argv: Vec<String>,
+    },
     Quit,
 }
 
@@ -350,6 +370,34 @@ mod tests {
             serde_json::from_str::<DesktopRequest>(&encoded).unwrap(),
             request
         );
+    }
+
+    #[test]
+    fn overview_selection_commands_have_distinct_wire_actions() {
+        for (command, action) in [
+            (
+                DesktopCommand::FocusOverviewPoint {
+                    workspace: WorkspaceId(2),
+                    x: 12,
+                    y: 34,
+                },
+                "focus-overview-point",
+            ),
+            (
+                DesktopCommand::RestoreAndFocusWindow {
+                    window: WindowId(9),
+                },
+                "restore-and-focus-window",
+            ),
+            (DesktopCommand::ToggleOverview, "toggle-overview"),
+        ] {
+            let encoded = serde_json::to_string(&command).unwrap();
+            assert!(encoded.contains(action));
+            assert_eq!(
+                serde_json::from_str::<DesktopCommand>(&encoded).unwrap(),
+                command
+            );
+        }
     }
 
     #[test]

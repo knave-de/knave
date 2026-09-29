@@ -19,6 +19,9 @@ fn usage() -> &'static str {
   knavectl dispatch workspace <1-10>
   knavectl dispatch focus-window <id>
   knavectl dispatch restore-window <id>
+  knavectl dispatch restore-and-focus-window <id>
+  knavectl dispatch focus-overview-point <workspace> <x> <y>
+  knavectl dispatch toggle-overview
   knavectl dispatch exec <program> [args...]
   knavectl dispatch quit
   knavectl windows
@@ -120,6 +123,26 @@ fn parse_request(mut args: impl Iterator<Item = String>) -> Result<DesktopReques
                 Ok(DesktopRequest::Dispatch(DesktopCommand::RestoreWindow {
                     window,
                 }))
+            }
+            Some("restore-and-focus-window") => {
+                let window = WindowId(parse_number(args.next(), "window id")?);
+                ensure_no_args(&mut args, "dispatch restore-and-focus-window")?;
+                Ok(DesktopRequest::Dispatch(
+                    DesktopCommand::RestoreAndFocusWindow { window },
+                ))
+            }
+            Some("focus-overview-point") => {
+                let workspace = parse_workspace(args.next())?;
+                let x = parse_number(args.next(), "x")?;
+                let y = parse_number(args.next(), "y")?;
+                ensure_no_args(&mut args, "dispatch focus-overview-point")?;
+                Ok(DesktopRequest::Dispatch(
+                    DesktopCommand::FocusOverviewPoint { workspace, x, y },
+                ))
+            }
+            Some("toggle-overview") => {
+                ensure_no_args(&mut args, "dispatch toggle-overview")?;
+                Ok(DesktopRequest::Dispatch(DesktopCommand::ToggleOverview))
             }
             Some("exec") => {
                 let argv: Vec<_> = args.collect();
