@@ -19,3 +19,6 @@ The supported shell path is the Rust/wgpu implementation, and public control
 commands belong to Knave's `knavectl` contract.
 
 - [ADR 0004: Overview service lifecycle](decisions/0004-overview-service-lifecycle.md)
+
+- [Window appearance contract](window-appearance.md)
+- [ADR 0005: Window appearance](decisions/0005-window-appearance.md)

@@ -156,3 +156,12 @@ clamped to 10–90%. Resize actions do nothing with fewer than two tiled windows
 or while a maximized/fullscreen window covers the layout. Floating windows and
 individual stack dividers are unchanged. These are Villain keybinding actions,
 not new desktop IPC commands.
+
+### Window appearance
+
+Configure independent gap/border edges, corner radii, focused/unfocused opacity,
+border colors, per-side shadows and background blur in `[compositor.appearance]`.
+Maximized effects are individually opt-in; fullscreen always bypasses effects.
+See the [configuration reference and example](docs/architecture/window-appearance.md).
+Validate with `knave config check`, then apply with `knavectl reload` on the matching
+Villain build. Initial compositor deployment requires a session restart.

@@ -31,6 +31,11 @@ consumed by the Knave session supervisor and are not a second shell config file.
 Villain and the shell receive typed projections from Knave. They do not create
 competing user-facing configuration files.
 
+A nonempty `[[compositor.bind]]` list replaces Villain's entire default binding
+set. Include `keys = "MOD"` with `dispatch = "toggle-overview"` to open Overview
+on modifier release. Omitting the list uses Villain's defaults. Existing custom
+bindings are never augmented during migration.
+
 Configuration changes must:
 
 1. parse and validate before writing;
@@ -78,3 +83,11 @@ without overrides. `reset-master` clears the active override and uses the latest
 configured default. Restart discards all overrides. To roll back, restore the
 previous Villain binary and remove `resize-master`/`reset-master` entries from
 custom bindings; the new percentage key may remain for a later upgrade.
+
+## Window appearance
+
+The additive `[compositor.appearance]` settings configure window gaps, borders,
+corner radii, focus appearance, side shadows and background blur. See the
+[complete contract and example](window-appearance.md). Existing files retain
+the prior appearance, maximization disables all effects by default, and fullscreen
+always bypasses them. No schema migration or desktop API change is required.
