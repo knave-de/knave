@@ -16,6 +16,12 @@ environment_file = "environment"
 tap_to_click = true
 natural_scroll = true
 
+# Explicit bindings replace the default set. Include MOD to retain Overview.
+[[compositor.bind]]
+keys = "MOD"
+dispatch = "toggle-overview"
+args = []
+
 [[compositor.bind]]
 keys = "MOD+Q"
 dispatch = "close"

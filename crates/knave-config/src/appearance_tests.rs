@@ -65,6 +65,10 @@ fn invalid_effects_reject_before_touching_source() {
 fn shipped_appearance_examples_validate() {
     let config: Config = toml::from_str(include_str!("../../../config.example.toml")).unwrap();
     config.validate().unwrap();
+    assert!(config.shell.start_overview_service);
+    assert!(config.compositor.bind.iter().any(|binding| {
+        binding.keys == "MOD" && binding.dispatch == "toggle-overview" && binding.args.is_empty()
+    }));
     let reference = include_str!("../../../docs/architecture/window-appearance.md");
     let sample = reference
         .split("```toml\n")

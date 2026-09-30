@@ -31,6 +31,11 @@ consumed by the Knave session supervisor and are not a second shell config file.
 Villain and the shell receive typed projections from Knave. They do not create
 competing user-facing configuration files.
 
+A nonempty `[[compositor.bind]]` list replaces Villain's entire default binding
+set. Include `keys = "MOD"` with `dispatch = "toggle-overview"` to open Overview
+on modifier release. Omitting the list uses Villain's defaults. Existing custom
+bindings are never augmented during migration.
+
 Configuration changes must:
 
 1. parse and validate before writing;
