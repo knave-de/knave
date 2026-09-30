@@ -1,9 +1,9 @@
-# Knave configuration schema 1
+# Knave configuration schema 2
 #
 # Copy to ~/.config/knave/config.toml or run:
 #   knave config init
 
-schema_version = 1
+schema_version = 2
 
 [compositor]
 # Villain consumes this typed projection; it does not own a second config file.
@@ -33,3 +33,33 @@ restart_on_failure = true
 start_bar = true
 # Knave Session owns one hidden-until-requested Overview process.
 start_overview_service = true
+
+# Window appearance is optional; omitted values preserve the prior visuals.
+# Full fields and visible-effect example: docs/architecture/window-appearance.md
+[compositor.appearance.gaps.outer]
+top = 0
+right = 0
+bottom = 0
+left = 0
+[compositor.appearance.gaps.inner]
+top = 0
+right = 0
+bottom = 0
+left = 0
+[compositor.appearance.border.width]
+top = 0
+right = 0
+bottom = 0
+left = 0
+[compositor.appearance.border.radius]
+top_left = 0
+top_right = 0
+bottom_right = 0
+bottom_left = 0
+[compositor.appearance.views.maximized]
+gaps = false
+borders = false
+radius = false
+shadows = false
+opacity = false
+blur = false

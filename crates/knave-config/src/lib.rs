@@ -11,6 +11,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use toml_edit::{Array, ArrayOfTables, DocumentMut, Item, Table, value};
 
+pub mod appearance;
+pub use appearance::WindowAppearance;
+
 pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -101,6 +104,8 @@ pub struct CompositorBinding {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CompositorConfig {
+    #[serde(default)]
+    pub appearance: WindowAppearance,
     /// Default master width as a percentage of usable workspace width (10..=90).
     #[serde(default = "default_master_percent")]
     pub master_percent: u8,
@@ -125,6 +130,7 @@ fn default_modkey() -> String {
 impl Default for CompositorConfig {
     fn default() -> Self {
         Self {
+            appearance: WindowAppearance::default(),
             master_percent: default_master_percent(),
             modkey: default_modkey(),
             environment_file: None,
@@ -182,6 +188,7 @@ impl Config {
                 "compositor.master_percent must be between 10 and 90".into(),
             ));
         }
+        self.compositor.appearance.validate()?;
         if self.compositor.modkey.trim().is_empty() {
             return Err(ConfigError::Invalid("compositor.modkey is empty".into()));
         }
@@ -440,6 +447,15 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
             input
         }),
     );
+    let appearance = toml::to_string(&config.compositor.appearance)
+        .expect("validated appearance is serializable")
+        .parse::<DocumentMut>()
+        .expect("serialized appearance is TOML");
+    merge_known_table(
+        &mut document["compositor"],
+        "appearance",
+        appearance.as_table(),
+    );
     let mut bindings = ArrayOfTables::new();
     for binding in &config.compositor.bind {
         let mut table = Table::new();
@@ -498,6 +514,34 @@ fn set_table_value(document: &mut DocumentMut, section: &str, key: &str, item: I
     document[section]
         .as_table_mut()
         .expect("section was initialized as a table")[key] = item;
+}
+
+// Merge leaves so unknown nested source data survives settings writes.
+fn merge_known_table(parent: &mut Item, key: &str, source: &Table) {
+    if parent
+        .as_table_like()
+        .and_then(|table| table.get(key))
+        .is_none()
+    {
+        parent[key] = Item::Table(Table::new());
+    }
+    merge_table_leaves(&mut parent[key], source);
+}
+
+fn merge_table_leaves(destination: &mut Item, source: &Table) {
+    let target = destination
+        .as_table_like_mut()
+        .expect("parsed settings table");
+    for (key, value) in source.iter() {
+        if let Some(table) = value.as_table() {
+            if target.get(key).is_none() {
+                target.insert(key, Item::Table(Table::new()));
+            }
+            merge_table_leaves(target.get_mut(key).expect("table initialized"), table);
+        } else {
+            target.insert(key, value.clone());
+        }
+    }
 }
 
 fn atomic_write(path: &Path, contents: &[u8]) -> Result<(), ConfigError> {
@@ -739,3 +783,6 @@ dispatch = "close"
         assert!(!output.contains("environment_file"));
     }
 }
+
+#[cfg(test)]
+mod appearance_tests;

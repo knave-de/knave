@@ -78,3 +78,11 @@ without overrides. `reset-master` clears the active override and uses the latest
 configured default. Restart discards all overrides. To roll back, restore the
 previous Villain binary and remove `resize-master`/`reset-master` entries from
 custom bindings; the new percentage key may remain for a later upgrade.
+
+## Window appearance
+
+The additive `[compositor.appearance]` settings configure window gaps, borders,
+corner radii, focus appearance, side shadows and background blur. See the
+[complete contract and example](window-appearance.md). Existing files retain
+the prior appearance, maximization disables all effects by default, and fullscreen
+always bypasses them. No schema migration or desktop API change is required.
