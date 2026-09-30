@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use toml_edit::{Array, ArrayOfTables, DocumentMut, Item, Table, value};
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -299,6 +299,7 @@ impl ConfigDocument {
         if !source.trim().is_empty() {
             project_root_compositor(&document, &source, &mut config)?;
         }
+        migrate_config_projection(&mut config)?;
         config.validate()?;
 
         Ok(Self {
@@ -349,6 +350,23 @@ impl ConfigDocument {
         Ok(true)
     }
 
+    /// Persist the typed projection and any supported schema migration while
+    /// retaining unknown source keys for rollback and forward compatibility.
+    pub fn migrate(&mut self) -> Result<bool, ConfigError> {
+        let old_schema = self
+            .document
+            .get("schema_version")
+            .and_then(Item::as_integer)
+            .unwrap_or(1);
+        if old_schema == i64::from(CURRENT_SCHEMA_VERSION)
+            && !self.needs_root_compositor_materialization()
+        {
+            return Ok(false);
+        }
+        self.write(self.config.clone())?;
+        Ok(true)
+    }
+
     fn needs_root_compositor_materialization(&self) -> bool {
         self.document.get("compositor").is_none()
             && ["modkey", "environment_file", "input", "bind"]
@@ -367,6 +385,23 @@ impl ConfigDocument {
         let mut document = Self::load(path.clone())?;
         document.write(Config::default())?;
         Ok(document)
+    }
+}
+
+fn migrate_config_projection(config: &mut Config) -> Result<(), ConfigError> {
+    match config.schema_version {
+        1 => {
+            // Schema 1 used false for the on-demand Overview process. Schema 2
+            // keeps the service session-owned, so preserve that availability.
+            config.shell.start_overview_service = true;
+            config.schema_version = CURRENT_SCHEMA_VERSION;
+            Ok(())
+        }
+        CURRENT_SCHEMA_VERSION => Ok(()),
+        found => Err(ConfigError::SchemaVersion {
+            found,
+            expected: CURRENT_SCHEMA_VERSION,
+        }),
     }
 }
 
@@ -560,6 +595,42 @@ mod tests {
     #[test]
     fn defaults_validate() {
         Config::default().validate().unwrap();
+    }
+
+    #[test]
+    fn schema_one_overview_false_keeps_service_available_and_migrates_preserving_source() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(
+            &path,
+            "schema_version = 1\ncustom_value = \"keep\"\n[shell]\nstart_overview_service = false\n",
+        )
+        .unwrap();
+
+        let mut document = ConfigDocument::load(&path).unwrap();
+        assert_eq!(document.config().schema_version, CURRENT_SCHEMA_VERSION);
+        assert!(document.config().shell.start_overview_service);
+        assert!(document.migrate().unwrap());
+
+        let migrated = fs::read_to_string(path).unwrap();
+        assert!(migrated.contains("schema_version = 2"));
+        assert!(migrated.contains("start_overview_service = true"));
+        assert!(migrated.contains("custom_value = \"keep\""));
+        assert!(!document.migrate().unwrap());
+    }
+
+    #[test]
+    fn schema_two_can_disable_overview_service() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(
+            &path,
+            "schema_version = 2\n[shell]\nstart_overview_service = false\n",
+        )
+        .unwrap();
+
+        let document = ConfigDocument::load(&path).unwrap();
+        assert!(!document.config().shell.start_overview_service);
     }
 
     #[test]

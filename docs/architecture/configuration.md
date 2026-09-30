@@ -22,7 +22,10 @@ The session fields are:
 
 `start_bar` starts the persistent bar role. `start_overview_service` starts one
 session-owned Overview process, hidden until toggled by Villain; it defaults to
-true. Setting it false disables Overview for that session. These settings are
+true. In schema 2, setting it false disables Overview for that session. Schema
+1 used false to select the on-demand process, so loading schema 1 projects this
+setting as true and keeps Overview available under the session-owned model.
+`knave config migrate` persists that conversion atomically. These settings are
 consumed by the Knave session supervisor and are not a second shell config file.
 
 Villain and the shell receive typed projections from Knave. They do not create
@@ -46,18 +49,22 @@ command refuses to create a missing file, writes atomically, and leaves root-lev
 keys and unknown TOML values in place for rollback. `knave config check` remains
 read-only.
 
-Schema migrations need a defined forward path, backup/recovery behavior, and a
-rollback story. Version domains are tracked independently for configuration,
+Schema 1 to 2 migration preserves unknown TOML and source keys. It maps the
+schema-1 on-demand Overview setting to the schema-2 session-owned service and
+persists the typed projection atomically when `knave config migrate` runs.
+Rollback is the previous Knave/Villain/Shell version combination; the original
+setting remains represented by the migrated true value, and unknown source
+values are preserved. Version domains are tracked independently for configuration,
 the public desktop API, the shell/UI protocol, and the private compositor protocol.
 
 ## Master/stack width
 
-Schema 1 accepts the additive `[compositor] master_percent` setting: an integer
+The configuration accepts the additive `[compositor] master_percent` setting: an integer
 from 10 through 90, default 50. The master receives this percentage of usable
 workspace width, excluding reserved panels; the stack receives the remainder.
 One tiled window still fills the usable area. Villain owns layout and input;
 Knave only validates, preserves and writes the setting. Existing schema-1 files
-need no migration, and unknown TOML entries remain preserved.
+need no special setting conversion, and unknown TOML entries remain preserved.
 
 Villain's matching `feat/layout-split-resize` change consumes this projection.
 Older Villain binaries ignore the new setting. Session and Shell behavior and

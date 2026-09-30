@@ -32,8 +32,11 @@ The [shell] table controls session-owned shell roles. `start_bar` is normally
 true. `start_overview_service` defaults to true and starts one persistent,
 initially hidden Overview process for the Wayland session. Villain toggles its
 visibility; it does not spawn Overview processes. Setting the option false
-disables that session service. Runtime state and socket identity are discovered
-at startup; they are not persisted in config.toml.
+disables that session service in schema 2. A schema-1 false value meant the
+on-demand Overview process and is projected to true during load so an upgrade
+does not remove the Overview target. `knave config migrate` persists the
+schema-2 value. Runtime state and socket identity are discovered at startup;
+they are not persisted in config.toml.
 
 ## Failure and shutdown behavior
 
