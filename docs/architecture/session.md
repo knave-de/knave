@@ -29,10 +29,23 @@ The [session] table is owned by Knave:
 - restart_on_failure: whether failed components may be restarted.
 
 The [shell] table controls session-owned shell roles. `start_bar` is normally
-true. `start_overview_service` defaults to false because the overview is an
-exclusive layer and is normally launched transiently by Villain's keybind.
-Setting it true is an explicit always-open mode. Runtime state and socket
-identity are discovered at startup; they are not persisted in config.toml.
+true. `start_overview_service` defaults to true and starts one persistent,
+initially hidden Overview process for the Wayland session. Villain toggles its
+visibility; it does not spawn Overview processes. Setting the option false
+disables that session service in schema 2. A schema-1 false value meant the
+on-demand Overview process and is projected to true during load so an upgrade
+does not remove the Overview target. `knave config migrate` persists the
+schema-2 value. Runtime state and socket identity are discovered at startup;
+they are not persisted in config.toml.
+
+Before starting shell roles, the supervisor probes the configured binary with
+`--supports-overview-service`. Service contract 1 returns exit status 0 without
+opening Wayland or GPU resources; unknown/unsupported flags return nonzero. A
+failed or two-second timed-out probe stops startup with an upgrade diagnostic
+and cleans up the compositor. The probe is repeated on shell restart, reaped
+on every path, and adds no ongoing worker. Disabling the Overview role skips
+the probe. Install the matching Shell before starting the new session manager;
+older Shell binaries are rejected instead of mapping an exclusive overlay.
 
 ## Failure and shutdown behavior
 

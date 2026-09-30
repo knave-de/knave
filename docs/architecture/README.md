@@ -17,3 +17,5 @@ These documents describe the Rust/Cargo-first environment. Knave is an
 independent desktop environment; host desktop integration is out of scope.
 The supported shell path is the Rust/wgpu implementation, and public control
 commands belong to Knave's `knavectl` contract.
+
+- [ADR 0004: Overview service lifecycle](decisions/0004-overview-service-lifecycle.md)

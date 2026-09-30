@@ -43,3 +43,7 @@ binary package versions remain 0.1.0 during this unreleased development change.
 
 API 1.2 adds [desktop state subscriptions](decisions/0002-desktop-state-subscriptions.md).
 API 1.3 adds [compositor overview panes](decisions/0003-compositor-overview-panes.md).
+API 1.4 adds the session-owned overview visibility state to desktop snapshots
+and `set-overview-visible` command. The snapshot subscription protocol advances
+to 1.3; 1.2 clients remain supported and ignore the additive snapshot field.
+Overview visibility is compositor-session state and is not persisted.

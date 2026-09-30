@@ -13,10 +13,9 @@ use std::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub const API_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 3 };
-/// The snapshot stream has not changed since API 1.2. A current client can
-/// subscribe to a 1.2 compositor while newer requests negotiate separately.
-pub const SUBSCRIPTION_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 2 };
+pub const API_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 4 };
+/// API 1.4 adds overview visibility to the subscribed desktop snapshot.
+pub const SUBSCRIPTION_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 3 };
 pub const SOCKET_ENVIRONMENT_VARIABLE: &str = "KNAVE_SOCKET";
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -80,6 +79,9 @@ pub struct OverviewPane {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DesktopSnapshot {
     pub generation: u64,
+    /// Whether the session-owned Overview layer should currently be mapped.
+    #[serde(default)]
+    pub overview_visible: bool,
     pub workspaces: Vec<WorkspaceSummary>,
     pub windows: Vec<WindowSummary>,
 }
@@ -99,6 +101,7 @@ pub enum DesktopCommand {
     RestoreWindow { window: WindowId },
     Spawn { argv: Vec<String> },
     Quit,
+    SetOverviewVisible { visible: bool },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

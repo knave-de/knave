@@ -69,16 +69,10 @@ fn run() -> Result<(), String> {
                     ));
                 }
                 let mut document = ConfigDocument::load(path).map_err(|error| error.to_string())?;
-                if document
-                    .materialize_root_compositor()
-                    .map_err(|error| error.to_string())?
-                {
-                    println!(
-                        "materialized root compositor settings in {}",
-                        document.path().display()
-                    );
+                if document.migrate().map_err(|error| error.to_string())? {
+                    println!("migrated configuration in {}", document.path().display());
                 } else {
-                    println!("no root compositor settings require migration");
+                    println!("configuration already uses the current schema");
                 }
             }
             Some("check") => {
