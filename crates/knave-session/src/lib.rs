@@ -202,15 +202,18 @@ fn spawn_shell(
     role: &'static str,
     display: &str,
 ) -> Result<ManagedChild, SessionError> {
-    let child = Command::new(&config.session.shell_binary)
+    let mut command = Command::new(&config.session.shell_binary);
+    command
         .arg(role)
         .env("WAYLAND_DISPLAY", display)
-        .env("KNAVE_SESSION", "1")
-        .spawn()
-        .map_err(|source| SessionError::Spawn {
-            component: format!("knave-shell {role}"),
-            source,
-        })?;
+        .env("KNAVE_SESSION", "1");
+    if role == "overview" {
+        command.env("KNAVE_OVERVIEW_SERVICE", "1");
+    }
+    let child = command.spawn().map_err(|source| SessionError::Spawn {
+        component: format!("knave-shell {role}"),
+        source,
+    })?;
     Ok(ManagedChild { role, child })
 }
 

@@ -20,11 +20,10 @@ The session fields are:
 - compositor_binary and shell_binary: the supervised executables; and
 - restart_on_failure: whether bounded component restart is enabled.
 
-`start_bar` starts the persistent bar role. `start_overview_service` is an
-explicit opt-in for an always-open overview; it defaults to false because the
-normal overview path is an on-demand `knave-shell overview` process launched by
-Villain. These settings are consumed by the Knave session supervisor and are
-not a second shell config file.
+`start_bar` starts the persistent bar role. `start_overview_service` starts one
+session-owned Overview process, hidden until toggled by Villain; it defaults to
+true. Setting it false disables Overview for that session. These settings are
+consumed by the Knave session supervisor and are not a second shell config file.
 
 Villain and the shell receive typed projections from Knave. They do not create
 competing user-facing configuration files.
