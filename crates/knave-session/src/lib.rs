@@ -7,7 +7,7 @@ use std::{
     fs, io,
     os::unix::fs::FileTypeExt,
     path::{Path, PathBuf},
-    process::{Child, Command, ExitStatus},
+    process::{Child, Command, ExitStatus, Stdio},
     sync::atomic::{AtomicBool, Ordering},
     thread,
     time::{Duration, Instant},
@@ -20,11 +20,14 @@ const SOCKET_WAIT: Duration = Duration::from_secs(10);
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 const MAX_RESTARTS: u32 = 3;
+const CAPABILITY_WAIT: Duration = Duration::from_secs(2);
 
 static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Error)]
 pub enum SessionError {
+    #[error("{0} does not support Overview service mode; install a matching Knave Shell")]
+    UnsupportedOverviewService(String),
     #[error("could not locate XDG_RUNTIME_DIR")]
     MissingRuntimeDirectory,
     #[error("could not read runtime directory {path}: {source}")]
@@ -176,6 +179,9 @@ fn spawn_compositor(config: &Config) -> Result<Child, SessionError> {
 }
 
 fn spawn_shells(config: &Config, display: &str) -> Result<Vec<ManagedChild>, SessionError> {
+    if config.shell.start_overview_service {
+        check_overview_service(&config.session.shell_binary, CAPABILITY_WAIT)?;
+    }
     let mut shells = Vec::new();
     if config.shell.start_bar {
         match spawn_shell(config, "bar", display) {
@@ -190,6 +196,40 @@ fn spawn_shells(config: &Config, display: &str) -> Result<Vec<ManagedChild>, Ses
         }
     }
     Ok(shells)
+}
+
+fn check_overview_service(binary: &str, timeout: Duration) -> Result<(), SessionError> {
+    let mut child = Command::new(binary)
+        .arg("--supports-overview-service")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|source| SessionError::Spawn {
+            component: "knave-shell capability check".into(),
+            source,
+        })?;
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) if status.success() => return Ok(()),
+            Ok(Some(_)) => break,
+            Ok(None) if Instant::now() < deadline => thread::sleep(POLL_INTERVAL),
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(SessionError::Process(format!(
+                    "shell capability wait failed: {error}"
+                )));
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break;
+            }
+        }
+    }
+    Err(SessionError::UnsupportedOverviewService(binary.into()))
 }
 
 fn cleanup_shell_startup(mut shells: Vec<ManagedChild>, error: SessionError) -> SessionError {
@@ -328,7 +368,39 @@ fn install_signal_handlers() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
     use std::os::unix::net::UnixListener;
+
+    #[test]
+    fn overview_capability_rejects_old_and_hung_shells_before_starting_roles() {
+        let directory = tempfile::tempdir().unwrap();
+        let binary = directory.path().join("shell");
+        for (script, accepted) in [
+            (
+                "#!/bin/sh\n[ \"$1\" = --supports-overview-service ]\n",
+                true,
+            ),
+            ("#!/bin/sh\nexit 1\n", false),
+            ("#!/bin/sh\nexec sleep 10\n", false),
+        ] {
+            fs::write(&binary, script).unwrap();
+            fs::set_permissions(&binary, fs::Permissions::from_mode(0o700)).unwrap();
+            let started = Instant::now();
+            assert_eq!(
+                check_overview_service(binary.to_str().unwrap(), Duration::from_millis(100))
+                    .is_ok(),
+                accepted
+            );
+            assert!(started.elapsed() < Duration::from_secs(1));
+        }
+        fs::write(&binary, "#!/bin/sh\nexit 1\n").unwrap();
+        let mut config = Config::default();
+        config.session.shell_binary = binary.to_str().unwrap().into();
+        assert!(matches!(
+            spawn_shells(&config, "unused"),
+            Err(SessionError::UnsupportedOverviewService(_))
+        ));
+    }
 
     #[test]
     fn restart_delay_is_bounded_exponential_backoff() {

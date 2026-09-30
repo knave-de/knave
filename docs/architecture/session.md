@@ -38,6 +38,15 @@ does not remove the Overview target. `knave config migrate` persists the
 schema-2 value. Runtime state and socket identity are discovered at startup;
 they are not persisted in config.toml.
 
+Before starting shell roles, the supervisor probes the configured binary with
+`--supports-overview-service`. Service contract 1 returns exit status 0 without
+opening Wayland or GPU resources; unknown/unsupported flags return nonzero. A
+failed or two-second timed-out probe stops startup with an upgrade diagnostic
+and cleans up the compositor. The probe is repeated on shell restart, reaped
+on every path, and adds no ongoing worker. Disabling the Overview role skips
+the probe. Install the matching Shell before starting the new session manager;
+older Shell binaries are rejected instead of mapping an exclusive overlay.
+
 ## Failure and shutdown behavior
 
 Readiness, spawn, and partial-start failures terminate already-started
