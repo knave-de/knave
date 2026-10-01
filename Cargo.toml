@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/knave-session",
+    "crates/knave-portal-api",
     "crates/knave",
     "crates/knave-config",
     "crates/knavectl",

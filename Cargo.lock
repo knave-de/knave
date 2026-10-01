@@ -99,6 +99,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "knave-portal-api"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "knave-session"
 version = "0.1.0"
 dependencies = [

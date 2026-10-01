@@ -171,11 +171,37 @@ fn spawn_compositor(config: &Config) -> Result<Child, SessionError> {
     }
     command
         .env("KNAVE_SESSION", "1")
+        .env("XDG_CURRENT_DESKTOP", "Knave:Villain")
+        .env("XDG_SESSION_DESKTOP", "knave")
+        .env(
+            "XDP_KNAVE_ENABLED",
+            if config.portal.enabled { "1" } else { "0" },
+        )
+        .env(
+            "XDP_KNAVE_SHELL_BINARY",
+            resolved_binary(&config.session.shell_binary),
+        )
         .spawn()
         .map_err(|source| SessionError::Spawn {
             component: "villain".into(),
             source,
         })
+}
+
+fn resolved_binary(binary: &str) -> String {
+    if Path::new(binary).components().count() > 1 {
+        return fs::canonicalize(binary).map_or_else(
+            |_| binary.into(),
+            |path| path.to_string_lossy().into_owned(),
+        );
+    }
+    env::var_os("PATH")
+        .and_then(|path| {
+            env::split_paths(&path)
+                .map(|directory| directory.join(binary))
+                .find(|path| path.is_file())
+        })
+        .map_or_else(|| binary.into(), |path| path.to_string_lossy().into_owned())
 }
 
 fn spawn_shells(config: &Config, display: &str) -> Result<Vec<ManagedChild>, SessionError> {
@@ -246,7 +272,9 @@ fn spawn_shell(
     command
         .arg(role)
         .env("WAYLAND_DISPLAY", display)
-        .env("KNAVE_SESSION", "1");
+        .env("KNAVE_SESSION", "1")
+        .env("XDG_CURRENT_DESKTOP", "Knave:Villain")
+        .env("XDG_SESSION_DESKTOP", "knave");
     if role == "overview" {
         command.env("KNAVE_OVERVIEW_SERVICE", "1");
     }

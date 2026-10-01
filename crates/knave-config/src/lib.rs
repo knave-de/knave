@@ -140,8 +140,39 @@ impl Default for CompositorConfig {
     }
 }
 
+/// Additive schema-2 appearance projection for the portal backend.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct PortalConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub color_scheme: u8,
+    #[serde(default = "default_accent")]
+    pub accent_color: String,
+    #[serde(default)]
+    pub high_contrast: bool,
+    #[serde(default)]
+    pub reduced_motion: bool,
+}
+fn default_accent() -> String {
+    "0.21,0.52,0.89".into()
+}
+impl Default for PortalConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            color_scheme: 0,
+            accent_color: default_accent(),
+            high_contrast: false,
+            reduced_motion: false,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Config {
+    #[serde(default)]
+    pub portal: PortalConfig,
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
     #[serde(default)]
@@ -160,6 +191,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             compositor: CompositorConfig::default(),
+            portal: PortalConfig::default(),
             schema_version: CURRENT_SCHEMA_VERSION,
             session: SessionConfig::default(),
             shell: ShellConfig::default(),
@@ -174,6 +206,22 @@ impl Config {
                 found: self.schema_version,
                 expected: CURRENT_SCHEMA_VERSION,
             });
+        }
+        let accent: Vec<_> = self
+            .portal
+            .accent_color
+            .split(',')
+            .map(str::trim)
+            .map(str::parse::<f64>)
+            .collect();
+        if self.portal.color_scheme > 2
+            || accent.len() != 3
+            || accent.iter().any(|n| {
+                n.as_ref()
+                    .map_or(true, |n| !n.is_finite() || !(0.0..=1.0).contains(n))
+            })
+        {
+            return Err(ConfigError::Invalid("portal appearance requires color_scheme 0..2 and three finite accent components in 0..1".into()));
         }
         if self.session.compositor_binary.trim().is_empty() {
             return Err(ConfigError::Invalid(
@@ -413,6 +461,31 @@ fn migrate_config_projection(config: &mut Config) -> Result<(), ConfigError> {
 }
 
 fn apply_config(document: &mut DocumentMut, config: &Config) {
+    set_table_value(document, "portal", "enabled", value(config.portal.enabled));
+    set_table_value(
+        document,
+        "portal",
+        "color_scheme",
+        value(i64::from(config.portal.color_scheme)),
+    );
+    set_table_value(
+        document,
+        "portal",
+        "accent_color",
+        value(config.portal.accent_color.clone()),
+    );
+    set_table_value(
+        document,
+        "portal",
+        "high_contrast",
+        value(config.portal.high_contrast),
+    );
+    set_table_value(
+        document,
+        "portal",
+        "reduced_motion",
+        value(config.portal.reduced_motion),
+    );
     document["schema_version"] = value(i64::from(config.schema_version));
     set_table_value(
         document,
@@ -633,6 +706,31 @@ mod tests {
                 valid
             );
             assert!(document.source().contains("unknown_layout_option = 42"));
+        }
+    }
+
+    #[test]
+    fn portal_defaults_validate_and_preserve_unknown_preferences() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(&path, "schema_version = 2\n[portal]\ncustom_option = 42\n").unwrap();
+        let mut document = ConfigDocument::load(&path).unwrap();
+        assert_eq!(document.config().portal, PortalConfig::default());
+        let mut config = document.config().clone();
+        config.portal.color_scheme = 1;
+        document.write(config.clone()).unwrap();
+        assert!(document.source().contains("custom_option = 42"));
+        assert_eq!(
+            ConfigDocument::load(&path)
+                .unwrap()
+                .config()
+                .portal
+                .color_scheme,
+            1
+        );
+        for invalid in ["NaN,0,1", "1.1,0,1", "0,1"] {
+            config.portal.accent_color = invalid.into();
+            assert!(config.validate().is_err());
         }
     }
 
