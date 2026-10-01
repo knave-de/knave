@@ -33,8 +33,8 @@ Capture has a global eight-session/frame budget in Villain and eight streams in
 the backend, at most 8 Mi pixels per frame (including 3840x2160), a four-command
 PipeWire queue and four negotiated SHM buffers per stream. Frames use on-demand
 33 ms timers; idle capture creates no timer. PipeWire waits on eventfd/events.
-Output size changes require a new screencast session; live stream renegotiation is
-not implemented. SHM GPU readback is the first supported path; DMA-BUF is deferred.
+Output size changes require a backend restart and a new screencast session; live
+stream renegotiation is not implemented. SHM GPU readback is the first supported path; DMA-BUF is deferred.
 
 Verification uses separate runtime, config, data, cache, D-Bus and PipeWire services
 and a nested Villain window. The smoke client checks raw capture, frontend
