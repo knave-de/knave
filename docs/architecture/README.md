@@ -22,3 +22,5 @@ commands belong to Knave's `knavectl` contract.
 
 - [Window appearance contract](window-appearance.md)
 - [ADR 0005: Window appearance](decisions/0005-window-appearance.md)
+
+- [ADR 0006: Desktop portals](decisions/0006-desktop-portals.md)

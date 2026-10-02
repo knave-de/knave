@@ -69,3 +69,11 @@ radius = false
 shadows = false
 opacity = false
 blur = false
+
+[portal]
+enabled = true
+# 0 follows the theme, 1 prefers dark, 2 prefers light.
+color_scheme = 0
+accent_color = "0.21,0.52,0.89"
+high_contrast = false
+reduced_motion = false
