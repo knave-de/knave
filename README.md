@@ -157,7 +157,6 @@ or while a maximized/fullscreen window covers the layout. Floating windows and
 individual stack dividers are unchanged. These are Villain keybinding actions,
 not new desktop IPC commands.
 
-<<<<<<< HEAD
 ### Window appearance
 
 Configure independent gap/border edges, corner radii, focused/unfocused opacity,
@@ -166,7 +165,7 @@ Maximized effects are individually opt-in; fullscreen always bypasses effects.
 See the [configuration reference and example](docs/architecture/window-appearance.md).
 Validate with `knave config check`, then apply with `knavectl reload` on the matching
 Villain build. Initial compositor deployment requires a session restart.
-=======
+
 ### Desktop portals
 
 `[portal]` in the canonical configuration controls startup enablement and desktop
@@ -175,6 +174,5 @@ Shell's native UI. Install the matching backend with
 `../xdg-desktop-portal-knave/scripts/install.py --user`; its activation files and
 routing defaults are user-local. Start a fresh direct Knave session to activate
 Knave routing. Nested sessions preserve the host activation environment. See
-[the portal decision](docs/architecture/decisions/0005-desktop-portals.md) for
+[the portal decision](docs/architecture/decisions/0006-desktop-portals.md) for
 contracts, supported capabilities, limits, verification and rollback.
->>>>>>> 9624526 (feat(portals): define native picker contract and Knave session preferences)

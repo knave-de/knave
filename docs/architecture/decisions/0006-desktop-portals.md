@@ -1,4 +1,4 @@
-# ADR 0005: User-local desktop portals
+# ADR 0006: User-local desktop portals
 
 Knave owns session identity, canonical `[portal]` preferences and the private
 `knave-portal-api` picker contract. Villain implements the standard

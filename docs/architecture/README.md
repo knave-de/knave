@@ -20,9 +20,7 @@ commands belong to Knave's `knavectl` contract.
 
 - [ADR 0004: Overview service lifecycle](decisions/0004-overview-service-lifecycle.md)
 
-<<<<<<< HEAD
 - [Window appearance contract](window-appearance.md)
 - [ADR 0005: Window appearance](decisions/0005-window-appearance.md)
-=======
-- [ADR 0005: Desktop portals](decisions/0005-desktop-portals.md)
->>>>>>> 9624526 (feat(portals): define native picker contract and Knave session preferences)
+
+- [ADR 0006: Desktop portals](decisions/0006-desktop-portals.md)

@@ -40,7 +40,6 @@ start_bar = true
 # Knave Session owns one hidden-until-requested Overview process.
 start_overview_service = true
 
-<<<<<<< HEAD
 # Window appearance is optional; omitted values preserve the prior visuals.
 # Full fields and visible-effect example: docs/architecture/window-appearance.md
 [compositor.appearance.gaps.outer]
@@ -70,7 +69,7 @@ radius = false
 shadows = false
 opacity = false
 blur = false
-=======
+
 [portal]
 enabled = true
 # 0 follows the theme, 1 prefers dark, 2 prefers light.
@@ -78,4 +77,3 @@ color_scheme = 0
 accent_color = "0.21,0.52,0.89"
 high_contrast = false
 reduced_motion = false
->>>>>>> 9624526 (feat(portals): define native picker contract and Knave session preferences)
