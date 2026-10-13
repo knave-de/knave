@@ -94,6 +94,8 @@ can include your testing. Coordinate control with the agent to avoid simultaneou
 input. VNC listens only on IPv4 loopback and requires a random per-run password.
 The X server uses a private Xauthority cookie and does not listen on TCP.
 VNC password-file creation passes the secret through stdin, never process arguments.
+The eight-character URL-safe password carries 48 bits of random entropy within
+the legacy VNC authentication length limit.
 
 When finished:
 

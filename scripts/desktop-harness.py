@@ -243,7 +243,9 @@ class Harness:
         if self.args.vnc_port:
             with socket.socket() as reservation:
                 reservation.bind(('127.0.0.1', self.args.vnc_port))
-            password = secrets.token_hex(4)
+            # VNC uses only eight characters; six random bytes encode to exactly
+            # eight URL-safe characters, retaining 48 bits instead of hex's 32.
+            password = secrets.token_urlsafe(6)
             (self.directory / 'vnc-password.txt').write_text(password + '\n')
             create_vnc_auth(self.directory / 'vnc.auth', password)
             # VNC captures the outer X display, not Villain's Wayland socket.
