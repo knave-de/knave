@@ -32,6 +32,9 @@ Build and test it with:
 
 ## CLI
 
+For agent-controlled feature testing, MP4 demonstrations, and interactive testing
+over an SSH/VNC connection, see the [desktop test harness](docs/desktop-testing.md).
+
 The CLI exposes configuration and session operations:
 
     cargo run -p knave -- version

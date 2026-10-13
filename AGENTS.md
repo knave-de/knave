@@ -189,6 +189,17 @@ and rollback.
 
 ## Verification and scope
 
+For desktop UI/runtime features, use the reusable harness documented in
+`docs/desktop-testing.md` after building the affected workspace binaries. Exercise
+the actual feature with keyboard/mouse input and inspect screenshots; verify its
+expected state/output rather than treating a recording as proof. Record a concise
+MP4 demonstration, report which assertions passed, and link the video in the final
+response. When handing off a live desktop for user testing, leave the harness
+session running and provide its SSH tunnel, VNC port, and password-file path.
+Stop sessions created only for automated checks. Use a fresh artifact directory
+for each run. Nested software-rendered checks do not establish direct-TTY or
+hardware-GPU behavior.
+
 After every implementation slice:
 
 1. Format the code.
