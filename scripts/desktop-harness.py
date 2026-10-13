@@ -54,10 +54,10 @@ def write_config(path, args, binaries):
     if args.config:
         projection = config.get('compositor', config)
         configured = projection.get('environment_file')
-        source = Path(configured or 'environment').expanduser()
-        if not source.is_absolute():
-            source = args.config.parent / source
-        if source.exists() or configured is not None:
+        if configured is not None:
+            source = Path(configured).expanduser()
+            if not source.is_absolute():
+                source = args.config.parent / source
             shutil.copyfile(source, path.parent / 'environment')
             projection['environment_file'] = 'environment'
     config.setdefault('schema_version', 2)
@@ -70,9 +70,9 @@ def write_config(path, args, binaries):
                               for k, v in config.items()) + '\n')
 
 
-def request(directory, command, values=None):
+def request(directory, command, values=None, timeout=40):
     with socket.socket(socket.AF_UNIX) as client:
-        client.settimeout(40)
+        client.settimeout(timeout)
         client.connect(str(directory / 'control.sock'))
         client.sendall(json.dumps({'command': command, 'values': values or []}).encode() + b'\n')
         response = b''
@@ -89,6 +89,51 @@ def request(directory, command, values=None):
     return result
 
 
+def start_daemon(command, directory, timeout=45):
+    with (directory / 'harness.log').open('ab') as log:
+        process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log,
+                                   stderr=log, start_new_session=True)
+    ready = False
+    try:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise RuntimeError(f'startup failed; see {directory / "harness.log"}')
+            try:
+                response = request(directory, 'status', timeout=max(0.01, min(1, deadline - time.monotonic())))
+            except (FileNotFoundError, ConnectionRefusedError, socket.timeout):
+                time.sleep(0.1)
+                continue
+            ready = True
+            return response
+        raise RuntimeError(f'startup timed out; see {directory / "harness.log"}')
+    finally:
+        if not ready:
+            if process.poll() is None:
+                process.terminate()
+            try:
+                process.wait(timeout=25)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+                raise RuntimeError('daemon cleanup stalled; inspect harness.log for remaining children')
+
+
+def shell_services_ready(directory, roles):
+    for role in roles:
+        try:
+            if (directory / f'{role}.ready').read_text() != 'ready\n':
+                return False
+        except FileNotFoundError:
+            return False
+    return True
+
+
+def create_vnc_auth(path, password):
+    run(['x11vnc', '-storepasswd', str(path)],
+        input=f'{password}\n{password}\ny\n', start_new_session=True)
+
+
 class Harness:
     def __init__(self, args):
         self.args = args
@@ -98,6 +143,8 @@ class Harness:
         self.recording = None
         self.finished = False
         self.runtime = Path(tempfile.mkdtemp(prefix='knave-test-'))
+        self.ready_directory = self.runtime / 'shell-ready'
+        self.ready_directory.mkdir(mode=0o700)
         self.env = os.environ.copy()
         for key in ('WAYLAND_DISPLAY', 'KNAVE_SOCKET', 'KNAVE_SESSION',
                     'KNAVE_OVERVIEW_SERVICE', 'DBUS_SESSION_BUS_ADDRESS'):
@@ -105,6 +152,7 @@ class Harness:
         self.env.update(DISPLAY=f':{args.display}', XDG_RUNTIME_DIR=str(self.runtime),
                         XAUTHORITY=str(self.directory / 'Xauthority'),
                         KNAVE_CONFIG=str(self.directory / 'config.toml'),
+                        KNAVE_HARNESS_READY_DIR=str(self.ready_directory),
                         LIBGL_ALWAYS_SOFTWARE='1', LP_NUM_THREADS='4', WGPU_BACKEND='gl')
         self.binaries = {
             'knave': ROOT / 'target' / args.profile / 'knave',
@@ -190,30 +238,14 @@ class Harness:
         if effective.get('schema_version', 2) == 1 or shell_config.get('start_overview_service', True):
             roles.add('overview')
 
-        def shells_ready():
-            # Check only this supervisor's descendants; an unrelated user's
-            # shell or another test session must not satisfy readiness.
-            pending = [self.processes['session'].pid]
-            found = set()
-            while pending:
-                pid = pending.pop()
-                try:
-                    children = Path(f'/proc/{pid}/task/{pid}/children').read_text().split()
-                    pending.extend(int(child) for child in children)
-                    argv = Path(f'/proc/{pid}/cmdline').read_bytes().split(b'\0')
-                    if argv[0] == os.fsencode(self.binaries['knave-shell']) and len(argv) > 1:
-                        found.add(os.fsdecode(argv[1]))
-                except FileNotFoundError:
-                    continue
-            return roles.issubset(found)
-
-        self.wait_for(shells_ready, 'configured shell services')
+        self.wait_for(lambda: shell_services_ready(self.ready_directory, roles),
+                      'configured shell services')
         if self.args.vnc_port:
             with socket.socket() as reservation:
                 reservation.bind(('127.0.0.1', self.args.vnc_port))
             password = secrets.token_hex(4)
             (self.directory / 'vnc-password.txt').write_text(password + '\n')
-            run(['x11vnc', '-storepasswd', password, str(self.directory / 'vnc.auth')])
+            create_vnc_auth(self.directory / 'vnc.auth', password)
             # VNC captures the outer X display, not Villain's Wayland socket.
             vnc_env = dict(self.env, XDG_SESSION_TYPE='x11')
             vnc_env.pop('WAYLAND_DISPLAY', None)
@@ -452,23 +484,7 @@ def main():
                    '--size', args.size, '--vnc-port', str(args.vnc_port)]
         if args.config:
             command += ['--config', str(args.config)]
-        with (args.run / 'harness.log').open('ab') as log:
-            process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log,
-                                       stderr=log, start_new_session=True)
-        deadline = time.monotonic() + 45
-        while time.monotonic() < deadline:
-            if process.poll() is not None:
-                raise RuntimeError(f'startup failed; see {args.run / "harness.log"}')
-            if (args.run / 'control.sock').exists():
-                print(json.dumps(request(args.run, 'status'), indent=2))
-                return
-            time.sleep(0.1)
-        process.terminate()
-        try:
-            process.wait(timeout=25)
-        except subprocess.TimeoutExpired:
-            raise RuntimeError('startup timed out; daemon cleanup still pending; inspect harness.log')
-        raise RuntimeError(f'startup timed out; see {args.run / "harness.log"}')
+        print(json.dumps(start_daemon(command, args.run), indent=2))
     else:
         values = {'key': getattr(args, 'keys', []), 'type': [getattr(args, 'text', '')],
                   'click': [getattr(args, 'x', 0), getattr(args, 'y', 0), getattr(args, 'button', 1)],

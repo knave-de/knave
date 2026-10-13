@@ -23,6 +23,9 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
+      - name: Run desktop harness regression tests
+        run: python3 -m unittest discover -s scripts -p 'test_desktop_harness.py'
+
       - name: Run clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 

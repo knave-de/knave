@@ -57,8 +57,16 @@ configuration. All source values are retained except the session backend,
 binary paths, restart policy and portal enablement, which are forced for isolated
 testing. Comments/formatting are not retained in the copy. Shell role settings
 are respected. The original file is never modified.
-An environment file associated with the source configuration is copied into the
-run directory, preserving relative-path behavior and the environment tested.
+Only an explicitly configured environment file is copied into the run directory;
+an incidental sibling file named `environment` is not imported.
+
+The matching Knave Shell build must support the private
+`KNAVE_HARNESS_READY_DIR` handshake. The harness waits for per-role markers in its
+fresh runtime directory, then retries a real control-socket status request until
+the daemon is listening. Shell signals require configured Wayland/GPU state and
+a desktop snapshot. The bar additionally waits for a compositor frame callback;
+the hidden Overview signals when its configured service can handle desktop state.
+An older Shell build times out and is cleaned up instead of reporting readiness.
 
 Use `start --display 94 --vnc-port 5994` for another concurrent session. The
 default display is :92, VNC port 5992. `--size 1600x900` changes the screen size.
@@ -85,6 +93,7 @@ the same desktop the agent controls; clicks and typing are live, and recordings
 can include your testing. Coordinate control with the agent to avoid simultaneous
 input. VNC listens only on IPv4 loopback and requires a random per-run password.
 The X server uses a private Xauthority cookie and does not listen on TCP.
+VNC password-file creation passes the secret through stdin, never process arguments.
 
 When finished:
 
