@@ -1,5 +1,8 @@
 # ADR 0006: User-local desktop portals
 
+ADR 0007 extends sharing with window sources, workspace sets and picker v2; the
+monitor-only v1 contract described here remains backward readable.
+
 Knave owns session identity, canonical `[portal]` preferences and the private
 `knave-portal-api` picker contract. Villain implements the standard
 `ext-output-image-capture-source-v1` and `ext-image-copy-capture-v1` v1 protocols.
