@@ -9,8 +9,14 @@ controls using the existing Rust/wgpu toolkit. Desktop IPC remains API 1.3.
 
 Install matching components together. Picker protocol v1 is private, bounded and
 rejects incompatible versions. Source selection always requires fresh consent,
-including restored sessions. No source is initially selected. One consent dialog
-is allowed at a time; each has a 120-second deadline. A session owns its sharing
+including restored sessions. No source is initially selected. Single-source requests
+use a clearly labeled “Share this screen” action, combining selection and approval
+in one click. Multi-source requests and screenshots
+retain selection plus explicit confirmation. Active-sharing controls occupy a compact
+350×36 top-right bar surface with Stop sharing and no keyboard focus, rather than
+a centered panel. These presentation changes preserve picker protocol v1 and its
+session-owned cancellation/stop behavior.
+One consent dialog is allowed at a time; each has a 120-second deadline. A session owns its sharing
 control; control failure/exit stops capture. Cancellation, session close, client
 loss, compositor/PipeWire loss and backend shutdown release owned resources.
 
