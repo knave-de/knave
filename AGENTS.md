@@ -160,6 +160,35 @@ or comments that merely repeat source code. Architecture changes should use one
 concise ADR with context, decision, affected components, compatibility impact,
 migration/rollback, and verification.
 
+## Commit identity and attribution
+
+- Use the human contributor's established Git identity as author and committer
+  for agent-created commits. The identity belongs to the person contributing
+  the work, not necessarily the repository owner. Never hardcode the owner's
+  identity or replace another human contributor's attribution. If the correct
+  human identity cannot be established, ask the contributor before committing.
+- Before committing, verify the effective identities with `git var GIT_AUTHOR_IDENT`
+  and `git var GIT_COMMITTER_IDENT`, including environment and command overrides.
+  If they differ, set the correct repository-local identity and recheck. Never
+  invent an identity or use Codex, Claude, OpenAI, a bot, or any AI agent identity.
+- Never add assistant attribution in `Co-authored-by`, `Signed-off-by`, or other
+  commit-message trailers. Do not add co-authors without the user's explicit
+  instruction. Preserve legitimate existing human and upstream attribution.
+- After each commit or amendment, inspect its complete author, committer, and
+  message, including all trailers, with `git show --no-patch --format=fuller HEAD`.
+  Before pushing or opening a PR, audit every outgoing commit, not only the tip.
+  Correct unintended attribution before publishing.
+- Before an authorized squash merge, inspect the final squash author and the
+  complete title/body. GitHub can generate co-author trailers from PR commits;
+  supply a reviewed merge message that contains no assistant credits instead of
+  accepting generated attribution. GitHub's own merge-service committer is
+  platform metadata; it must not be confused with an assistant credit.
+- After publishing or merging, verify the actual GitHub commit's author,
+  committer, and complete message. Do not claim attribution is correct based
+  only on local Git config or the author header. If it is wrong, report it and
+  correct it within the user's authorized scope; do not rewrite published
+  history or change branch protection without explicit user authorization.
+
 ## Git and GitHub workflow
 
 Create a focused branch for each task. Preserve unrelated dirty changes. Use
