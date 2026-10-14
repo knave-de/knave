@@ -1,5 +1,8 @@
 # ADR 0006: User-local desktop portals
 
+ADR 0007 extends sharing with window sources, workspace sets and picker v2; the
+monitor-only v1 contract described here remains backward readable.
+
 Knave owns session identity, canonical `[portal]` preferences and the private
 `knave-portal-api` picker contract. Villain implements the standard
 `ext-output-image-capture-source-v1` and `ext-image-copy-capture-v1` v1 protocols.
@@ -9,8 +12,14 @@ controls using the existing Rust/wgpu toolkit. Desktop IPC remains API 1.3.
 
 Install matching components together. Picker protocol v1 is private, bounded and
 rejects incompatible versions. Source selection always requires fresh consent,
-including restored sessions. No source is initially selected. One consent dialog
-is allowed at a time; each has a 120-second deadline. A session owns its sharing
+including restored sessions. No source is initially selected. Single-source requests
+use a clearly labeled “Share this screen” action, combining selection and approval
+in one click. Multi-source requests and screenshots
+retain selection plus explicit confirmation. Active-sharing controls occupy a compact
+350×36 top-right bar surface with Stop sharing and no keyboard focus, rather than
+a centered panel. These presentation changes preserve picker protocol v1 and its
+session-owned cancellation/stop behavior.
+One consent dialog is allowed at a time; each has a 120-second deadline. A session owns its sharing
 control; control failure/exit stops capture. Cancellation, session close, client
 loss, compositor/PipeWire loss and backend shutdown release owned resources.
 

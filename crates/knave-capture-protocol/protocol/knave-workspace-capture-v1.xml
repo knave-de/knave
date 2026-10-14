@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="knave_workspace_capture_v1">
+  <copyright>Copyright 2026 Knave contributors. SPDX-License-Identifier: MIT</copyright>
+  <interface name="knave_workspace_capture_manager_v1" version="1">
+    <description summary="workspace-restricted output image sources">
+      A private Villain extension for trusted desktop clients. Sources capture
+      only windows in the active allowed workspace, excluding shell layers and
+      overview panes. When the active workspace is excluded, a source retains
+      its last allowed frame; until one exists it produces opaque black.
+      The mask is immutable for the source lifetime. No excluded workspace
+      may be rendered or copied into the source. Standard ext-image-copy-capture
+      sessions own frame delivery and cancellation. Clients must obtain consent
+      before starting a stream. This protocol does not grant input access.
+    </description>
+    <enum name="error">
+      <entry name="invalid_mask" value="0" summary="empty or unsupported workspace mask"/>
+    </enum>
+    <request name="destroy" type="destructor"/>
+    <request name="create_source">
+      <arg name="source" type="new_id" interface="ext_image_capture_source_v1"/>
+      <arg name="output" type="object" interface="wl_output"/>
+      <arg name="allowed_workspaces" type="uint" summary="bit zero is workspace 1"/>
+    </request>
+    <event name="workspace_count">
+      <arg name="count" type="uint" summary="supported fixed workspace count, at most 32"/>
+    </event>
+  </interface>
+</protocol>
