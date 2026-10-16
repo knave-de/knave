@@ -19,9 +19,9 @@ render black. One immutable decoded image and its GPU texture live for the
 process lifetime and are released on exit. There are no image watchers, worker
 threads or redraw timers. The host draws on configure/expose/input events.
 Changes apply on session restart; `knavectl reload` remains compositor-only.
-The host currently targets one output. Workspace-only captures and Overview
-workspace panes exclude shell layers, including wallpaper; full-output captures
-include it. Per-output/workspace selection and live reload are deferred.
+The host currently targets one output. Workspace-only captures exclude shell layers, including wallpaper. Overview
+workspace panes and PNG previews include the wallpaper background surface but
+exclude other shell layers. Full-output captures include the wallpaper. Per-output/workspace selection and live reload are deferred.
 
 Rollback uses the previous Session/Shell pair; the unknown wallpaper table can
 remain in configuration. Verification uses config round trips, decoder tests,
