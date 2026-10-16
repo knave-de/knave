@@ -238,6 +238,8 @@ class Harness:
         if effective.get('schema_version', 2) == 1 or shell_config.get('start_overview_service', True):
             roles.add('overview')
 
+        if shell_config.get('wallpaper', {}).get('image'):
+            roles.add('wallpaper')
         self.wait_for(lambda: shell_services_ready(self.ready_directory, roles),
                       'configured shell services')
         if self.args.vnc_port:
