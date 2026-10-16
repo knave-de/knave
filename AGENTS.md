@@ -65,24 +65,19 @@ Components consume typed configuration projections supplied by Knave. They do
 not create competing user-facing configuration files. Runtime state belongs in
 the Knave runtime directory or session service, not in persistent configuration.
 
-## Versioning and compatibility
+## Package versions and shared contracts
 
-Track these independently:
+Cargo package and binary versions identify project builds. Configuration files
+keep a schema version because Knave migrates persistent user data. The Knave
+desktop API has no separate major/minor version or negotiation field; Knave,
+Villain, Shell, and the portal backend update its consumers together. Do not
+retain compatibility branches for unreleased contract shapes or document those
+shapes as supported combinations.
 
-- binary and library versions;
-- configuration schema version;
-- public desktop API version;
-- private compositor protocol version;
-- shell/UI protocol version.
-
-Every public contract must define its version, compatibility range, additive
-change behavior, breaking-change behavior, and migration or deprecation path.
-`0.x` does not excuse undocumented breaking changes.
-
-Do not remove or rename a public field, command, configuration key, protocol
-message, or binary without finding every consumer, adding compatibility or
-migration support where appropriate, updating tests and documentation, and
-defining rollback behavior.
+Protocol-defined Wayland negotiation remains part of the relevant Wayland
+interfaces. For shared contract changes, find every sender and receiver, update
+them together, and test the coordinated package set. Preserve user data and
+external protocol requirements.
 
 ## Architecture impact analysis
 
@@ -92,8 +87,8 @@ For every architecture-affecting change, identify:
 - every consuming component and binary;
 - affected public or private contracts;
 - configuration and migration impact;
-- required version changes;
-- tests proving compatibility;
+- package revision and configuration schema impact;
+- tests covering the coordinated package set;
 - rollout and rollback behavior.
 
 For shared types, inspect all consumers before editing. For protocol changes,
@@ -153,12 +148,12 @@ Compilation and functional tests do not establish acceptable performance.
 
 README files contain the short user-facing build and run workflow. Architecture
 documents contain boundaries, decisions, contracts, compatibility, migration,
-and rollback. API documentation describes public behavior and versioning.
+and rollback. API documentation describes public behavior and payload semantics.
 
 Documentation must be proportional to the change. Do not create long documents
 or comments that merely repeat source code. Architecture changes should use one
-concise ADR with context, decision, affected components, compatibility impact,
-migration/rollback, and verification.
+concise ADR with context, decision, affected components, migration/rollback,
+and verification.
 
 ## Commit identity and attribution
 
@@ -204,17 +199,16 @@ For cross-repository changes:
 
 1. Create linked branches in affected repositories.
 2. Define or preserve the shared contract.
-3. Add compatibility support where needed.
+3. Update every consumer in the linked change.
 4. Update all consumers.
 5. Link the pull requests.
-6. Verify the supported version combination.
+6. Verify the coordinated package set.
 7. Merge in dependency order only after the user explicitly requests the
    merge; otherwise leave the pull requests open.
-8. Remove compatibility code only in a later cleanup change.
+8. Remove stale compatibility code and documentation in the same change.
 
 Cross-repository pull requests must describe scope, affected contracts,
-consumers, version changes, compatibility, migration, verification, rollout,
-and rollback.
+consumers, package revisions, migration, verification, rollout, and rollback.
 
 ## Verification and scope
 

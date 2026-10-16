@@ -1,22 +1,13 @@
-//! Version 2 private picker protocol, with monitor-only version 1 compatibility.
+//! Private picker request and reply types shared by the portal and Shell.
 use serde::{Deserialize, Serialize};
-pub const VERSION: u32 = 2;
 pub const MAX_REQUEST: usize = 2 * 1024 * 1024;
 pub const MAX_SOURCES: usize = 64;
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SourceKind {
-    #[default]
     Monitor,
     Window,
-    Workspace {
-        workspace: u32,
-    },
-}
-impl SourceKind {
-    pub fn is_monitor(&self) -> bool {
-        *self == Self::Monitor
-    }
+    Workspace { workspace: u32 },
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -27,7 +18,6 @@ pub struct Source {
     pub width: u32,
     pub height: u32,
     pub preview_png: Option<String>,
-    #[serde(default, skip_serializing_if = "SourceKind::is_monitor")]
     pub kind: SourceKind,
 }
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
@@ -40,7 +30,6 @@ pub enum Operation {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Request {
-    pub version: u32,
     pub request_id: String,
     pub app_id: String,
     pub operation: Operation,
@@ -49,8 +38,7 @@ pub struct Request {
 }
 impl Request {
     pub fn validate(&self) -> Result<(), String> {
-        if ![1, VERSION].contains(&self.version)
-            || self.request_id.is_empty()
+        if self.request_id.is_empty()
             || self.request_id.len() > 256
             || self.app_id.len() > 1024
             || self.sources.is_empty()
@@ -62,7 +50,6 @@ impl Request {
         let mut workspaces = std::collections::HashSet::new();
         for s in &self.sources {
             if !ids.insert(s.id)
-                || (self.version == 1 && (self.sources.len() > 8 || !s.kind.is_monitor()))
                 || matches!(s.kind, SourceKind::Workspace { workspace } if !(1..=32).contains(&workspace))
                 || matches!(s.kind, SourceKind::Workspace { workspace } if !workspaces.insert(workspace))
                 || s.name.len() > 256
@@ -82,7 +69,6 @@ impl Request {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Reply {
-    pub version: u32,
     pub request_id: String,
     pub selected: Vec<u32>,
 }
@@ -102,8 +88,7 @@ impl Reply {
                 .iter()
                 .any(|s| s.id == *id && matches!(s.kind, SourceKind::Workspace { .. }))
         });
-        if self.version != request.version
-            || self.request_id != request.request_id
+        if self.request_id != request.request_id
             || (!request.multiple && self.selected.len() > 1 && !workspaces_only)
             || (has_workspace && !workspaces_only)
             || self
@@ -131,7 +116,6 @@ mod tests {
             preview_png: None,
         };
         let request = Request {
-            version: VERSION,
             request_id: "set".into(),
             app_id: "app".into(),
             operation: Operation::Share,
@@ -144,7 +128,6 @@ mod tests {
         };
         assert!(request.validate().is_ok());
         let reply = |selected| Reply {
-            version: VERSION,
             request_id: "set".into(),
             selected,
         };
@@ -153,24 +136,24 @@ mod tests {
     }
 
     #[test]
-    fn legacy_monitor_request_is_accepted_without_new_fields() {
-        let request: Request = serde_json::from_str(r#"{"version":1,"request_id":"old","app_id":"app","operation":"share","multiple":false,"sources":[{"id":1,"name":"screen","description":"","width":800,"height":600,"preview_png":null}]}"#).unwrap();
+    fn request_and_reply_use_the_current_payload_shape() {
+        let request: Request = serde_json::from_str(r#"{"request_id":"current","app_id":"app","operation":"share","multiple":false,"sources":[{"id":1,"name":"screen","description":"","width":800,"height":600,"preview_png":null,"kind":{"type":"monitor"}}]}"#).unwrap();
         assert!(request.validate().is_ok());
         assert!(
             Reply {
-                version: 1,
-                request_id: "old".into(),
+                request_id: "current".into(),
                 selected: vec![1]
             }
             .validate(&request)
             .is_ok()
         );
-        assert!(!serde_json::to_string(&request).unwrap().contains("kind"));
+        let encoded = serde_json::to_string(&request).unwrap();
+        assert!(!encoded.contains("version"));
+        assert!(encoded.contains(r#""kind":{"type":"monitor"}"#));
     }
     #[test]
     fn replies_cannot_select_unknown_or_duplicate_sources() {
         let r = Request {
-            version: VERSION,
             request_id: "test".into(),
             app_id: "app".into(),
             operation: Operation::Share,
@@ -188,7 +171,6 @@ mod tests {
         for selected in [vec![2], vec![1, 1]] {
             assert!(
                 Reply {
-                    version: VERSION,
                     request_id: r.request_id.clone(),
                     selected
                 }
@@ -198,7 +180,6 @@ mod tests {
         }
         assert!(
             Reply {
-                version: VERSION,
                 request_id: r.request_id.clone(),
                 selected: vec![]
             }
