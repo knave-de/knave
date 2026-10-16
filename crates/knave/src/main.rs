@@ -1,7 +1,6 @@
 use std::process::ExitCode;
 
 use knave_config::ConfigDocument;
-use knave_desktop_api::API_VERSION;
 use knave_session::run_default;
 
 fn usage() -> &'static str {
@@ -25,10 +24,7 @@ fn run() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     match args.next().as_deref() {
         Some("version") => {
-            println!(
-                "knave 0.1.0 (desktop-api {}.{})",
-                API_VERSION.major, API_VERSION.minor
-            );
+            println!("knave {}", env!("CARGO_PKG_VERSION"));
         }
         Some("session") => match args.next().as_deref() {
             Some("start") => run_default().map_err(|error| error.to_string())?,

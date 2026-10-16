@@ -1,12 +1,12 @@
 # Architecture documentation
 
 Knave is the umbrella owner for the desktop-wide architecture, configuration,
-versioning, build, and change-impact policy.
+package versions, build, and change-impact policy.
 
 - [Component boundaries](component-boundaries.md)
 - [Configuration](configuration.md)
 - [Session lifecycle](session.md)
-- [Versioning and compatibility](versioning.md)
+- [Package versions](versioning.md)
 - [CLI contract](cli.md)
 - [Build and packaging](build-and-packaging.md)
 - [Performance and resource usage](performance.md)

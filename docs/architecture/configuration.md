@@ -59,8 +59,9 @@ schema-1 on-demand Overview setting to the schema-2 session-owned service and
 persists the typed projection atomically when `knave config migrate` runs.
 Rollback is the previous Knave/Villain/Shell version combination; the original
 setting remains represented by the migrated true value, and unknown source
-values are preserved. Version domains are tracked independently for configuration,
-the public desktop API, the shell/UI protocol, and the private compositor protocol.
+values are preserved. The configuration schema has its own version because it
+describes persistent user data. The desktop contract follows the package
+versions of its consumers.
 
 ## Master/stack width
 
@@ -72,8 +73,8 @@ Knave only validates, preserves and writes the setting. Existing schema-1 files
 need no special setting conversion, and unknown TOML entries remain preserved.
 
 Villain's matching `feat/layout-split-resize` change consumes this projection.
-Older Villain binaries ignore the new setting. Session and Shell behavior and
-desktop API 1.1 are unchanged. Rebuilding Rust consumers that use complete
+The session and Shell behavior and desktop message shapes are unchanged.
+Rebuilding Rust consumers that use complete
 `CompositorConfig` literals requires initializing the new field. Deploy this
 Knave configuration library before the matching Villain dependency pin.
 

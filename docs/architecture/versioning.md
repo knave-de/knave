@@ -1,49 +1,13 @@
-# Versioning and compatibility
+# Package versions
 
-These version domains are tracked independently:
+Cargo package and binary versions identify Knave, Villain, Shell, and portal
+backend builds. The initial package versions remain unchanged during this
+unreleased development period.
 
-- binary and library versions;
-- Knave configuration schema;
-- public desktop API;
-- private compositor protocol; and
-- shell/UI protocol.
+The Knave desktop contract has no separate API version or negotiation. All
+repositories that send or receive its messages update together. The `version`
+commands report package identity and package version.
 
-Each public contract must state its version, supported compatibility range,
-additive-change rules, breaking-change rules, and deprecation path. A `0.x`
-version does not waive this requirement.
-
-Breaking changes require consumer discovery, a compatibility adapter or
-migration where practical, updated tests and documentation, and a rollback
-plan. Removing a command, field, key, protocol message, or binary is a later
-cleanup step after the replacement has been deployed and observed.
-
-Cross-repository changes must identify the supported Knave/Villain version
-combination and merge in dependency order. A library passing its own tests is
-not evidence that the ecosystem remains compatible.
-
-## Desktop API 1.1: maximization
-
-API 1.1 adds `maximize-focused`, `unmaximize-focused`, and
-`toggle-maximize-focused` dispatch actions and a default-false `maximized`
-window-summary field. Fullscreen takes precedence over saved maximization;
-unmaximizing does not exit fullscreen or restore a minimized window.
-Existing commands retain their behavior. No configuration schema change occurs.
-
-API 1.0 clients may keep using existing actions with a 1.1 server and ignore
-unknown summary fields. A 1.1 client can read 1.0 summaries; new commands require
-a 1.1 server. Query `version` before offering them to mixed-version deployments;
-there is no automatic negotiation or downgrade. Rust consumers rebuilding with
-the updated crate must initialize `maximized` in summary literals and handle
-new command variants. Existing pinned Shell binaries need no update.
-
-Deploy the Knave API/client commit before the matching Villain dependency pin.
-Rollback both binaries together to remove new commands; no persisted window
-state or configuration migration needs rollback. The independent library and
-binary package versions remain 0.1.0 during this unreleased development change.
-
-API 1.2 adds [desktop state subscriptions](decisions/0002-desktop-state-subscriptions.md).
-API 1.3 adds [compositor overview panes](decisions/0003-compositor-overview-panes.md).
-API 1.4 adds the session-owned overview visibility state to desktop snapshots
-and `set-overview-visible` command. The snapshot subscription protocol advances
-to 1.3; 1.2 clients remain supported and ignore the additive snapshot field.
-Overview visibility is compositor-session state and is not persisted.
+The configuration schema remains versioned because it describes persistent
+user data and its migrations. Wayland interface versions are defined and
+negotiated by their respective protocols.

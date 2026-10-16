@@ -7,13 +7,13 @@ build target, record:
 - every producer, consumer, and affected binary;
 - public and private contract changes;
 - configuration and migration impact;
-- required version changes;
-- tests proving compatibility; and
+- package revision and configuration schema impact;
+- tests covering the coordinated package set; and
 - rollout and rollback behavior.
 
 The owning repository must inspect complete modules and all consumers before
-editing. Cross-repository work uses linked branches and pull requests, keeps a
-compatibility path where needed, and merges in dependency order.
+editing. Cross-repository work uses linked branches and pull requests, updates
+every consumer together, and integrates in dependency order.
 
 For changes that add watchers, timers, subscriptions, background work, caches,
 buffers, or parallelism, also record:

@@ -1,8 +1,7 @@
 # CLI contract
 
 Knave owns the public command surface for the complete desktop environment.
-Villain-local control commands are not a second interface; the old
-`villainctl` binary is replaced by `knavectl`.
+Villain-local control commands are not a second interface.
 
 ## Environment CLI
 
@@ -10,7 +9,7 @@ The `knave` binary owns configuration and session operations:
 
 | Command | Behavior |
 | --- | --- |
-| `knave version` | Print the Knave binary and public desktop API version. |
+| `knave version` | Print the Knave package version. |
 | `knave session start` | Load the canonical configuration and supervise Villain and configured Shell roles. |
 | `knave session check` | Validate the canonical configuration and report its backend and component binaries. |
 | `knave config path` | Print the resolved configuration path. |
@@ -41,7 +40,7 @@ JSON response. `KNAVE_SOCKET` overrides socket discovery for isolated tests.
 | `knavectl workspaces` | List workspace summaries. |
 | `knavectl active-window` | Print the focused window, if any. |
 | `knavectl active-workspace` | Print the active workspace. |
-| `knavectl version` | Query the desktop API and compositor version. |
+| `knavectl version` | Query the compositor package identity and version. |
 | `knavectl dispatch close` | Close the focused window. |
 | `knavectl dispatch maximize` | Maximize the focused window within the usable workspace area. |
 | `knavectl dispatch unmaximize` | Restore its underlying tiled/floating layout without changing fullscreen or minimization. |
@@ -61,8 +60,6 @@ and a usage diagnostic.
 
 ## Compatibility policy
 
-Adding a command is additive. Renaming or removing a command requires consumer
-discovery, a documented replacement, and a later cleanup change. A command
-that changes its JSON response or dispatch semantics is a public desktop API
-change and must update the API versioning, both client and compositor tests,
-and the linked Knave/Villain/Shell pull requests.
+Shared command and payload changes require consumer discovery, coordinated
+updates in Knave, Villain, Shell, and portal components that use them, and tests
+for the resulting package set.

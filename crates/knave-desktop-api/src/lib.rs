@@ -1,4 +1,4 @@
-//! Versioned contracts and transport client for the Knave desktop environment.
+//! Desktop contracts and transport client for the Knave desktop environment.
 
 use std::{
     env,
@@ -13,16 +13,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub const API_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 4 };
-/// API 1.4 adds overview visibility to the subscribed desktop snapshot.
-pub const SUBSCRIPTION_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 3 };
 pub const SOCKET_ENVIRONMENT_VARIABLE: &str = "KNAVE_SOCKET";
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct ProtocolVersion {
-    pub major: u16,
-    pub minor: u16,
-}
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[serde(transparent)]
@@ -48,12 +39,9 @@ pub struct WindowSummary {
     pub workspace: WorkspaceId,
     pub focused: bool,
     pub minimized: bool,
-    #[serde(default)]
     pub floating: bool,
-    #[serde(default)]
     pub fullscreen: bool,
     /// Saved maximization state; fullscreen takes precedence while active.
-    #[serde(default)]
     pub maximized: bool,
 }
 
@@ -80,7 +68,6 @@ pub struct OverviewPane {
 pub struct DesktopSnapshot {
     pub generation: u64,
     /// Whether the session-owned Overview layer should currently be mapped.
-    #[serde(default)]
     pub overview_visible: bool,
     pub workspaces: Vec<WorkspaceSummary>,
     pub windows: Vec<WindowSummary>,
@@ -126,9 +113,7 @@ pub enum DesktopRequest {
     Dispatch(DesktopCommand),
     Query(DesktopQuery),
     /// Converts a dedicated connection to a stream of replacement snapshots.
-    Subscribe {
-        protocol: ProtocolVersion,
-    },
+    Subscribe,
     /// Replace the compositor overview panes; an empty list clears them.
     SetOverviewPanes {
         panes: Vec<OverviewPane>,
@@ -145,10 +130,7 @@ pub enum DesktopResponse {
     ActiveWindow(Option<WindowSummary>),
     ActiveWorkspace(WorkspaceId),
     WorkspacePreview(WorkspacePreview),
-    Version {
-        protocol: ProtocolVersion,
-        component: String,
-    },
+    Version { component: String },
     Error(DesktopError),
 }
 
@@ -178,7 +160,6 @@ pub enum DesktopErrorCode {
     InvalidRequest,
     NotFound,
     Unavailable,
-    IncompatibleVersion,
     Internal,
 }
 
@@ -262,7 +243,7 @@ impl SubscriptionCancel {
     }
 }
 
-/// API 1.2+ snapshot stream. The first frame is a complete initial state;
+/// Snapshot stream. The first frame is a complete initial state;
 /// subsequent frames replace it. Intermediate states may be coalesced.
 /// Use a separate DesktopClient for commands and preview requests.
 pub struct DesktopSubscription {
@@ -275,12 +256,7 @@ impl DesktopSubscription {
         let mut stream = UnixStream::connect(socket_path()?)?;
         stream.set_read_timeout(Some(Duration::from_secs(2)))?;
         stream.set_write_timeout(Some(Duration::from_secs(2)))?;
-        serde_json::to_writer(
-            &mut stream,
-            &DesktopRequest::Subscribe {
-                protocol: SUBSCRIPTION_VERSION,
-            },
-        )?;
+        serde_json::to_writer(&mut stream, &DesktopRequest::Subscribe)?;
         stream.write_all(b"\n")?;
         let mut subscription = Self {
             reader: BufReader::new(stream),
@@ -340,7 +316,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn request_is_one_versioned_json_line() {
+    fn request_is_one_json_line() {
         let request = DesktopRequest::Dispatch(DesktopCommand::FocusWorkspace {
             workspace: WorkspaceId(2),
         });
@@ -356,16 +332,24 @@ mod tests {
     }
 
     #[test]
-    fn old_window_summaries_default_to_unmaximized() {
-        let old = r#"{"id":1,"title":"Window","app_id":"app","workspace":1,"focused":true,"minimized":false,"floating":false,"fullscreen":false}"#;
-        let mut window: WindowSummary = serde_json::from_str(old).unwrap();
-        assert!(!window.maximized);
-        window.maximized = true;
-        let encoded = serde_json::to_string(&window).unwrap();
+    fn subscription_request_has_no_api_version() {
         assert_eq!(
-            serde_json::from_str::<WindowSummary>(&encoded).unwrap(),
-            window
+            serde_json::to_string(&DesktopRequest::Subscribe).unwrap(),
+            r#"{"type":"subscribe"}"#
         );
+    }
+
+    #[test]
+    fn version_response_reports_only_the_component_package() {
+        let response = DesktopResponse::Version {
+            component: "villain 0.1.0".into(),
+        };
+        let encoded = serde_json::to_string(&response).unwrap();
+        assert_eq!(
+            encoded,
+            r#"{"type":"version","payload":{"component":"villain 0.1.0"}}"#
+        );
+        assert!(!encoded.contains("protocol"));
     }
 
     #[test]

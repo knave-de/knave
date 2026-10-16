@@ -106,7 +106,7 @@ Installation is explicit and never writes to /usr/local without --system.
 - [Component boundaries](docs/architecture/component-boundaries.md)
 - [Configuration](docs/architecture/configuration.md)
 - [Session lifecycle](docs/architecture/session.md)
-- [Versioning](docs/architecture/versioning.md)
+- [Package versions](docs/architecture/versioning.md)
 - [CLI contract](docs/architecture/cli.md)
 - [Build and packaging](docs/architecture/build-and-packaging.md)
 - [Performance](docs/architecture/performance.md)

@@ -17,10 +17,10 @@ state; before any allowed frame exists, produce opaque black. Do not render
 excluded content and filter it later in the backend. Retain at most one bounded
 frame per session and release it on session destruction.
 
-Knave owns picker schema and workspace protocol bindings. Picker v2 adds source
-kinds and treats a workspace set as one capture target even for single-stream
-applications. It accepts monitor-only v1 requests; old shells reject v2 explicitly.
-Deploy matching backend and Shell for v2. Villain owns protocol implementation
+Knave owns picker schema and workspace protocol bindings. The picker carries
+source kinds and treats a workspace set as one capture target even for
+single-stream applications. Deploy matching backend and Shell packages together.
+Villain owns protocol implementation
 and workspace policy. The portal owns source discovery, consent validation,
 immutable stream targets, PipeWire and cancellation. Shell owns tabs, cards,
 workspace checkboxes and the compact Stop control. No canonical settings migration
@@ -36,6 +36,6 @@ with distinguishable pixels, Stop/source destruction, OBS negotiation, repeated
 cleanup, CPU/RSS samples and an MP4. Nested tests do not establish hardware GPU
 or direct-TTY behavior.
 
-Install the new compositor before matching portal and Shell. Rollback stops
-selective sessions and restores matching prior binaries. Monitor-only clients and
-session configuration remain usable.
+Install matching compositor, portal, and Shell packages together. Rollback stops
+selective sessions and restores the matching package set. Session configuration
+remains usable.
