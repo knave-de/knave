@@ -70,6 +70,11 @@ shadows = false
 opacity = false
 blur = false
 
+[appearance]
+# system reports no preference; dark and light force the color scheme that
+# applications receive through the Settings portal.
+theme = "system"
+
 [portal]
 enabled = true
 # 0 follows the theme, 1 prefers dark, 2 prefers light.

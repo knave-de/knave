@@ -105,3 +105,24 @@ fit = "cover"
 with black bars; `stretch` fills the screen and may distort it. PNG is supported;
 convert other formats first. Omit `image` to return to black. Restart the session
 to apply changes. See [ownership and limits](decisions/0008-static-wallpaper.md).
+
+## Desktop theme
+
+```toml
+[appearance]
+theme = "system"
+```
+
+`theme` is the desktop dark/light preference: `system` (default) reports no
+preference, `dark` prefers a dark appearance and `light` prefers a light one.
+It is the Knave-owned preference; the shell and compositor adopt it as their
+theme layers land. Today the Settings portal projects it into
+`org.freedesktop.appearance` `color-scheme` (0/1/2) for applications, so
+`theme = "dark"` flips portal-aware apps such as GTK4/Qt6 Flatpaks to dark.
+
+The lower-level `[portal] color_scheme` remains readable and is still honored
+while `theme = "system"`, so existing files keep their behavior; `dark` and
+`light` take precedence. Adding `[appearance]` is additive: no schema migration
+is required and unknown keys are preserved. Edit `~/.config/knave/config.toml`
+and save; the portal backend watches the file and re-publishes the preference
+without a restart. See [ownership and limits](decisions/0009-theme-preference.md).
