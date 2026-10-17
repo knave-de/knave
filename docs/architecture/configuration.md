@@ -92,3 +92,16 @@ corner radii, focus appearance, side shadows and background blur. See the
 [complete contract and example](window-appearance.md). Existing files retain
 the prior appearance, maximization disables all effects by default, and fullscreen
 always bypasses them. No schema migration or desktop API change is required.
+
+## Wallpaper
+
+```toml
+[shell.wallpaper]
+image = "/absolute/path/to/wallpaper.png"
+fit = "cover"
+```
+
+`cover` fills the screen with a centered crop; `contain` shows the full image
+with black bars; `stretch` fills the screen and may distort it. PNG is supported;
+convert other formats first. Omit `image` to return to black. Restart the session
+to apply changes. See [ownership and limits](decisions/0008-static-wallpaper.md).

@@ -114,7 +114,7 @@ pub enum DesktopRequest {
     Query(DesktopQuery),
     /// Converts a dedicated connection to a stream of replacement snapshots.
     Subscribe,
-    /// Replace the compositor overview panes; an empty list clears them.
+    /// Stage panes for the next Overview surface commit; an empty list stages clearing.
     SetOverviewPanes {
         panes: Vec<OverviewPane>,
     },

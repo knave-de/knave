@@ -63,15 +63,44 @@ impl Default for SessionConfig {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ShellConfig {
+    #[serde(default)]
+    pub wallpaper: WallpaperConfig,
     #[serde(default = "default_true")]
     pub start_bar: bool,
     #[serde(default = "default_true")]
     pub start_overview_service: bool,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WallpaperConfig {
+    #[serde(default)]
+    pub image: Option<String>,
+    #[serde(default)]
+    pub fit: WallpaperFit,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WallpaperFit {
+    #[default]
+    Cover,
+    Contain,
+    Stretch,
+}
+impl WallpaperFit {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Cover => "cover",
+            Self::Contain => "contain",
+            Self::Stretch => "stretch",
+        }
+    }
+}
+
 impl Default for ShellConfig {
     fn default() -> Self {
         Self {
+            wallpaper: WallpaperConfig::default(),
             start_bar: true,
             start_overview_service: true,
         }
@@ -237,6 +266,13 @@ impl Config {
             ));
         }
         self.compositor.appearance.validate()?;
+        if let Some(image) = &self.shell.wallpaper.image
+            && (!Path::new(image).is_absolute() || image.contains('\0'))
+        {
+            return Err(ConfigError::Invalid(
+                "shell.wallpaper.image must be an absolute path".into(),
+            ));
+        }
         if self.compositor.modkey.trim().is_empty() {
             return Err(ConfigError::Invalid("compositor.modkey is empty".into()));
         }
@@ -461,6 +497,38 @@ fn migrate_config_projection(config: &mut Config) -> Result<(), ConfigError> {
 }
 
 fn apply_config(document: &mut DocumentMut, config: &Config) {
+    set_table_value(
+        document,
+        "shell",
+        "wallpaper",
+        Item::Table({
+            let mut wallpaper = document
+                .get("shell")
+                .and_then(|s| s.get("wallpaper"))
+                .cloned()
+                .unwrap_or_else(|| Item::Table(Table::new()));
+            wallpaper["fit"] = value(config.shell.wallpaper.fit.as_str());
+            if let Some(image) = &config.shell.wallpaper.image {
+                wallpaper["image"] = value(image.clone());
+            } else {
+                wallpaper
+                    .as_table_like_mut()
+                    .expect("validated wallpaper table")
+                    .remove("image");
+            }
+            wallpaper.as_table().cloned().unwrap_or_else(|| {
+                let mut table = Table::new();
+                for (key, value) in wallpaper
+                    .as_table_like()
+                    .expect("validated wallpaper table")
+                    .iter()
+                {
+                    table.insert(key, value.clone());
+                }
+                table
+            })
+        }),
+    );
     set_table_value(document, "portal", "enabled", value(config.portal.enabled));
     set_table_value(
         document,
@@ -732,6 +800,45 @@ mod tests {
             config.portal.accent_color = invalid.into();
             assert!(config.validate().is_err());
         }
+    }
+
+    #[test]
+    fn wallpaper_round_trip_clear_and_validation_preserve_unknown_options() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(
+            &path,
+            "schema_version = 2\n[shell.wallpaper]\nfuture_option = 42\n",
+        )
+        .unwrap();
+        let mut doc = ConfigDocument::load(&path).unwrap();
+        let mut config = doc.config().clone();
+        assert!(config.shell.wallpaper.image.is_none());
+        config.shell.wallpaper.image = Some("relative.png".into());
+        assert!(doc.write(config.clone()).is_err());
+        config.shell.wallpaper.image = Some("/tmp/wallpaper.png".into());
+        config.shell.wallpaper.fit = WallpaperFit::Contain;
+        doc.write(config.clone()).unwrap();
+        assert_eq!(
+            ConfigDocument::load(&path)
+                .unwrap()
+                .config()
+                .shell
+                .wallpaper,
+            config.shell.wallpaper
+        );
+        config.shell.wallpaper.image = None;
+        doc.write(config).unwrap();
+        assert!(doc.source().contains("future_option = 42"));
+        assert!(
+            ConfigDocument::load(path)
+                .unwrap()
+                .config()
+                .shell
+                .wallpaper
+                .image
+                .is_none()
+        );
     }
 
     #[test]

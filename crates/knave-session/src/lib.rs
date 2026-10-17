@@ -221,6 +221,12 @@ fn spawn_shells(config: &Config, display: &str) -> Result<Vec<ManagedChild>, Ses
             Err(error) => return Err(cleanup_shell_startup(shells, error)),
         }
     }
+    if config.shell.wallpaper.image.is_some() {
+        match spawn_shell(config, "wallpaper", display) {
+            Ok(shell) => shells.push(shell),
+            Err(error) => return Err(cleanup_shell_startup(shells, error)),
+        }
+    }
     Ok(shells)
 }
 
@@ -275,6 +281,18 @@ fn spawn_shell(
         .env("KNAVE_SESSION", "1")
         .env("XDG_CURRENT_DESKTOP", "Knave:Villain")
         .env("XDG_SESSION_DESKTOP", "knave");
+    if role == "wallpaper" {
+        command
+            .arg(
+                config
+                    .shell
+                    .wallpaper
+                    .image
+                    .as_deref()
+                    .expect("configured wallpaper"),
+            )
+            .arg(config.shell.wallpaper.fit.as_str());
+    }
     if role == "overview" {
         command.env("KNAVE_OVERVIEW_SERVICE", "1");
     }
