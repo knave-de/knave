@@ -16,6 +16,22 @@ environment_file = "environment"
 tap_to_click = true
 natural_scroll = true
 
+# Optional per-device overrides. `name` matches the runtime libinput device
+# name case-insensitively and supports the `*` and `?` wildcards. Unset fields
+# keep the libinput value. Later rules override earlier ones for the same
+# device. `enabled = false` stops events without detaching the device.
+#
+# [[compositor.device]]
+# name = "Example Touchpad"
+# tap_to_click = true
+# natural_scroll = false
+# sensitivity = 0.4
+# disable_while_typing = true
+#
+# [[compositor.device]]
+# name = "*Receiver Mouse"
+# enabled = false
+
 # Explicit bindings replace the default set. Include MOD to retain Overview.
 [[compositor.bind]]
 keys = "MOD"

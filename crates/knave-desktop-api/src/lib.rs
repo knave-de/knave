@@ -53,6 +53,18 @@ pub struct WorkspacePreview {
     pub png_base64: String,
 }
 
+/// A device reported by the compositor's libinput seat.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct DeviceSummary {
+    pub name: String,
+    /// Whether libinput currently delivers events from the device.
+    pub enabled: bool,
+    /// Capabilities reported by libinput, for example "keyboard" or "pointer".
+    pub capabilities: Vec<String>,
+    /// Index of the last `[[compositor.device]]` rule that matched, if any.
+    pub matched_rule: Option<usize>,
+}
+
 /// A logical-output rectangle where the compositor displays one workspace.
 /// Window surfaces are visual only; the shell keeps all pointer and keyboard input.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -97,6 +109,7 @@ pub enum DesktopQuery {
     Snapshot,
     Windows,
     Workspaces,
+    Devices,
     ActiveWindow,
     ActiveWorkspace,
     WorkspacePreview {
@@ -127,6 +140,7 @@ pub enum DesktopResponse {
     Snapshot(DesktopSnapshot),
     Windows(Vec<WindowSummary>),
     Workspaces(Vec<WorkspaceSummary>),
+    Devices(Vec<DeviceSummary>),
     ActiveWindow(Option<WindowSummary>),
     ActiveWorkspace(WorkspaceId),
     WorkspacePreview(WorkspacePreview),

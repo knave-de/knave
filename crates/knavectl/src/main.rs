@@ -23,6 +23,7 @@ fn usage() -> &'static str {
   knavectl dispatch quit
   knavectl windows
   knavectl workspaces
+  knavectl devices
   knavectl active-window
   knavectl active-workspace
   knavectl version"
@@ -144,6 +145,10 @@ fn parse_request(mut args: impl Iterator<Item = String>) -> Result<DesktopReques
             ensure_no_args(&mut args, "workspaces")?;
             Ok(DesktopRequest::Query(DesktopQuery::Workspaces))
         }
+        Some("devices") => {
+            ensure_no_args(&mut args, "devices")?;
+            Ok(DesktopRequest::Query(DesktopQuery::Devices))
+        }
         Some("active-window") => {
             ensure_no_args(&mut args, "active-window")?;
             Ok(DesktopRequest::Query(DesktopQuery::ActiveWindow))
@@ -218,6 +223,10 @@ mod tests {
         assert_eq!(
             parse_request(["snapshot"].map(str::to_owned).into_iter()).unwrap(),
             DesktopRequest::Query(DesktopQuery::Snapshot)
+        );
+        assert_eq!(
+            parse_request(["devices"].map(str::to_owned).into_iter()).unwrap(),
+            DesktopRequest::Query(DesktopQuery::Devices)
         );
     }
 
