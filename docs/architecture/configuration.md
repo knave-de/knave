@@ -97,7 +97,7 @@ tap_to_click = true
 natural_scroll = true
 
 [[compositor.device]]
-name = "ASUF1204:00 2808:0104 Touchpad"
+name = "Example Touchpad"
 tap_to_click = true
 natural_scroll = false
 sensitivity = 0.4

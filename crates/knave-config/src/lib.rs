@@ -1158,7 +1158,7 @@ dispatch = "close"
 future_option = 7
 
 [[compositor.device]]
-name = "ASUF1204:00 2808:0104 Touchpad"
+name = "Example Touchpad"
 sensitivity = 0.4
 
 [[compositor.device]]
@@ -1171,7 +1171,7 @@ enabled = false
         let mut document = ConfigDocument::load(&path).unwrap();
         assert_eq!(document.config().compositor.device.len(), 2);
         let touchpad = &document.config().compositor.device[0];
-        assert_eq!(touchpad.name, "ASUF1204:00 2808:0104 Touchpad");
+        assert_eq!(touchpad.name, "Example Touchpad");
         assert_eq!(touchpad.sensitivity, Some(0.4));
         assert_eq!(touchpad.enabled, None);
 
