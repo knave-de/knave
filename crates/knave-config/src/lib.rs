@@ -123,6 +123,101 @@ impl Default for CompositorInputConfig {
     }
 }
 
+/// Pointer acceleration profile applied to a matched input device.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceAccelProfile {
+    Adaptive,
+    Flat,
+}
+
+impl DeviceAccelProfile {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Adaptive => "adaptive",
+            Self::Flat => "flat",
+        }
+    }
+}
+
+/// Scroll method applied to a matched input device.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceScrollMethod {
+    NoScroll,
+    TwoFinger,
+    Edge,
+    OnButtonDown,
+}
+
+impl DeviceScrollMethod {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NoScroll => "no_scroll",
+            Self::TwoFinger => "two_finger",
+            Self::Edge => "edge",
+            Self::OnButtonDown => "on_button_down",
+        }
+    }
+}
+
+/// Click method applied to a matched input device.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceClickMethod {
+    ButtonAreas,
+    Clickfinger,
+}
+
+impl DeviceClickMethod {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ButtonAreas => "button_areas",
+            Self::Clickfinger => "clickfinger",
+        }
+    }
+}
+
+/// One `[[compositor.device]]` rule for a libinput device.
+///
+/// `name` is matched case-insensitively against the runtime device name and
+/// supports the `*` and `?` wildcards. Every other field is optional; an unset
+/// field leaves the underlying libinput value untouched. When several rules
+/// match the same device they apply in file order, so a later rule overrides an
+/// earlier one. `enabled = false` stops libinput delivering events from the
+/// device without detaching it.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct CompositorDeviceConfig {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tap_to_click: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tap_and_drag: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drag_lock: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub natural_scroll: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disable_while_typing: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub middle_emulation: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub left_handed: Option<bool>,
+    /// Pointer acceleration speed in -1.0..=1.0; `0.0` is the device default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sensitivity: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accel_profile: Option<DeviceAccelProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scroll_method: Option<DeviceScrollMethod>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scroll_button: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub click_method: Option<DeviceClickMethod>,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CompositorBinding {
     pub keys: String,
@@ -131,7 +226,7 @@ pub struct CompositorBinding {
     pub args: Vec<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CompositorConfig {
     #[serde(default)]
     pub appearance: WindowAppearance,
@@ -144,6 +239,9 @@ pub struct CompositorConfig {
     pub environment_file: Option<String>,
     #[serde(default)]
     pub input: CompositorInputConfig,
+    /// Per-device overrides, matched by name and applied in order.
+    #[serde(default)]
+    pub device: Vec<CompositorDeviceConfig>,
     #[serde(default)]
     pub bind: Vec<CompositorBinding>,
 }
@@ -164,6 +262,7 @@ impl Default for CompositorConfig {
             modkey: default_modkey(),
             environment_file: None,
             input: CompositorInputConfig::default(),
+            device: Vec::new(),
             bind: Vec::new(),
         }
     }
@@ -198,7 +297,7 @@ impl Default for PortalConfig {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Config {
     #[serde(default)]
     pub portal: PortalConfig,
@@ -275,6 +374,20 @@ impl Config {
         }
         if self.compositor.modkey.trim().is_empty() {
             return Err(ConfigError::Invalid("compositor.modkey is empty".into()));
+        }
+        for device in &self.compositor.device {
+            if device.name.trim().is_empty() {
+                return Err(ConfigError::Invalid(
+                    "compositor.device.name must not be empty".into(),
+                ));
+            }
+            if let Some(sensitivity) = device.sensitivity
+                && (!sensitivity.is_finite() || !(-1.0..=1.0).contains(&sensitivity))
+            {
+                return Err(ConfigError::Invalid(
+                    "compositor.device.sensitivity must be between -1.0 and 1.0".into(),
+                ));
+            }
         }
         Ok(())
     }
@@ -588,6 +701,52 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
             input
         }),
     );
+    let mut devices = ArrayOfTables::new();
+    for device in &config.compositor.device {
+        let mut table = Table::new();
+        table["name"] = value(device.name.clone());
+        if let Some(enabled) = device.enabled {
+            table["enabled"] = value(enabled);
+        }
+        if let Some(tap_to_click) = device.tap_to_click {
+            table["tap_to_click"] = value(tap_to_click);
+        }
+        if let Some(tap_and_drag) = device.tap_and_drag {
+            table["tap_and_drag"] = value(tap_and_drag);
+        }
+        if let Some(drag_lock) = device.drag_lock {
+            table["drag_lock"] = value(drag_lock);
+        }
+        if let Some(natural_scroll) = device.natural_scroll {
+            table["natural_scroll"] = value(natural_scroll);
+        }
+        if let Some(disable_while_typing) = device.disable_while_typing {
+            table["disable_while_typing"] = value(disable_while_typing);
+        }
+        if let Some(middle_emulation) = device.middle_emulation {
+            table["middle_emulation"] = value(middle_emulation);
+        }
+        if let Some(left_handed) = device.left_handed {
+            table["left_handed"] = value(left_handed);
+        }
+        if let Some(sensitivity) = device.sensitivity {
+            table["sensitivity"] = value(sensitivity);
+        }
+        if let Some(accel_profile) = device.accel_profile {
+            table["accel_profile"] = value(accel_profile.as_str());
+        }
+        if let Some(scroll_method) = device.scroll_method {
+            table["scroll_method"] = value(scroll_method.as_str());
+        }
+        if let Some(scroll_button) = device.scroll_button {
+            table["scroll_button"] = value(i64::from(scroll_button));
+        }
+        if let Some(click_method) = device.click_method {
+            table["click_method"] = value(click_method.as_str());
+        }
+        devices.push(table);
+    }
+    document["compositor"]["device"] = Item::ArrayOfTables(devices);
     let appearance = toml::to_string(&config.compositor.appearance)
         .expect("validated appearance is serializable")
         .parse::<DocumentMut>()
@@ -986,6 +1145,83 @@ dispatch = "close"
 
         let output = fs::read_to_string(path).unwrap();
         assert!(!output.contains("environment_file"));
+    }
+
+    #[test]
+    fn device_rules_round_trip_validate_and_preserve_unknown_options() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(
+            &path,
+            r#"schema_version = 2
+[compositor]
+future_option = 7
+
+[[compositor.device]]
+name = "ASUF1204:00 2808:0104 Touchpad"
+sensitivity = 0.4
+
+[[compositor.device]]
+name = "*Receiver Mouse"
+enabled = false
+"#,
+        )
+        .unwrap();
+
+        let mut document = ConfigDocument::load(&path).unwrap();
+        assert_eq!(document.config().compositor.device.len(), 2);
+        let touchpad = &document.config().compositor.device[0];
+        assert_eq!(touchpad.name, "ASUF1204:00 2808:0104 Touchpad");
+        assert_eq!(touchpad.sensitivity, Some(0.4));
+        assert_eq!(touchpad.enabled, None);
+
+        let mut config = document.config().clone();
+        for invalid in [f64::NAN, 1.5, -1.5] {
+            config.compositor.device[0].sensitivity = Some(invalid);
+            assert!(config.validate().is_err());
+        }
+        config.compositor.device[0].sensitivity = Some(-1.0);
+        config.compositor.device[0].name = "   ".into();
+        assert!(config.validate().is_err());
+
+        config.compositor.device[0] = CompositorDeviceConfig {
+            name: "AT Translated Set 2 keyboard".into(),
+            enabled: Some(false),
+            tap_to_click: None,
+            tap_and_drag: None,
+            drag_lock: None,
+            natural_scroll: None,
+            disable_while_typing: None,
+            middle_emulation: None,
+            left_handed: None,
+            sensitivity: None,
+            accel_profile: Some(DeviceAccelProfile::Flat),
+            scroll_method: Some(DeviceScrollMethod::TwoFinger),
+            scroll_button: Some(272),
+            click_method: Some(DeviceClickMethod::Clickfinger),
+        };
+        document.write(config).unwrap();
+
+        let reloaded = ConfigDocument::load(&path).unwrap();
+        let device = &reloaded.config().compositor.device[0];
+        assert_eq!(device.name, "AT Translated Set 2 keyboard");
+        assert_eq!(device.enabled, Some(false));
+        assert_eq!(device.accel_profile, Some(DeviceAccelProfile::Flat));
+        assert_eq!(device.scroll_method, Some(DeviceScrollMethod::TwoFinger));
+        assert_eq!(device.scroll_button, Some(272));
+        assert_eq!(device.click_method, Some(DeviceClickMethod::Clickfinger));
+        assert_eq!(reloaded.config().compositor.device.len(), 2);
+        // Unknown keys outside a rewritten device rule survive.
+        assert!(reloaded.source().contains("future_option = 7"));
+    }
+
+    #[test]
+    fn absent_device_rules_write_no_table() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        let mut document = ConfigDocument::load(&path).unwrap();
+        document.write(Config::default()).unwrap();
+        assert!(!document.source().contains("device"));
     }
 }
 

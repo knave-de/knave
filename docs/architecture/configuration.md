@@ -85,6 +85,63 @@ configured default. Restart discards all overrides. To roll back, restore the
 previous Villain binary and remove `resize-master`/`reset-master` entries from
 custom bindings; the new percentage key may remain for a later upgrade.
 
+## Input devices
+
+The additive `[compositor.input]` table sets the global touchpad policy:
+`tap_to_click` and `natural_scroll`, both defaulting to true. Per-device
+overrides use one or more `[[compositor.device]]` rules:
+
+```toml
+[compositor.input]
+tap_to_click = true
+natural_scroll = true
+
+[[compositor.device]]
+name = "ASUF1204:00 2808:0104 Touchpad"
+tap_to_click = true
+natural_scroll = false
+sensitivity = 0.4
+disable_while_typing = true
+
+[[compositor.device]]
+name = "*Receiver Mouse"
+enabled = false
+```
+
+`name` is matched case-insensitively against the runtime device name and
+supports the `*` and `?` wildcards. Every field except `name` is optional: an
+unset field leaves the underlying libinput value untouched, so a rule that only
+sets `sensitivity` never re-enables or re-configures tap-to-click. When several
+rules match one device they apply in file order and later rules win. The global
+`[compositor.input]` values apply first, then matching device rules override
+them.
+
+The supported fields are:
+
+- `enabled`: when false, libinput stops delivering events from the device
+  without detaching it; true restores them;
+- `tap_to_click`, `tap_and_drag`, and `drag_lock`: touchpad tap behavior;
+- `natural_scroll`: per-device scroll direction;
+- `disable_while_typing`: disable the device while an internal keyboard types;
+- `middle_emulation` and `left_handed`: button behavior;
+- `sensitivity`: pointer acceleration speed in -1.0..=1.0, where 0.0 is the
+  device default;
+- `accel_profile`: `adaptive` or `flat`;
+- `scroll_method`: `no_scroll`, `two_finger`, `edge`, or `on_button_down`;
+- `scroll_button`: the button code used by `on_button_down`;
+- `click_method`: `button_areas` or `clickfinger`.
+
+Villain applies these rules when a device is added and re-applies them on
+`knavectl reload`, so editing a rule and reloading enables, disables, or
+re-tunes the device in the running session. The settings are opt-in and require
+no schema migration. `knavectl devices` lists the detected devices, whether each
+is currently enabled, its libinput capabilities, and which rule index matched.
+Device names are not written to configuration; use `knavectl devices` to
+discover the exact name of the hardware you want to match. Writes are typed, so
+unknown keys inside a rewritten `[[compositor.device]]` rule are dropped when
+`knave config migrate` materializes the projection, matching the existing
+`[[compositor.bind]]` behavior; unknown keys elsewhere are preserved.
+
 ## Window appearance
 
 The additive `[compositor.appearance]` settings configure window gaps, borders,

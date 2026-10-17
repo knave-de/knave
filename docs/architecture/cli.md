@@ -38,6 +38,7 @@ JSON response. `KNAVE_SOCKET` overrides socket discovery for isolated tests.
 | `knavectl snapshot` | Print the complete desktop snapshot. |
 | `knavectl windows` | List window summaries. |
 | `knavectl workspaces` | List workspace summaries. |
+| `knavectl devices` | List input devices with their enabled state, capabilities, and matched `[[compositor.device]]` rule index. |
 | `knavectl active-window` | Print the focused window, if any. |
 | `knavectl active-workspace` | Print the active workspace. |
 | `knavectl version` | Query the compositor package identity and version. |
