@@ -81,7 +81,9 @@ def main():
 
     def shot(name):
         time.sleep(0.25)
-        return call('screenshot', name)
+        result = call('screenshot', name)
+        time.sleep(0.8)
+        return result
 
     def key(*keys):
         call('key', *keys)
@@ -207,13 +209,21 @@ def main():
 
 def standalone_checks(bundle, directory, inherited, checks):
     """Restart the real service on a separate bus; never interrupt the desktop session."""
-    daemon = subprocess.Popen(['dbus-daemon', '--session', '--nofork', '--print-address=1'], stdout=subprocess.PIPE, text=True)
+    private_services = directory / 'standalone-services'
+    private_services.mkdir()
+    bus_config = directory / 'standalone-bus.conf'
+    from xml.sax.saxutils import escape
+    bus_config.write_text('<busconfig><type>session</type><listen>unix:tmpdir=/tmp</listen>'
+        f'<servicedir>{escape(str(private_services))}</servicedir>'
+        '<policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>')
+    daemon = subprocess.Popen(['dbus-daemon', '--config-file=' + str(bus_config), '--nofork', '--print-address=1'], env=inherited, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
     service = None
     competitor = None
+    gtk = None
     connection = None
     try:
         address = daemon.stdout.readline().strip()
-        env = dict(inherited, DBUS_SESSION_BUS_ADDRESS=address, XDG_STATE_HOME=str(directory / 'restart-state'))
+        env = dict(inherited, DBUS_SESSION_BUS_ADDRESS=address, XDG_STATE_HOME=str(directory / 'restart-state'), GDK_BACKEND='wayland', GTK_USE_PORTAL='0', NO_AT_BRIDGE='1', GIO_USE_VFS='local')
         env['KNAVE_CONFIG'] = str(directory.with_suffix('.toml'))
         connection = connect(address)
         log = (directory / 'standalone.log').open('w')
@@ -234,6 +244,22 @@ def standalone_checks(bundle, directory, inherited, checks):
         new = notify(connection, 'New protocol identity', timeout=0)
         assert new > saved
         checks.append('protocol ID not reused after restart')
+        command(connection, 'set_dnd', enabled=False)
+        subprocess.run(['notify-send', '-t', '2000', 'Fire and forget', 'Sender exits immediately'], env=env, check=True, timeout=5)
+        assert any(n['summary'] == 'Fire and forget' and n['banner'] for n in state(connection)['notifications'])
+        checks.append('notify-send exit leaves its banner visible')
+        if Path('/usr/lib/xdg-desktop-portal-gtk').exists():
+            gtk = subprocess.Popen(['/usr/lib/xdg-desktop-portal-gtk'], env=env, stdout=log, stderr=log)
+            wait(lambda: invoke(connection, 'org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'NameHasOwner', '(s)', ('org.freedesktop.impl.portal.desktop.gtk',))[0], 'private GTK portal backend starts')
+            invoke(connection, 'org.freedesktop.impl.portal.desktop.gtk', '/org/freedesktop/portal/desktop', 'org.freedesktop.impl.portal.Notification', 'AddNotification', '(ssa{sv})', ('org.knave.PortalDemo', 'test-notification', {'title': GLib.Variant('s', 'Portal notification'), 'body': GLib.Variant('s', 'Forwarded through the existing GTK backend')}))
+            wait(lambda: any(n['summary'] == 'Portal notification' for n in state(connection)['notifications']), 'GTK portal forwards notification into Knave')
+            invoke(connection, 'org.freedesktop.impl.portal.desktop.gtk', '/org/freedesktop/portal/desktop', 'org.freedesktop.impl.portal.Notification', 'RemoveNotification', '(ss)', ('org.knave.PortalDemo', 'test-notification'))
+            wait(lambda: not any(n['summary'] == 'Portal notification' for n in state(connection)['notifications']), 'portal withdrawal removes notification')
+            checks.append('existing GTK Notification portal forwards delivery and withdrawal')
+            gtk.terminate()
+            gtk.wait(timeout=5)
+            gtk = None
+
         # A later contender cannot replace Knave, even if it explicitly requests replacement.
         contender = connect(address)
         reply = invoke(contender, 'org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'RequestName', '(su)', (STANDARD, 6))[0]
@@ -264,7 +290,9 @@ def standalone_checks(bundle, directory, inherited, checks):
         assert not invoke(connection, 'org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'NameHasOwner', '(s)', (STANDARD,))[0]
         checks.append('losing Knave never queues or reclaims after external service stops')
     finally:
-        for process in (competitor, service, daemon):
+        if connection and not connection.is_closed():
+            connection.close_sync(None)
+        for process in (competitor, gtk, service, daemon):
             if process is not None:
                 process.terminate()
                 try:
@@ -272,8 +300,6 @@ def standalone_checks(bundle, directory, inherited, checks):
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait()
-        if connection:
-            connection.close_sync(None)
 
 
 if __name__ == '__main__':

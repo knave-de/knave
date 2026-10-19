@@ -115,3 +115,30 @@ mod tests {
         assert_eq!(parsed.notifications, c);
     }
 }
+
+#[cfg(test)]
+mod bounds {
+    #[test]
+    fn every_notification_setting_rejects_invalid_bounds() {
+        for field in [
+            "history_limit",
+            "history_days",
+            "banner_timeout_ms",
+            "max_banners",
+        ] {
+            for invalid in [0, 1000000] {
+                let source = format!("[notifications]\n{field} = {invalid}\n");
+                let config: crate::Config = toml::from_str(&source).unwrap();
+                assert!(config.validate().is_err(), "{field}={invalid}");
+            }
+        }
+        for source in [
+            "history_limit = 1\nhistory_days = 1\nbanner_timeout_ms = 1000\nmax_banners = 1",
+            "history_limit = 500\nhistory_days = 365\nbanner_timeout_ms = 60000\nmax_banners = 3",
+        ] {
+            let config: crate::Config =
+                toml::from_str(&format!("[notifications]\n{source}\n")).unwrap();
+            assert!(config.validate().is_ok());
+        }
+    }
+}

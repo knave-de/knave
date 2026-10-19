@@ -317,6 +317,14 @@ fn spawn_shell(
         .arg(role)
         .env("WAYLAND_DISPLAY", display)
         .env("KNAVE_SESSION", "1")
+        .env(
+            "KNAVE_NOTIFICATIONS_ENABLED",
+            if config.notifications.enabled {
+                "1"
+            } else {
+                "0"
+            },
+        )
         .env("XDG_CURRENT_DESKTOP", "Knave:Villain")
         .env("XDG_SESSION_DESKTOP", "knave");
     if role == "wallpaper" {

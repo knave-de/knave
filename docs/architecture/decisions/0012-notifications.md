@@ -89,10 +89,11 @@ paging and updates during pointer capture. Run Cargo format, workspace tests,
 strict Clippy and a coordinated managed build. Use the isolated desktop harness
 to assert actual badge/banner/center behavior and record an MP4, plus idle,
 normal and burst resource measurements. Nested rendering does not establish
-TTY, hardware GPU or multi-monitor behavior. Sandbox portal notifications require
-a future Notification portal adapter; native application notifications work now.
+TTY, hardware GPU or multi-monitor behavior. Sandbox portal notifications use the existing GTK Notification portal fallback;
+a native Knave portal adapter is not introduced by this change.
 
 Rollback uses the prior coordinated bundle. The additive config section and
 history file can remain; disabling `notifications.enabled` starts no service or
-notification shell role. Existing verified bundles and source checkouts are
+notification shell role. The session projects the setting to shell children through
+`KNAVE_NOTIFICATIONS_ENABLED`; disabled bars create no notification worker or button. Existing verified bundles and source checkouts are
 not modified.

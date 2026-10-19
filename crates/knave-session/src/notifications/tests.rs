@@ -470,3 +470,30 @@ fn database_lock_corruption_and_private_permissions() {
     assert!(store::Store::open(&path).is_err());
     assert_eq!(std::fs::read(&path).unwrap(), b"corrupt history");
 }
+
+#[test]
+fn application_policies_suppress_banners_or_all_delivery_independently() {
+    use knave_config::notifications::AppPolicy;
+    let mut m = model();
+    m.config.notifications.app.insert(
+        "org.test.App".into(),
+        AppPolicy {
+            enabled: true,
+            banners: false,
+        },
+    );
+    m.notify(incoming(), 0).unwrap();
+    assert_eq!(m.snapshot.unread(), 1);
+    assert!(!m.snapshot.notifications[0].banner);
+    m.config.notifications.app.insert(
+        "org.test.App".into(),
+        AppPolicy {
+            enabled: false,
+            banners: true,
+        },
+    );
+    let (id, signals) = m.notify(incoming(), 1).unwrap();
+    assert_eq!(id, 2);
+    assert!(signals.iter().any(|s| matches!(s, Signal::Closed(2, 2, _))));
+    assert!(!m.snapshot.notifications.iter().any(|n| n.id == 2));
+}
