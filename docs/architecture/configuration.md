@@ -142,9 +142,10 @@ fit = "cover"
 
 `cover` fills the screen with a centered crop; `contain` shows the full image
 with black bars; `stretch` fills the screen and may distort it. PNG is supported;
-convert other formats first. Omit `image` to return to black. A running wallpaper
-picks up image and fit changes on `knavectl reload`; starting a wallpaper where
-none was configured still needs a session restart. See
+convert other formats first. Omit `image` to return to black. Wallpaper
+changes — a new assignment, a cleared one, and image or fit changes — apply
+on `knavectl reload` without a session restart; the session spawns or stops
+the wallpaper process as part of the assignment. See
 [ownership and limits](decisions/0008-static-wallpaper.md).
 
 ## Desktop theme

@@ -144,6 +144,7 @@ name = "knave-session"
 version = "0.1.0"
 dependencies = [
  "knave-config",
+ "knave-desktop-api",
  "libc",
  "tempfile",
  "thiserror",
