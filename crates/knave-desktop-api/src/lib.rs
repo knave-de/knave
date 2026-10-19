@@ -1,5 +1,7 @@
 //! Desktop contracts and transport client for the Knave desktop environment.
 
+pub mod notifications;
+
 use std::{
     env,
     ffi::OsStr,

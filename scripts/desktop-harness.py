@@ -154,7 +154,7 @@ class Harness:
                         KNAVE_HARNESS_READY_DIR=str(self.ready_directory),
                         LIBGL_ALWAYS_SOFTWARE='1', LP_NUM_THREADS='4', WGPU_BACKEND='gl')
         for key, directory in (('XDG_CONFIG_HOME', 'config-home'), ('XDG_DATA_HOME', 'data'),
-                               ('XDG_CACHE_HOME', 'cache')):
+                               ('XDG_CACHE_HOME', 'cache'), ('XDG_STATE_HOME', 'state')):
             (self.directory / directory).mkdir(mode=0o700)
             self.env[key] = str(self.directory / directory)
         if args.gesture_test:
@@ -259,6 +259,8 @@ class Harness:
         effective = tomllib.loads((self.directory / 'config.toml').read_text())
         shell_config = effective.get('shell', {})
         roles = {'bar'} if shell_config.get('start_bar', True) else set()
+        if effective.get('notifications', {}).get('enabled', True):
+            roles.add('notifications')
         if shell_config.get('start_overview_service', True):
             roles.add('overview')
 

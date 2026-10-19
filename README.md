@@ -205,3 +205,26 @@ To skip empty slots when cycling with next/previous shortcuts or swipes, set
 `skip_empty = true` under `[compositor.workspace]` and reload. It defaults to
 false; direct number/bar selection still reaches empty slots. Minimized windows
 count as occupancy. Closing the last window leaves you on the current workspace.
+
+Notifications are provided by the session's built-in service when no other daemon
+already owns `org.freedesktop.Notifications`. The first owner wins; Knave neither
+replaces it nor waits to take over. History and Do not disturb survive restarts
+in `$XDG_STATE_HOME/knave/notifications.sqlite3`. Defaults keep seven days or 200
+entries. The shell bell opens history and shows the unread count.
+
+```toml
+[notifications]
+enabled = true
+history_limit = 200
+history_days = 7
+banner_timeout_ms = 6000
+max_banners = 3
+critical_in_dnd = false
+
+[notifications.app."org.example.App"]
+enabled = true
+banners = false
+```
+
+Restart the session to apply edited notification settings. Per-app banner controls
+in the center apply immediately. See [notification architecture](docs/architecture/decisions/0012-notifications.md).
