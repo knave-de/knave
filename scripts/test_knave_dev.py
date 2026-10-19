@@ -460,6 +460,53 @@ class BundleTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'tty recover'):
                 tty.select(self.state, self.bundle)
 
+    def test_cleanup_keeps_recovery_journal_if_metadata_reload_fails(self):
+        from types import SimpleNamespace
+
+        marker = self.state / 'tty-active.json'
+        marker.write_text('recovery required')
+        journal = {'files': {}, 'systemd_environment': {}}
+        with (
+            patch.object(
+                tty,
+                'systemctl',
+                return_value=SimpleNamespace(returncode=3, stderr='', stdout=''),
+            ),
+            patch.object(tty, 'capture'),
+            patch.object(
+                tty, 'reload_activation', side_effect=OSError('bus unavailable')
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, 'cleanup incomplete'):
+                tty.restore(self.state, journal)
+        self.assertTrue(marker.exists())
+
+    def test_cleanup_preserves_external_activation_file_edits(self):
+        from types import SimpleNamespace
+
+        path = self.state / 'activation-file'
+        path.write_text('owned')
+        expected = dev.digest(path)
+        path.write_text('external edit')
+        marker = self.state / 'tty-active.json'
+        marker.write_text('recovery required')
+        with (
+            patch.object(
+                tty,
+                'systemctl',
+                return_value=SimpleNamespace(returncode=3, stderr='', stdout=''),
+            ),
+            patch.object(tty, 'capture'),
+            patch.object(tty, 'reload_activation'),
+        ):
+            with self.assertRaisesRegex(RuntimeError, 'externally changed'):
+                tty.restore(
+                    self.state,
+                    {'files': {str(path): expected}, 'systemd_environment': {}},
+                )
+        self.assertEqual(path.read_text(), 'external edit')
+        self.assertTrue(marker.exists())
+
 
 if __name__ == '__main__':
     unittest.main()

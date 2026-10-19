@@ -260,6 +260,7 @@ def configure(bundle, run, source):
 
 def restore(state, journal):
     errors = []
+    failures = []
     result = systemctl('stop', *UNITS, check=False)
     if result.returncode:
         # Missing optional GTK units must not prevent cleanup of files/environment.
@@ -269,13 +270,13 @@ def restore(state, journal):
         if not path.exists() and not path.is_symlink():
             continue
         if path.is_symlink() or not path.is_file() or digest(path) != expected:
-            errors.append(f'preserved externally changed activation file: {path}')
+            failures.append(f'preserved externally changed activation file: {path}')
         else:
             path.unlink()
     try:
         reload_activation()
     except (OSError, subprocess.SubprocessError) as error:
-        errors.append(str(error))
+        failures.append(str(error))
     old = journal['systemd_environment']
     missing = [key for key in ACTIVATION_KEYS if key not in old]
     if missing:
@@ -295,9 +296,9 @@ def restore(state, journal):
         for unit in UNITS
         if systemctl('is-active', '--quiet', unit, check=False).returncode == 0
     ]
-    if active:
+    if active or failures:
         raise RuntimeError(
-            'portal services still active; run tty recover: ' + ', '.join(active)
+            'TTY cleanup incomplete; run tty recover: ' + '; '.join(active + failures)
         )
     (state / 'tty-active.json').unlink(missing_ok=True)
     if errors:
@@ -381,7 +382,7 @@ def start(state, source=None):
         )
         old_environment = dict(
             line.split('=', 1)
-            for line in systemctl('show-environment').stdout.splitlines()
+            for line in shlex.split(systemctl('show-environment').stdout)
             if '=' in line
         )
         contents = activation_files(bundle, run)
@@ -412,11 +413,18 @@ def start(state, source=None):
             reload_activation()
             # All desktop descendants have one owned process group. The parent
             # retains tty.lock through service teardown, including signal paths.
-            child = subprocess.Popen(
-                [str(bundle / 'bin/knave'), 'session', 'start'],
-                env=env,
-                start_new_session=True,
+            print(
+                f'Starting {manifest["id"]}; session log: {run / "session.log"}',
+                flush=True,
             )
+            with (run / 'session.log').open('ab') as log:
+                child = subprocess.Popen(
+                    [str(bundle / 'bin/knave'), 'session', 'start'],
+                    env=env,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                )
             journal['pid'] = child.pid
             journal['start_ticks'] = (
                 Path(f'/proc/{child.pid}/stat')
