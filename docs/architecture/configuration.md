@@ -22,46 +22,29 @@ The session fields are:
 
 `start_bar` starts the persistent bar role. `start_overview_service` starts one
 session-owned Overview process, hidden until toggled by Villain; it defaults to
-true. In schema 2, setting it false disables Overview for that session. Schema
-1 used false to select the on-demand process, so loading schema 1 projects this
-setting as true and keeps Overview available under the session-owned model.
-`knave config migrate` persists that conversion atomically. These settings are
+true. Setting it false disables Overview for that session. These settings are
 consumed by the Knave session supervisor and are not a second shell config file.
 
 Villain and the shell receive typed projections from Knave. They do not create
 competing user-facing configuration files.
 
-A nonempty `[[compositor.bind]]` list replaces Villain's entire default binding
-set. Include `keys = "MOD"` with `dispatch = "toggle-overview"` to open Overview
-on modifier release. Omitting the list uses Villain's defaults. Existing custom
-bindings are never augmented during migration.
+Each `[[compositor.bind]]` entry overrides the default binding with the same key
+combination; unmentioned defaults stay active, and entries that match no default
+are additions. Omitting the list uses Villain's defaults. Overriding
+`keys = "MOD"` replaces the default modifier-release Overview toggle. Settings
+writes preserve custom bindings.
 
 Configuration changes must:
 
 1. parse and validate before writing;
 2. write through a temporary file and atomically replace the target;
 3. preserve user-defined values, bindings, and unknown fields when the
-   preservation policy permits them; and
-4. record or expose the schema version used for the file.
+   preservation policy permits them.
 
-Villain root-level `modkey`, `environment_file`, `[input]`, and
-`[[bind]]` values are read as a compatibility projection when no `[compositor]`
-table exists. The original keys remain in the editable TOML document, so
-loading or writing the file does not silently delete source data. New
-configuration is written under `[compositor]`. Run `knave config migrate`
-explicitly to materialize that projection in an existing file. The
-command refuses to create a missing file, writes atomically, and leaves root-level
-keys and unknown TOML values in place for rollback. `knave config check` remains
-read-only.
-
-Schema 1 to 2 migration preserves unknown TOML and source keys. It maps the
-schema-1 on-demand Overview setting to the schema-2 session-owned service and
-persists the typed projection atomically when `knave config migrate` runs.
-Rollback is the previous Knave/Villain/Shell version combination; the original
-setting remains represented by the migrated true value, and unknown source
-values are preserved. The configuration schema has its own version because it
-describes persistent user data. The desktop contract follows the package
-versions of its consumers.
+The project is unreleased and uses one current configuration format without a
+schema version or migrations. Compositor settings belong under `[compositor]`;
+root-level compositor keys are not interpreted. `start_overview_service = false`
+always disables Overview. See [the decision](decisions/0010-unversioned-configuration.md).
 
 ## Master/stack width
 
@@ -69,8 +52,8 @@ The configuration accepts the additive `[compositor] master_percent` setting: an
 from 10 through 90, default 50. The master receives this percentage of usable
 workspace width, excluding reserved panels; the stack receives the remainder.
 One tiled window still fills the usable area. Villain owns layout and input;
-Knave only validates, preserves and writes the setting. Existing schema-1 files
-need no special setting conversion, and unknown TOML entries remain preserved.
+Knave only validates, preserves and writes the setting. Unknown TOML entries
+remain preserved.
 
 Villain's matching `feat/layout-split-resize` change consumes this projection.
 The session and Shell behavior and desktop message shapes are unchanged.
@@ -133,13 +116,12 @@ The supported fields are:
 
 Villain applies these rules when a device is added and re-applies them on
 `knavectl reload`, so editing a rule and reloading enables, disables, or
-re-tunes the device in the running session. The settings are opt-in and require
-no schema migration. `knavectl devices` lists the detected devices, whether each
-is currently enabled, its libinput capabilities, and which rule index matched.
+re-tunes the device in the running session. `knavectl devices` lists the detected devices, whether each is currently
+enabled, its libinput capabilities, and which rule index matched.
 Device names are not written to configuration; use `knavectl devices` to
 discover the exact name of the hardware you want to match. Writes are typed, so
 unknown keys inside a rewritten `[[compositor.device]]` rule are dropped when
-`knave config migrate` materializes the projection, matching the existing
+settings writes persist the projection, matching the existing
 `[[compositor.bind]]` behavior; unknown keys elsewhere are preserved.
 
 ## Window appearance
@@ -148,7 +130,7 @@ The additive `[compositor.appearance]` settings configure window gaps, borders,
 corner radii, focus appearance, side shadows and background blur. See the
 [complete contract and example](window-appearance.md). Existing files retain
 the prior appearance, maximization disables all effects by default, and fullscreen
-always bypasses them. No schema migration or desktop API change is required.
+always bypasses them. No desktop API change is required.
 
 ## Wallpaper
 
@@ -179,8 +161,7 @@ theme layers land. Today the Settings portal projects it into
 
 The lower-level `[portal] color_scheme` remains readable and is still honored
 while `theme = "system"`, so existing files keep their behavior; `dark` and
-`light` take precedence. Adding `[appearance]` is additive: no schema migration
-is required and unknown keys are preserved. Edit `~/.config/knave/config.toml`
+`light` take precedence. Unknown keys are preserved during settings writes. Edit `~/.config/knave/config.toml`
 and save; the portal backend watches the file and re-publishes the preference
 without a restart. See [ownership and limits](decisions/0009-theme-preference.md).
 

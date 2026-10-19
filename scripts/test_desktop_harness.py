@@ -34,7 +34,7 @@ class HarnessTests(unittest.TestCase):
 
     def test_unconfigured_sibling_environment_is_not_imported(self):
         (self.directory / 'environment').write_text('UNREQUESTED_OVERRIDE=yes\n')
-        target, config = self.normalize('schema_version = 2\n[compositor]\nmaster_percent = 60\n')
+        target, config = self.normalize('[compositor]\nmaster_percent = 60\n')
         self.assertNotIn('environment_file', config['compositor'])
         self.assertFalse((target / 'environment').exists())
 

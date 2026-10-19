@@ -112,7 +112,7 @@ def feature_config(state, name):
         default = defaults / 'config.toml'
         if not default.exists():
             default.write_text(
-                'schema_version = 2\n[compositor]\nenvironment_file = "environment"\n'
+                '[compositor]\nenvironment_file = "environment"\n'
             )
         environment = defaults / 'environment'
         if not environment.exists():

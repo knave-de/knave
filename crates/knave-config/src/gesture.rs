@@ -107,8 +107,7 @@ mod tests {
         let path = std::env::temp_dir().join(format!("knave-gesture-{}.toml", std::process::id()));
         std::fs::write(
             &path,
-            r#"schema_version = 2
-[compositor.gesture]
+            r#"[compositor.gesture]
 future = true
 [[compositor.gesture.bind]]
 fingers = 3
@@ -131,7 +130,7 @@ future_option = 42
     fn inline_source_preserves_unknown_binding_data() {
         let path =
             std::env::temp_dir().join(format!("knave-inline-gesture-{}.toml", std::process::id()));
-        std::fs::write(&path, "schema_version = 2\ncompositor = { gesture = { future = 9, bind = [{fingers = 3, direction = 'horizontal', action = 'none', future_option = 42}] } }\n").unwrap();
+        std::fs::write(&path, "compositor = { gesture = { future = 9, bind = [{fingers = 3, direction = 'horizontal', action = 'none', future_option = 42}] } }\n").unwrap();
         let mut document = ConfigDocument::load(&path).unwrap();
         let config = document.config().clone();
         document.write(config).unwrap();

@@ -7,8 +7,7 @@ fn appearance_writes_preserve_nested_unknown_and_inline_tables() {
     let path = directory.path().join("config.toml");
     fs::write(
         &path,
-        r##"schema_version = 2
-[compositor.appearance]
+        r##"[compositor.appearance]
 custom = "keep"
 focused = { opacity = 80, future = 42, blur = { enabled = true, radius = 6, custom = 9 } }
 [compositor.appearance.gaps.outer]
@@ -66,9 +65,18 @@ fn shipped_appearance_examples_validate() {
     let config: Config = toml::from_str(include_str!("../../../config.example.toml")).unwrap();
     config.validate().unwrap();
     assert!(config.shell.start_overview_service);
+    // The example demonstrates one override; the modifier-release Overview
+    // toggle default stays active without a MOD entry.
     assert!(config.compositor.bind.iter().any(|binding| {
-        binding.keys == "MOD" && binding.dispatch == "toggle-overview" && binding.args.is_empty()
+        binding.keys == "MOD+Q" && binding.dispatch == "exec" && binding.args == ["bemenu-run"]
     }));
+    assert!(
+        !config
+            .compositor
+            .bind
+            .iter()
+            .any(|binding| binding.keys == "MOD")
+    );
     let reference = include_str!("../../../docs/architecture/window-appearance.md");
     let sample = reference
         .split("```toml\n")

@@ -1,9 +1,7 @@
-# Knave configuration schema 2
+# Knave configuration
 #
 # Copy to ~/.config/knave/config.toml or run:
 #   knave config init
-
-schema_version = 2
 
 [compositor]
 # Villain consumes this typed projection; it does not own a second config file.
@@ -32,7 +30,6 @@ natural_scroll = true
 # name = "*Receiver Mouse"
 # enabled = false
 
-
 # Gesture entries override only matching fingers+direction; later entries win.
 # Default: three-finger horizontal swipe switches workspaces. Use action = "none"
 # to pass that gesture to clients. These are Villain actions, not knavectl commands.
@@ -41,16 +38,12 @@ natural_scroll = true
 # direction = "horizontal"
 # action = "none"
 
-# Explicit bindings replace the default set. Include MOD to retain Overview.
-[[compositor.bind]]
-keys = "MOD"
-dispatch = "toggle-overview"
-args = []
-
+# Each entry overrides the default binding with the same keys; unmentioned
+# defaults stay active and other entries are additions.
 [[compositor.bind]]
 keys = "MOD+Q"
-dispatch = "close"
-args = []
+dispatch = "exec"
+args = ["bemenu-run"]
 
 [session]
 # auto selects the production backend once the session supervisor is complete.

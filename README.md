@@ -54,7 +54,6 @@ The CLI exposes configuration and session operations:
     cargo run -p knave -- session check
     cargo run -p knave -- config path
     cargo run -p knave -- config init
-    cargo run -p knave -- config migrate
     cargo run -p knave -- config check
     cargo run -p knave -- config print
 
@@ -90,11 +89,10 @@ Initialize and validate an isolated configuration:
     KNAVE_CONFIG=/tmp/knave/config.toml target/release/knave config init
     KNAVE_CONFIG=/tmp/knave/config.toml target/release/knave config check
 
-The schema is versioned and written atomically. Known values are typed and
-validated; unknown TOML values are preserved when known settings are changed.
-Villain’s root-level compositor settings are projected into the typed
-compositor section when needed, while the original TOML remains recoverable.
-New writes use Knave-owned compositor settings.
+Configuration is written atomically. Known values are typed and validated;
+unknown TOML values are preserved when known settings are changed. Compositor
+settings belong under `[compositor]`. The unreleased configuration format has
+no schema version or legacy migration paths.
 
 See [config.example.toml](config.example.toml) and
 [configuration.md](docs/architecture/configuration.md).
@@ -145,9 +143,9 @@ changes to a horizontal resize cursor. Default shortcuts are `MOD+Ctrl+Left`
 `MOD+Ctrl+R` (reset to the configured default). Each key press makes one step.
 `MOD` is the configured modkey, normally Super.
 
-Custom binding sets replace defaults. Append these entries to your existing
-configuration if you use custom bindings; change the keys or signed step size
-as desired:
+Custom bindings override the defaults with the same key combination. Append
+these entries to your existing configuration to use them; change the keys or
+signed step size as desired:
 
 ```toml
 [[compositor.bind]]

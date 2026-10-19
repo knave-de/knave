@@ -52,7 +52,7 @@ def write_config(path, args, binaries):
     # Normalize a private copy, preserving values while forcing test lifecycle.
     config = tomllib.loads(args.config.read_text()) if args.config else {}
     if args.config:
-        projection = config.get('compositor', config)
+        projection = config.get('compositor', {})
         configured = projection.get('environment_file')
         if configured is not None:
             source = Path(configured).expanduser()
@@ -60,7 +60,6 @@ def write_config(path, args, binaries):
                 source = args.config.parent / source
             shutil.copyfile(source, path.parent / 'environment')
             projection['environment_file'] = 'environment'
-    config.setdefault('schema_version', 2)
     config['session'] = dict(config.get('session', {}), backend='winit',
                              compositor_binary=str(binaries['villain']),
                              shell_binary=str(binaries['knave-shell']),
@@ -260,7 +259,7 @@ class Harness:
         effective = tomllib.loads((self.directory / 'config.toml').read_text())
         shell_config = effective.get('shell', {})
         roles = {'bar'} if shell_config.get('start_bar', True) else set()
-        if effective.get('schema_version', 2) == 1 or shell_config.get('start_overview_service', True):
+        if shell_config.get('start_overview_service', True):
             roles.add('overview')
 
         if shell_config.get('wallpaper', {}).get('image'):

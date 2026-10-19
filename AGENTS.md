@@ -8,6 +8,29 @@ Knave Shell/UI stack. Villain owns compositor and window-manager behavior.
 Keep those responsibilities separate unless an explicit architecture decision
 changes the boundary.
 
+## Required workspace flow for all edits
+
+All repository changes, including code, configuration, scripts, tests,
+documentation and `AGENTS.md` edits, must use the managed
+[development workspace flow](docs/dev-workflow.md). Read-only investigation may
+use the source checkouts; edits and commits belong in feature worktrees.
+Creating a branch in a source checkout does not satisfy this requirement.
+
+Before the first edit, create a workspace from the Knave checkout with
+`./knave-dev create FEATURE --change REPO`, repeating `--change` for every
+repository you intend to edit. An existing managed workspace may be reused
+only when its manifest selects all affected repositories for changes. Check
+`workspace.json`, the current branches and Git status before editing. If an
+additional repository is needed, create a new workspace with that repository
+selected; do not edit a detached dependency worktree or silently move its pin.
+Preserve the source checkouts, their branches and unrelated work.
+
+Edit, commit and run checks inside the selected feature worktrees. For runtime
+or coordinated component changes, use the managed build, frozen bundle, nested
+test and verification steps before handoff. For documentation-only edits,
+review the diff and run `git diff --check`; a binary rebuild is unnecessary.
+Keep existing verified bundles immutable and leave running user sessions alone.
+
 ## Mandatory startup
 
 Before editing:
@@ -56,10 +79,10 @@ The canonical user configuration is:
 Settings are initially a typed API and interface for reading and modifying
 this file, not a second canonical persistence system.
 
-Configuration must be schema-versioned, typed, validated, written atomically,
-and migrated explicitly. Preserve user-defined values, bindings, and unknown
-source data during migration. Never silently overwrite or delete source
-Villain configuration.
+Configuration must be typed, validated, and written atomically. Preserve
+user-defined values, bindings, and unknown source data during settings writes.
+The project is unreleased: use the current configuration format directly,
+without schema version fields or compatibility paths for earlier formats.
 
 Components consume typed configuration projections supplied by Knave. They do
 not create competing user-facing configuration files. Runtime state belongs in
@@ -68,8 +91,7 @@ the Knave runtime directory or session service, not in persistent configuration.
 ## Package versions and shared contracts
 
 Cargo package and binary versions identify project builds. Configuration files
-keep a schema version because Knave migrates persistent user data. The Knave
-desktop API has no separate major/minor version or negotiation field; Knave,
+and the Knave desktop API have no separate version or negotiation field; Knave,
 Villain, Shell, and the portal backend update its consumers together. Do not
 retain compatibility branches for unreleased contract shapes or document those
 shapes as supported combinations.

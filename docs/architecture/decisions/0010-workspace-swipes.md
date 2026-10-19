@@ -7,8 +7,9 @@ input recognition, workspace transitions and rendering. Consumers are
 knave-config's loader/validator/writer, Knave settings/session configuration
 normalization, and Villain's runtime loader/reloader. Shell and portal rebuild
 against the coordinated package set but receive no new desktop messages.
-Schema version remains 2: omitted settings preserve defaults and no stored data
-conversion is required. Deploy the schema commit before Villain's dependency pin.
+The current configuration format is unversioned. Omitted settings preserve
+defaults; no stored data conversion is required. Deploy the configuration
+contract before Villain's dependency pin.
 
 Villain reserves configured swipe streams from begin, including vertical motion;
 clients never receive a partial reserved stream. Unconfigured/disabled gestures

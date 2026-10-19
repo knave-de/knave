@@ -6,7 +6,7 @@ set it, so portal-aware applications defaulted to light. Knave needs one
 user-facing preference that applications and, later, the shell and compositor
 can share.
 
-Knave owns the additive schema-2 `[appearance] theme` setting with values
+Knave owns the optional `[appearance] theme` setting with values
 `system` (default), `dark` and `light`. `system` reports no preference; `dark`
 and `light` force `color-scheme` 1 and 2. This change persists the preference
 and its portal projection only; shell and compositor theme palettes are
@@ -21,7 +21,7 @@ the file is the apply step and no portal restart is needed. `knavectl reload`
 remains the compositor/wallpaper reload and is unrelated to this projection.
 
 Adding the table is additive: a missing `[appearance]` defaults to `system`,
-unknown keys are preserved, and no schema migration or public desktop IPC change
+unknown keys are preserved, and no public desktop IPC change
 is required. Rollback removes the table; unknown source keys remain. The portal
 consumes the new field from `knave-config`, so the two repositories are built
 together at matching revisions.

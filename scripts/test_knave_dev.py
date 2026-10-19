@@ -87,7 +87,7 @@ class WorkspaceTests(unittest.TestCase):
 
     def test_create_preserves_preexisting_feature_config_on_failure(self):
         config = dev.feature_config(self.state, 'feature')
-        config.write_text('schema_version = 2\n# feature edits\n')
+        config.write_text('# feature edits\n')
         dev.git(self.sources / 'knaveshell', 'branch', 'dev/feature')
         with self.assertRaises(subprocess.CalledProcessError):
             dev.create(self.state, 'feature', self.sources, ['knave', 'knaveshell'], {})
@@ -517,14 +517,14 @@ class BundleTests(unittest.TestCase):
     def test_feature_config_seeds_defaults_once_and_keeps_edits(self):
         default = dev.feature_config(self.state, 'first')
         shared = self.state / 'config/config.toml'
-        shared.write_text('schema_version = 2\n[compositor]\nmaster_percent = 65\n')
+        shared.write_text('[compositor]\nmaster_percent = 65\n')
         (self.state / 'config/environment').write_text('FEATURE_SETTING=shared\n')
         second = dev.feature_config(self.state, 'second')
         self.assertEqual(second.read_text(), shared.read_text())
         self.assertEqual(
             (second.parent / 'environment').read_text(), 'FEATURE_SETTING=shared\n'
         )
-        default.write_text('schema_version = 2\n# local edits\n')
+        default.write_text('# local edits\n')
         (default.parent / 'environment').write_text('FEATURE_SETTING=local\n')
         dev.feature_config(self.state, 'first')
         self.assertIn('# local edits', default.read_text())

@@ -10,7 +10,6 @@ fn usage() -> &'static str {
   knave session check
   knave config path
   knave config init
-  knave config migrate
   knave config check
   knave config print"
 }
@@ -33,9 +32,8 @@ fn run() -> Result<(), String> {
                     ConfigDocument::at_default_path().map_err(|error| error.to_string())?;
                 let config = document.config();
                 println!(
-                    "valid {} (schema {}, backend {:?}, compositor {}, shell {})",
+                    "valid {} (backend {:?}, compositor {}, shell {})",
                     document.path().display(),
-                    config.schema_version,
                     config.session.backend,
                     config.session.compositor_binary,
                     config.session.shell_binary
@@ -56,29 +54,10 @@ fn run() -> Result<(), String> {
                     .map_err(|error| error.to_string())?;
                 println!("created {}", path.display());
             }
-            Some("migrate") => {
-                let path = ConfigDocument::default_path().map_err(|error| error.to_string())?;
-                if !path.exists() {
-                    return Err(format!(
-                        "configuration does not exist at {}; run `knave config init` first",
-                        path.display()
-                    ));
-                }
-                let mut document = ConfigDocument::load(path).map_err(|error| error.to_string())?;
-                if document.migrate().map_err(|error| error.to_string())? {
-                    println!("migrated configuration in {}", document.path().display());
-                } else {
-                    println!("configuration already uses the current schema");
-                }
-            }
             Some("check") => {
                 let document =
                     ConfigDocument::at_default_path().map_err(|error| error.to_string())?;
-                println!(
-                    "valid {} (schema {})",
-                    document.path().display(),
-                    document.config().schema_version
-                );
+                println!("valid {}", document.path().display());
             }
             Some("print") => {
                 let document =
