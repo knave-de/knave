@@ -41,6 +41,59 @@ Repeating the command reuses the live preview. End it with
 `./knave-dev session FEATURE --stop`. This path uses private runtime/configuration,
 D-Bus and PipeWire services and leaves the account's existing portal setup alone.
 
+## Edit and reload a feature configuration
+
+Each feature owns editable files outside its Git worktrees:
+
+```text
+~/.local/share/knave-dev/
+├── config/
+│   ├── config.toml           # Defaults for new features
+│   └── environment           # KEY=value defaults for new features
+└── workspaces/FEATURE/
+    ├── config/
+    │   ├── config.toml       # Edit this feature's settings here
+    │   └── environment       # Optional application environment
+    ├── knave/
+    ├── villain/
+    ├── knaveshell/
+    └── xdg-desktop-portal-knave/
+```
+
+Creation or first launch copies the shared defaults once. Later launches keep
+feature edits; changing shared defaults does not change existing features.
+An imported bundle can have a config directory without source worktrees.
+The generated defaults explicitly reference the sibling `environment` file;
+TTY sessions also honor that sibling when no environment file is specified.
+
+After saving edits, apply them to the running TTY session, including from SSH:
+
+```sh
+./knave-dev reload FEATURE
+```
+
+This validates a generated copy, pins the tested binaries and TTY backend,
+updates the session's runtime configuration and invokes its bundled
+`knavectl reload` on the TTY control socket. Invalid TOML or rejected compositor
+settings preserve the previous runtime files. Your editable source is never
+rewritten. Native `knavectl reload` or a reload keybinding alone rereads the
+runtime copy; use `knave-dev reload FEATURE` to apply edits from this directory.
+The selected binaries remain the same verified bundle; config edits do not
+require a rebuild and do not extend its original automated verification.
+
+Compositor layout, bindings, appearance and input settings support reload.
+Environment changes affect newly launched applications, not existing processes.
+Session settings, shell process startup and wallpaper startup need a restart:
+exit the test desktop, then run `./knave-dev session FEATURE` again. Restarting
+also selects the feature's latest verified build. Nested previews need
+`session FEATURE --stop` followed by `session FEATURE --nested` to apply changes.
+
+`session FEATURE --config /path/to/config.toml` explicitly overrides the feature
+file for that session; reload continues to use that chosen source. Each session
+prints its source-config and log paths. Its generated runtime copy and optional
+environment live in `STATE/knave-tty-*/`; portal recovery metadata records the
+source and runtime paths. Avoid editing generated copies.
+
 ## Create and develop
 
 Keep the four source repositories as siblings. From Knave:
@@ -205,8 +258,9 @@ builds, so transfer between accounts on the same machine is the intended path.
 
 ## Cleanup and regression checks
 
-`remove FEATURE` removes only pristine workspaces still at their initial
-commits; it refuses dirty worktrees or feature commits and retains branches.
+`remove FEATURE` removes only pristine worktrees still at their initial
+commits; it refuses dirty worktrees or feature commits and retains branches
+and the feature’s editable `config/` directory.
 For completed features with commits, use normal Git worktree cleanup after
 reviewing their publication status. Bundles and evidence are retained separately.
 

@@ -62,6 +62,9 @@ def parser():
     mode.add_argument(
         '--stop', action='store_true', help='stop this feature’s nested preview'
     )
+    commands.add_parser(
+        'reload', help='apply a feature’s editable config to its running TTY session'
+    ).add_argument('feature')
     export = commands.add_parser(
         'export',
         help='package a tested bundle and its verification for another account',
@@ -155,7 +158,10 @@ def main():
             return 0
         if args.nested:
             bundle = dev.session_bundle(state, args.feature)
-            result = dev.preview_bundle(state, bundle, args.config)
+            source = args.config or dev.feature_config(
+                state, dev.verify_bundle(bundle)['feature']
+            )
+            result = dev.preview_bundle(state, bundle, source)
             print(f'Preview running. VNC: 127.0.0.1:{result["vnc_port"]}')
             print(f'Password file: {result["password_file"]}')
             print(f'Stop: ./knave-dev session {result["feature"]} --stop')
@@ -163,6 +169,11 @@ def main():
         tty.account(state)
         bundle = dev.session_bundle(state, args.feature)
         return tty.start(state, args.config, bundle=bundle)
+    elif args.command == 'reload':
+        import knave_dev_tty as tty
+
+        tty.reload_config(state, args.feature)
+        print('Configuration reloaded. Startup settings need a session restart.')
     elif args.command == 'tty':
         import knave_dev_tty as tty
 

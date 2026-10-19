@@ -14,7 +14,16 @@ import tomllib
 import uuid
 from pathlib import Path
 
-from knave_dev import atomic_json, capture, digest, lock, now, tested_bundle
+from knave_dev import (
+    atomic_json,
+    capture,
+    digest,
+    feature_config,
+    identifier,
+    lock,
+    now,
+    tested_bundle,
+)
 
 UNITS = (
     'xdg-desktop-portal.service',
@@ -259,6 +268,13 @@ def configure(bundle, run, source):
         {'villain': bundle / 'bin/villain', 'knave-shell': bundle / 'bin/knave-shell'},
     )
     config = tomllib.loads(path.read_text())
+    if source and (source.parent / 'environment').is_file():
+        projection = config.get('compositor', config)
+        if 'environment_file' not in projection:
+            (run / 'environment').write_bytes(
+                (source.parent / 'environment').read_bytes()
+            )
+            projection['environment_file'] = 'environment'
     config['session']['backend'] = 'tty'
     # Explicitly enabled for the direct desktop; do not inherit disabled nested settings.
     config['portal']['enabled'] = True
@@ -370,6 +386,76 @@ def recover(state):
         restore(state, journal)
 
 
+def reload_config(state, feature):
+    identifier(feature)
+    with lock(state / 'reload.lock'):
+        if not (state / 'tty-active.json').is_file():
+            raise ValueError(
+                f'No active TTY session for {feature!r}; start it with session {feature}'
+            )
+        journal = json.loads((state / 'tty-active.json').read_text())
+        bundle = Path(journal['bundle'])
+        manifest = tested_bundle(state, bundle)
+        if manifest['feature'] != feature:
+            raise ValueError(f'active TTY session is for {manifest["feature"]!r}')
+        pid = journal.get('pid')
+        stat = Path(f'/proc/{pid}/stat')
+        if (
+            not stat.exists()
+            or stat.stat().st_uid != os.getuid()
+            or (
+                stat.read_text().rsplit(')', 1)[1].split()[19]
+                != journal.get('start_ticks')
+            )
+        ):
+            raise ValueError(
+                'TTY session is no longer running; start it or run tty recover'
+            )
+        source = (
+            Path(journal['source_config'])
+            if journal.get('source_config')
+            else feature_config(state, feature)
+        )
+        run = Path(journal['run'])
+        runtime = Path(journal.get('runtime', f'/run/user/{os.getuid()}'))
+        sockets = list((runtime / 'knave').glob('desktop-wayland-*.sock'))
+        if len(sockets) != 1:
+            raise ValueError('expected exactly one TTY desktop control socket')
+        env = dict(os.environ, KNAVE_SOCKET=str(sockets[0]))
+        with tempfile.TemporaryDirectory(prefix='reload-', dir=run) as temporary:
+            staged = Path(temporary)
+            configure(bundle, staged, source)
+            subprocess.run(
+                [str(bundle / 'bin/knave'), 'config', 'check'],
+                env=dict(env, KNAVE_CONFIG=str(staged / 'config.toml')),
+                check=True,
+                timeout=15,
+            )
+            previous = {
+                name: (run / name).read_bytes() if (run / name).exists() else None
+                for name in ('config.toml', 'environment')
+            }
+            try:
+                for name in ('environment', 'config.toml'):
+                    if (staged / name).exists():
+                        replace_file(run / name, (staged / name).read_bytes())
+                    else:
+                        (run / name).unlink(missing_ok=True)
+                subprocess.run(
+                    [str(bundle / 'bin/knavectl'), 'reload'],
+                    env=env,
+                    check=True,
+                    timeout=15,
+                )
+            except BaseException:
+                for name, data in previous.items():
+                    if data is None:
+                        (run / name).unlink(missing_ok=True)
+                    else:
+                        replace_file(run / name, data)
+                raise
+
+
 def start(state, source=None, bundle=None):
     account(state)
     with lock(state / 'tty.lock'):
@@ -398,7 +484,12 @@ def start(state, source=None, bundle=None):
                     'mode': path.stat().st_mode & 0o777,
                 }
         run = Path(tempfile.mkdtemp(prefix='knave-tty-', dir=state))
-        configure(bundle, run, source.resolve(strict=True) if source else None)
+        source = (
+            source.resolve(strict=True)
+            if source
+            else feature_config(state, manifest['feature'])
+        )
+        configure(bundle, run, source)
         env = os.environ.copy()
         for key in (
             'WAYLAND_DISPLAY',
@@ -439,6 +530,8 @@ def start(state, source=None, bundle=None):
             'bundle_sha256': digest(bundle / 'bundle.json'),
             'started_at': now(),
             'run': str(run),
+            'source_config': str(source),
+            'runtime': str(runtime),
             'files': {
                 str(paths[name]): hashlib.sha256(value.encode()).hexdigest()
                 for name, value in contents.items()
@@ -478,7 +571,7 @@ def start(state, source=None, bundle=None):
             # All desktop descendants have one owned process group. The parent
             # retains tty.lock through service teardown, including signal paths.
             print(
-                f'Starting {manifest["id"]}; session log: {run / "session.log"}',
+                f'Starting {manifest["id"]}; config: {source}; session log: {run / "session.log"}',
                 flush=True,
             )
             with (run / 'session.log').open('ab') as log:

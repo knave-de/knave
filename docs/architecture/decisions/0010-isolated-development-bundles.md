@@ -23,6 +23,14 @@ same user is refused. Metadata symlinks are refused. Interrupted sessions retain
 the recovery journal. The normal user's desktop and canonical config are outside
 this path.
 
+Feature configuration lives in `STATE/workspaces/FEATURE/config/`, seeded once
+from `STATE/config/`. The launcher generates a runtime copy with pinned lifecycle
+settings. Explicit reload validates and synchronizes that copy before dispatching
+the compositor reload; rejected changes restore previous runtime files. Config
+sources and optional sibling environment files stay editable across sessions and
+workspace cleanup. Startup changes require a new session. The existing runtime
+configuration and reload protocol are unchanged.
+
 ## Impact and boundaries
 
 Ownership is limited to build/test tooling and harness integration. Runtime

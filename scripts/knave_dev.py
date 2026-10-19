@@ -103,12 +103,40 @@ def workspace(state, name):
     return root, data
 
 
+def feature_config(state, name):
+    """Seed editable feature configuration once; subsequent sessions preserve it."""
+    directory = state / 'workspaces' / identifier(name) / 'config'
+    with lock(state / 'config.lock'):
+        defaults = state / 'config'
+        defaults.mkdir(parents=True, exist_ok=True)
+        default = defaults / 'config.toml'
+        if not default.exists():
+            default.write_text(
+                'schema_version = 2\n[compositor]\nenvironment_file = "environment"\n'
+            )
+        environment = defaults / 'environment'
+        if not environment.exists():
+            environment.write_text(
+                '# KEY=value settings for newly launched applications\n'
+            )
+        directory.mkdir(parents=True, exist_ok=True)
+        target = directory / 'config.toml'
+        if not target.exists():
+            shutil.copyfile(default, target)
+        if not (directory / 'environment').exists():
+            shutil.copyfile(environment, directory / 'environment')
+        return target
+
+
 def create(state, name, sources, changed, revisions):
     identifier(name)
     if not changed or not set(changed) <= set(REPOSITORIES):
         raise ValueError('select at least one affected repository with --change')
     root = state / 'workspaces' / name
-    root.mkdir(parents=True, exist_ok=False)
+    existing_config = root.exists()
+    if existing_config and any(child.name != 'config' for child in root.iterdir()):
+        raise FileExistsError(f'workspace already exists: {root}')
+    root.mkdir(parents=True, exist_ok=True)
     created = []
     data = {'schema': 1, 'name': name, 'created_at': now(), 'repositories': {}}
     try:
@@ -131,6 +159,7 @@ def create(state, name, sources, changed, revisions):
                 'base': revision,
                 'branch': branch,
             }
+        feature_config(state, name)
         atomic_json(root / 'workspace.json', data)
     except BaseException:
         # Only remove worktrees/branches created by this invocation.
@@ -138,7 +167,8 @@ def create(state, name, sources, changed, revisions):
             git(source, 'worktree', 'remove', str(path))
             if branch:
                 git(source, 'branch', '-D', branch)
-        shutil.rmtree(root)
+        if not existing_config:
+            shutil.rmtree(root)
         raise
     return root
 
@@ -156,7 +186,15 @@ def remove(state, name):
         for repo, entry in data['repositories'].items():
             git(Path(entry['source']), 'worktree', 'remove', str(root / repo))
         # Keep branches, even empty ones: this command never deletes feature history.
-    shutil.rmtree(root)
+    for child in root.iterdir():
+        if child.name == 'config':
+            continue
+        if child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+    if not any(root.iterdir()):
+        root.rmdir()
 
 
 def command(argv, cwd, env, log):

@@ -85,10 +85,24 @@ class WorkspaceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'feature commits'):
             dev.remove(self.state, 'feature')
 
+    def test_create_preserves_preexisting_feature_config_on_failure(self):
+        config = dev.feature_config(self.state, 'feature')
+        config.write_text('schema_version = 2\n# feature edits\n')
+        dev.git(self.sources / 'knaveshell', 'branch', 'dev/feature')
+        with self.assertRaises(subprocess.CalledProcessError):
+            dev.create(self.state, 'feature', self.sources, ['knave', 'knaveshell'], {})
+        self.assertIn('# feature edits', config.read_text())
+        self.assertFalse((config.parent.parent / 'knave').exists())
+        root = self.create()
+        self.assertIn('# feature edits', (root / 'config/config.toml').read_text())
+
     def test_remove_leaves_source_and_feature_branch(self):
         self.create()
         dev.remove(self.state, 'feature')
-        self.assertFalse((self.state / 'workspaces/feature').exists())
+        self.assertTrue(
+            (self.state / 'workspaces/feature/config/config.toml').is_file()
+        )
+        self.assertFalse((self.state / 'workspaces/feature/workspace.json').exists())
         self.assertIn(
             'dev/feature', dev.git(self.sources / 'knave', 'branch', '--list')
         )
@@ -454,7 +468,11 @@ class BundleTests(unittest.TestCase):
                 account.assert_not_called()
                 start.assert_not_called()
                 if flag == '--nested':
-                    preview.assert_called_once_with(self.state, self.bundle, None)
+                    preview.assert_called_once_with(
+                        self.state,
+                        self.bundle,
+                        self.state / 'workspaces/example/config/config.toml',
+                    )
                     stop.assert_not_called()
                 else:
                     stop.assert_called_once_with(self.state, 'example')
@@ -494,6 +512,90 @@ class BundleTests(unittest.TestCase):
                 dev.preview_bundle(self.state, self.bundle)
             self.assertEqual(capture.call_count, 2)
             self.assertEqual(capture.call_args.args[0][-1], 'stop')
+
+    def test_feature_config_seeds_defaults_once_and_keeps_edits(self):
+        default = dev.feature_config(self.state, 'first')
+        shared = self.state / 'config/config.toml'
+        shared.write_text('schema_version = 2\n[compositor]\nmaster_percent = 65\n')
+        (self.state / 'config/environment').write_text('FEATURE_SETTING=shared\n')
+        second = dev.feature_config(self.state, 'second')
+        self.assertEqual(second.read_text(), shared.read_text())
+        self.assertEqual(
+            (second.parent / 'environment').read_text(), 'FEATURE_SETTING=shared\n'
+        )
+        default.write_text('schema_version = 2\n# local edits\n')
+        (default.parent / 'environment').write_text('FEATURE_SETTING=local\n')
+        dev.feature_config(self.state, 'first')
+        self.assertIn('# local edits', default.read_text())
+        self.assertEqual(
+            (default.parent / 'environment').read_text(), 'FEATURE_SETTING=local\n'
+        )
+        run = self.state / 'config-check'
+        run.mkdir()
+        tty.configure(self.bundle, run, second)
+        self.assertIn('FEATURE_SETTING=shared', (run / 'environment').read_text())
+        self.assertIn('environment', (run / 'config.toml').read_text())
+
+    def test_reload_validates_and_restores_previous_config_on_rejection(self):
+        import sys
+
+        source = dev.feature_config(self.state, 'example')
+        run = self.state / 'session-run'
+        run.mkdir()
+        (run / 'config.toml').write_text('previous configuration')
+        (run / 'environment').write_text('PREVIOUS=value\n')
+        runtime = self.state / 'runtime'
+        (runtime / 'knave').mkdir(parents=True)
+        (runtime / 'knave/desktop-wayland-0.sock').touch()
+        ticks = (
+            Path(f'/proc/{os.getpid()}/stat').read_text().rsplit(')', 1)[1].split()[19]
+        )
+        dev.atomic_json(
+            self.state / 'tty-active.json',
+            {
+                'bundle': str(self.bundle),
+                'run': str(run),
+                'source_config': str(source),
+                'runtime': str(runtime),
+                'pid': os.getpid(),
+                'start_ticks': ticks,
+            },
+        )
+        real_run = subprocess.run
+        for reject in (True, False):
+            calls = []
+
+            def command(argv, **kwargs):
+                calls.append((argv, kwargs))
+                if argv[-1] == 'reload' and reject:
+                    raise subprocess.CalledProcessError(1, argv)
+                return real_run([sys.executable, '-c', 'pass'], **kwargs)
+
+            with patch.object(tty.subprocess, 'run', side_effect=command):
+                if reject:
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        tty.reload_config(self.state, 'example')
+                    self.assertEqual(
+                        (run / 'config.toml').read_text(), 'previous configuration'
+                    )
+                    self.assertEqual(
+                        (run / 'environment').read_text(), 'PREVIOUS=value\n'
+                    )
+                else:
+                    tty.reload_config(self.state, 'example')
+                    self.assertIn('backend', (run / 'config.toml').read_text())
+                self.assertEqual(calls[0][0][-2:], ['config', 'check'])
+                self.assertEqual(calls[-1][0][-1], 'reload')
+                self.assertEqual(
+                    calls[-1][1]['env']['KNAVE_SOCKET'],
+                    str(runtime / 'knave/desktop-wayland-0.sock'),
+                )
+        source.write_text('not valid TOML !!!')
+        with self.assertRaises(ValueError):
+            tty.reload_config(self.state, 'example')
+        self.assertIn('backend', (run / 'config.toml').read_text())
+        with self.assertRaisesRegex(ValueError, 'active TTY session'):
+            tty.reload_config(self.state, 'different')
 
     def test_missing_account_has_one_time_setup_instruction(self):
         with self.assertRaisesRegex(ValueError, 'tty init --dedicated-test-account'):
