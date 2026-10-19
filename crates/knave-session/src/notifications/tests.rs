@@ -176,9 +176,16 @@ struct Bus {
 }
 impl Bus {
     fn new() -> Self {
+        Self::with_rule("")
+    }
+    fn with_rule(rule: &str) -> Self {
         use std::io::BufRead;
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("bus.conf");
+        std::fs::write(&path,format!("<busconfig><type>session</type><listen>unix:tmpdir=/tmp</listen><policy context=\"default\"><allow send_destination=\"*\"/><allow receive_sender=\"*\"/><allow own=\"*\"/>{rule}</policy></busconfig>")).unwrap();
         let mut child = std::process::Command::new("dbus-daemon")
-            .args(["--session", "--nofork", "--print-address=1"])
+            .arg(format!("--config-file={}", path.display()))
+            .args(["--nofork", "--print-address=1"])
             .stdout(std::process::Stdio::piped())
             .spawn()
             .expect("dbus-daemon test dependency");
@@ -496,4 +503,19 @@ fn application_policies_suppress_banners_or_all_delivery_independently() {
     assert_eq!(id, 2);
     assert!(signals.iter().any(|s| matches!(s, Signal::Closed(2, 2, _))));
     assert!(!m.snapshot.notifications.iter().any(|n| n.id == 2));
+}
+
+#[test]
+fn bus_policy_failure_is_unavailable_instead_of_fabricating_an_external_owner() {
+    let bus = Bus::with_rule("<deny own=\"org.freedesktop.Notifications\"/>");
+    let directory = tempfile::tempdir().unwrap();
+    runtime().block_on(async {
+        let result = setup_on(
+            Config::default(),
+            bus.connect().await,
+            directory.path().join("history.sqlite3"),
+        )
+        .await;
+        assert!(matches!(result,Err(error) if error.contains("name acquisition failed")));
+    });
 }

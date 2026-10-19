@@ -372,13 +372,25 @@ async fn setup_on(
         .map_err(|e| e.to_string())?;
     {
         let mut e = service.engine.lock().await;
-        e.model.snapshot.owned = connection
+        e.model.snapshot.owned = match connection
             .request_name_with_flags(
                 STANDARD_NAME,
                 zbus::fdo::RequestNameFlags::DoNotQueue.into(),
             )
             .await
-            .is_ok();
+        {
+            Ok(
+                zbus::fdo::RequestNameReply::PrimaryOwner
+                | zbus::fdo::RequestNameReply::AlreadyOwner,
+            ) => true,
+            Err(zbus::Error::NameTaken) => false,
+            Err(error) => return Err(format!("notification name acquisition failed: {error}")),
+            Ok(reply) => {
+                return Err(format!(
+                    "unexpected notification ownership reply: {reply:?}"
+                ));
+            }
+        };
     }
     Ok((service, connection))
 }
