@@ -5,6 +5,9 @@
 //! stay entirely the shell's own reload handling.
 
 use std::{
+    env,
+    ffi::OsStr,
+    path::{Path, PathBuf},
     process::{Child, ExitStatus},
     sync::{
         Arc, Mutex, MutexGuard,
@@ -15,7 +18,10 @@ use std::{
 };
 
 use knave_config::{Config, ConfigDocument, WallpaperFit};
-use knave_desktop_api::{DesktopEvent, DesktopSubscription, SubscriptionCancel};
+use knave_desktop_api::{
+    DesktopEvent, DesktopSubscription, SOCKET_ENVIRONMENT_VARIABLE, SubscriptionCancel,
+    socket_path_for_display,
+};
 
 use crate::SessionError;
 
@@ -37,11 +43,28 @@ pub(super) struct AssignmentSlot {
     child: Mutex<Option<Child>>,
     cancel: Mutex<Option<SubscriptionCancel>>,
     stopped: AtomicBool,
+    display: Mutex<String>,
 }
 
 impl AssignmentSlot {
     pub(super) fn new() -> Self {
-        Self::default()
+        Self {
+            child: Mutex::new(None),
+            cancel: Mutex::new(None),
+            stopped: AtomicBool::new(false),
+            display: Mutex::new(String::new()),
+        }
+    }
+
+    /// Records the compositor display the subscription follows. A compositor
+    /// restart may return a different display; the next reconnect picks it
+    /// up.
+    pub(super) fn retarget(&self, display: &str) {
+        *self.display.lock().unwrap() = display.to_owned();
+    }
+
+    fn current_display(&self) -> String {
+        self.display.lock().unwrap().clone()
     }
 
     /// Spawns per the startup or shell-respawn configuration; an unassigned
@@ -150,24 +173,40 @@ impl AssignmentSlot {
 
 /// The assignment thread is process-scoped: subscription breaks reconnect
 /// with the same backoff as the shell's reload worker, while the slot's
-/// stopped flag and revoke handle end the loop at shutdown.
-pub(super) fn thread(config: Config, display: String, slot: Arc<AssignmentSlot>) -> JoinHandle<()> {
+/// stopped flag and revoke handle end the loop at shutdown. The thread
+/// resolves the desktop socket itself: the session process environment does
+/// not carry the compositor display its children receive.
+pub(super) fn thread(
+    config: Config,
+    runtime: PathBuf,
+    slot: Arc<AssignmentSlot>,
+) -> JoinHandle<()> {
     thread::Builder::new()
         .name("knave-wallpaper-assignment".into())
-        .spawn(move || serve(config, display, slot))
+        .spawn(move || serve(config, runtime, slot))
         .expect("wallpaper assignment thread spawns")
 }
 
-fn serve(config: Config, display: String, slot: Arc<AssignmentSlot>) {
+/// Resolves the desktop socket the way clients do, but with the compositor
+/// display known to the session instead of from the environment.
+fn subscription_address(runtime: &Path, display: &str) -> PathBuf {
+    if let Some(override_path) = env::var_os(SOCKET_ENVIRONMENT_VARIABLE) {
+        return override_path.into();
+    }
+    socket_path_for_display(runtime.as_os_str(), OsStr::new(display))
+}
+
+fn serve(config: Config, runtime: PathBuf, slot: Arc<AssignmentSlot>) {
     let mut backoff = INITIAL_BACKOFF;
     let mut last_error: Option<String> = None;
     loop {
         if slot.stopped.load(Ordering::SeqCst) {
             return;
         }
+        let socket = subscription_address(&runtime, &slot.current_display());
         let connection: Result<(), String> = (|| {
             let mut subscription =
-                DesktopSubscription::connect().map_err(|error| error.to_string())?;
+                DesktopSubscription::connect_to_path(&socket).map_err(|error| error.to_string())?;
             let cancel = subscription
                 .cancel_handle()
                 .map_err(|error| error.to_string())?;
@@ -181,7 +220,9 @@ fn serve(config: Config, display: String, slot: Arc<AssignmentSlot>) {
                 ) {
                     match read_assignment() {
                         Ok(desired) => {
-                            if let Err(error) = slot.apply(&config, &display, desired.as_ref()) {
+                            if let Err(error) =
+                                slot.apply(&config, &slot.current_display(), desired.as_ref())
+                            {
                                 eprintln!(
                                     "knave-session: wallpaper assignment: {error}; retrying at the next reload"
                                 );

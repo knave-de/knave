@@ -79,7 +79,8 @@ pub fn run(config: Config) -> Result<(), SessionError> {
         terminate_child(&mut compositor);
         return Err(error);
     }
-    let _assignment = wallpaper_assignment::thread(config.clone(), display.clone(), slot.clone());
+    slot.retarget(&display);
+    let _assignment = wallpaper_assignment::thread(config.clone(), runtime.clone(), slot.clone());
 
     loop {
         if SHUTDOWN_REQUESTED.load(Ordering::SeqCst) {
@@ -111,6 +112,8 @@ pub fn run(config: Config) -> Result<(), SessionError> {
             compositor = new_compositor;
             display = new_display;
             shells = new_shells;
+            // The assignment subscription follows the possibly new display.
+            slot.retarget(&display);
             if let Err(error) = slot.reset(&config, &display) {
                 terminate_children(&mut shells);
                 terminate_child(&mut compositor);

@@ -6,7 +6,7 @@ use std::{
     io::{self, BufRead, BufReader, Read, Write},
     net::Shutdown,
     os::unix::net::UnixStream,
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::Duration,
 };
 
@@ -281,7 +281,14 @@ pub struct DesktopSubscription {
 }
 impl DesktopSubscription {
     pub fn connect() -> Result<Self, ClientError> {
-        let mut stream = UnixStream::connect(socket_path()?)?;
+        Self::connect_to_path(&socket_path()?)
+    }
+
+    /// Connects to an explicit desktop socket, for session-owned consumers
+    /// that resolve the compositor display themselves instead of through
+    /// the environment.
+    pub fn connect_to_path(path: &Path) -> Result<Self, ClientError> {
+        let mut stream = UnixStream::connect(path)?;
         stream.set_read_timeout(Some(Duration::from_secs(2)))?;
         stream.set_write_timeout(Some(Duration::from_secs(2)))?;
         serde_json::to_writer(&mut stream, &DesktopRequest::Subscribe)?;
@@ -364,6 +371,15 @@ fn next_response<R: BufRead>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_socket_connect_reports_missing_server() {
+        let directory = tempfile::tempdir().unwrap();
+        let error = DesktopSubscription::connect_to_path(&directory.path().join("absent.sock"))
+            .err()
+            .expect("connect to an absent socket fails");
+        assert!(!matches!(error, ClientError::MissingEnvironment(_)));
+    }
 
     #[test]
     fn request_is_one_json_line() {
