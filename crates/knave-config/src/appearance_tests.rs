@@ -65,9 +65,18 @@ fn shipped_appearance_examples_validate() {
     let config: Config = toml::from_str(include_str!("../../../config.example.toml")).unwrap();
     config.validate().unwrap();
     assert!(config.shell.start_overview_service);
+    // The example demonstrates one override; the modifier-release Overview
+    // toggle default stays active without a MOD entry.
     assert!(config.compositor.bind.iter().any(|binding| {
-        binding.keys == "MOD" && binding.dispatch == "toggle-overview" && binding.args.is_empty()
+        binding.keys == "MOD+Q" && binding.dispatch == "exec" && binding.args == ["bemenu-run"]
     }));
+    assert!(
+        !config
+            .compositor
+            .bind
+            .iter()
+            .any(|binding| binding.keys == "MOD")
+    );
     let reference = include_str!("../../../docs/architecture/window-appearance.md");
     let sample = reference
         .split("```toml\n")

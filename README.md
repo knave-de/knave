@@ -143,9 +143,9 @@ changes to a horizontal resize cursor. Default shortcuts are `MOD+Ctrl+Left`
 `MOD+Ctrl+R` (reset to the configured default). Each key press makes one step.
 `MOD` is the configured modkey, normally Super.
 
-Custom binding sets replace defaults. Append these entries to your existing
-configuration if you use custom bindings; change the keys or signed step size
-as desired:
+Custom bindings override the defaults with the same key combination. Append
+these entries to your existing configuration to use them; change the keys or
+signed step size as desired:
 
 ```toml
 [[compositor.bind]]
