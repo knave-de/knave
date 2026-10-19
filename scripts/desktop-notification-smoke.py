@@ -130,7 +130,7 @@ def main():
         check(len(state(bus)['notifications']) == 2, 'banner expiry retains history')
         shot('retained-unread-badge')
         open_center()
-        wait(lambda: not any(n['unread'] for n in state(bus)['notifications']), 'visible center entries become read')
+        wait(lambda: any(not n['unread'] for n in state(bus)['notifications']), 'visible center entries become read')
         shot('notification-history')
         # Focus starts on Close; keyboard traversal reaches DND without relying on layout coordinates.
         key('Tab', 'space')
@@ -198,6 +198,19 @@ def main():
         wait(lambda: not state(bus)['notifications'], 'Clear all works through shell control')
         shot('empty-history')
         close_center()
+        key('Super_L+Return')
+        wait(lambda: any(w['app_id'] == 'kitty' and w['focused'] for w in call('snapshot')['payload']['windows']), 'terminal focused before opening center')
+        open_center()
+        close_center()
+        notify(bus, 'Banners leave your keyboard alone', 'Keep working while a banner is visible.', timeout=1500)
+        import shlex
+        focus_file = directory / 'focus-restored.txt'
+        call('type', "printf 'focus restored' > " + shlex.quote(str(focus_file)))
+        key('Return')
+        wait(lambda: focus_file.exists() and focus_file.read_text() == 'focus restored', 'keyboard focus returns to application and passive banner does not steal it')
+        checks.append('center dismissal restores application input; passive banners retain focus')
+        shot('application-focus-restored')
+        key('Super_L+q')
         call('record-stop')
         standalone_checks(bundle, directory, session_env, checks)
         (directory / 'notification-result.json').write_text(json.dumps(dict(passed=True, assertions=checks, resources=resources, bundle=str(bundle), size=args.size, light=args.light, high_contrast=args.high_contrast), indent=2)+'\n')
