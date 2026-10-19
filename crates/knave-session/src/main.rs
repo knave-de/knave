@@ -16,9 +16,8 @@ fn run() -> Result<(), String> {
             let document = ConfigDocument::at_default_path().map_err(|error| error.to_string())?;
             let config = document.config();
             println!(
-                "valid {} (schema {}, backend {:?}, compositor {}, shell {})",
+                "valid {} (backend {:?}, compositor {}, shell {})",
                 document.path().display(),
-                config.schema_version,
                 config.session.backend,
                 config.session.compositor_binary,
                 config.session.shell_binary

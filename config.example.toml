@@ -1,9 +1,7 @@
-# Knave configuration schema 2
+# Knave configuration
 #
 # Copy to ~/.config/knave/config.toml or run:
 #   knave config init
-
-schema_version = 2
 
 [compositor]
 # Villain consumes this typed projection; it does not own a second config file.

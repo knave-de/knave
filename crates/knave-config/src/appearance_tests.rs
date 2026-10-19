@@ -7,8 +7,7 @@ fn appearance_writes_preserve_nested_unknown_and_inline_tables() {
     let path = directory.path().join("config.toml");
     fs::write(
         &path,
-        r##"schema_version = 2
-[compositor.appearance]
+        r##"[compositor.appearance]
 custom = "keep"
 focused = { opacity = 80, future = 42, blur = { enabled = true, radius = 6, custom = 9 } }
 [compositor.appearance.gaps.outer]

@@ -56,10 +56,10 @@ The canonical user configuration is:
 Settings are initially a typed API and interface for reading and modifying
 this file, not a second canonical persistence system.
 
-Configuration must be schema-versioned, typed, validated, written atomically,
-and migrated explicitly. Preserve user-defined values, bindings, and unknown
-source data during migration. Never silently overwrite or delete source
-Villain configuration.
+Configuration must be typed, validated, and written atomically. Preserve
+user-defined values, bindings, and unknown source data during settings writes.
+The project is unreleased: use the current configuration format directly,
+without schema version fields or compatibility paths for earlier formats.
 
 Components consume typed configuration projections supplied by Knave. They do
 not create competing user-facing configuration files. Runtime state belongs in
@@ -68,8 +68,7 @@ the Knave runtime directory or session service, not in persistent configuration.
 ## Package versions and shared contracts
 
 Cargo package and binary versions identify project builds. Configuration files
-keep a schema version because Knave migrates persistent user data. The Knave
-desktop API has no separate major/minor version or negotiation field; Knave,
+and the Knave desktop API have no separate version or negotiation field; Knave,
 Villain, Shell, and the portal backend update its consumers together. Do not
 retain compatibility branches for unreleased contract shapes or document those
 shapes as supported combinations.
