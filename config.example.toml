@@ -10,6 +10,11 @@ modkey = "Super"
 master_percent = 50
 environment_file = "environment"
 
+# Opt in to skipping empty slots for next/previous shortcuts and workspace swipes.
+# Number shortcuts and bar clicks can still select any workspace.
+[compositor.workspace]
+skip_empty = false
+
 [compositor.input]
 tap_to_click = true
 natural_scroll = true

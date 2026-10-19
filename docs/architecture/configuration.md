@@ -177,3 +177,25 @@ configuration. A successful reload cancels any active swipe before replacing
 bindings; failed validation leaves the running configuration intact.
 These are Villain actions, not knavectl commands. See the
 [gesture decision](decisions/0010-workspace-swipes.md).
+
+## Workspace cycling
+
+```toml
+[compositor.workspace]
+skip_empty = true
+```
+
+The optional boolean defaults to false. When enabled, next/previous shortcuts
+and workspace swipes visit only workspaces with managed windows, including
+minimized windows, and wrap by workspace number. From an empty workspace they
+select the next occupied workspace in the requested direction. With no other
+occupied workspace they do nothing. Explicit number shortcuts, bar clicks and
+workspace commands still select empty slots. Closing the last window does not
+automatically leave its workspace. Reload changes the policy and cancels an
+active swipe; invalid values retain the running configuration.
+
+Swipe previews keep their target for the current travel direction. New windows
+in an intervening slot do not change an in-progress preview. Reversal selects a
+new target in the other direction. If the previewed workspace becomes empty,
+the gesture is cancelled and its remaining events are consumed.
+See [the decision](decisions/0011-skip-empty-workspaces.md).
