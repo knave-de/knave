@@ -8,6 +8,29 @@ Knave Shell/UI stack. Villain owns compositor and window-manager behavior.
 Keep those responsibilities separate unless an explicit architecture decision
 changes the boundary.
 
+## Required workspace flow for all edits
+
+All repository changes, including code, configuration, scripts, tests,
+documentation and `AGENTS.md` edits, must use the managed
+[development workspace flow](docs/dev-workflow.md). Read-only investigation may
+use the source checkouts; edits and commits belong in feature worktrees.
+Creating a branch in a source checkout does not satisfy this requirement.
+
+Before the first edit, create a workspace from the Knave checkout with
+`./knave-dev create FEATURE --change REPO`, repeating `--change` for every
+repository you intend to edit. An existing managed workspace may be reused
+only when its manifest selects all affected repositories for changes. Check
+`workspace.json`, the current branches and Git status before editing. If an
+additional repository is needed, create a new workspace with that repository
+selected; do not edit a detached dependency worktree or silently move its pin.
+Preserve the source checkouts, their branches and unrelated work.
+
+Edit, commit and run checks inside the selected feature worktrees. For runtime
+or coordinated component changes, use the managed build, frozen bundle, nested
+test and verification steps before handoff. For documentation-only edits,
+review the diff and run `git diff --check`; a binary rebuild is unnecessary.
+Keep existing verified bundles immutable and leave running user sessions alone.
+
 ## Mandatory startup
 
 Before editing:
