@@ -225,8 +225,17 @@ pub struct CompositorBinding {
     pub args: Vec<String>,
 }
 
+/// Policy for next/previous navigation; explicit workspace selection is unaffected.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CompositorWorkspaceConfig {
+    #[serde(default)]
+    pub skip_empty: bool,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CompositorConfig {
+    #[serde(default)]
+    pub workspace: CompositorWorkspaceConfig,
     #[serde(default)]
     pub gesture: gesture::GestureConfig,
     #[serde(default)]
@@ -258,6 +267,7 @@ fn default_modkey() -> String {
 impl Default for CompositorConfig {
     fn default() -> Self {
         Self {
+            workspace: CompositorWorkspaceConfig::default(),
             gesture: gesture::GestureConfig::default(),
             appearance: WindowAppearance::default(),
             master_percent: default_master_percent(),
@@ -689,6 +699,9 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
         "appearance",
         appearance.as_table(),
     );
+    let mut workspace = Table::new();
+    workspace["skip_empty"] = value(config.compositor.workspace.skip_empty);
+    merge_known_table(&mut document["compositor"], "workspace", &workspace);
     gesture::write(&mut document["compositor"], &config.compositor.gesture);
     let mut bindings = ArrayOfTables::new();
     for binding in &config.compositor.bind {
@@ -972,6 +985,40 @@ mod tests {
                 .image
                 .is_none()
         );
+    }
+
+    #[test]
+    fn workspace_navigation_defaults_and_round_trip_preserve_source() {
+        assert!(!Config::default().compositor.workspace.skip_empty);
+        for (name, source) in [
+            (
+                "table",
+                "[compositor.workspace]\nskip_empty = true\nfuture_option = 42\n",
+            ),
+            (
+                "inline",
+                "compositor = { workspace = {skip_empty = true, future_option = 42} }\n",
+            ),
+        ] {
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join(format!("{name}.toml"));
+            fs::write(&path, source).unwrap();
+            let mut document = ConfigDocument::load(&path).unwrap();
+            assert!(document.config().compositor.workspace.skip_empty);
+            let mut config = document.config().clone();
+            config.compositor.workspace.skip_empty = false;
+            document.write(config).unwrap();
+            assert!(document.source().contains("future_option = 42"));
+            assert!(
+                !ConfigDocument::load(path)
+                    .unwrap()
+                    .config()
+                    .compositor
+                    .workspace
+                    .skip_empty
+            );
+        }
+        assert!(toml::from_str::<Config>("[compositor.workspace]\nskip_empty = 'true'\n").is_err());
     }
 
     #[test]

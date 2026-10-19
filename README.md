@@ -200,3 +200,8 @@ Panels and the cursor stay stationary. See the
 Override entries under `[[compositor.gesture.bind]]` by fingers and direction;
 `action = "none"` disables the matching compositor gesture. These are Villain
 actions, not knavectl commands. Reload applies validated changes atomically.
+
+To skip empty slots when cycling with next/previous shortcuts or swipes, set
+`skip_empty = true` under `[compositor.workspace]` and reload. It defaults to
+false; direct number/bar selection still reaches empty slots. Minimized windows
+count as occupancy. Closing the last window leaves you on the current workspace.
