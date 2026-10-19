@@ -10,13 +10,20 @@ use std::{
     os::unix::fs::FileTypeExt,
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus, Stdio},
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     thread,
     time::{Duration, Instant},
 };
 
 use knave_config::{Config, ConfigDocument, SessionBackend};
 use thiserror::Error;
+
+use crate::wallpaper_assignment::AssignmentSlot;
+
+mod wallpaper_assignment;
 
 const SOCKET_WAIT: Duration = Duration::from_secs(10);
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -80,10 +87,19 @@ pub fn run(config: Config) -> Result<(), SessionError> {
     let runtime = runtime_directory()?;
     let mut restarts = 0;
     let mut before = wayland_sockets(&runtime)?;
+    let slot = Arc::new(AssignmentSlot::new());
     let (mut compositor, mut display, mut shells) = start_components(&config, &runtime, &before)?;
+    if let Err(error) = slot.reset(&config, &display) {
+        terminate_children(&mut shells);
+        terminate_child(&mut compositor);
+        return Err(error);
+    }
+    slot.retarget(&display);
+    let _assignment = wallpaper_assignment::thread(config.clone(), runtime.clone(), slot.clone());
 
     loop {
         if SHUTDOWN_REQUESTED.load(Ordering::SeqCst) {
+            slot.shutdown();
             terminate_children(&mut shells);
             terminate_child(&mut compositor);
             return Ok(());
@@ -93,6 +109,9 @@ pub fn run(config: Config) -> Result<(), SessionError> {
             .try_wait()
             .map_err(|error| SessionError::Process(format!("villain wait failed: {error}")))?
         {
+            // The wallpaper surface belongs to the dead compositor; hand it
+            // back to the reaper before any restart attempt.
+            slot.disown();
             terminate_children(&mut shells);
             if !config.session.restart_on_failure || restarts >= MAX_RESTARTS {
                 return Err(SessionError::EarlyExit {
@@ -108,6 +127,13 @@ pub fn run(config: Config) -> Result<(), SessionError> {
             compositor = new_compositor;
             display = new_display;
             shells = new_shells;
+            // The assignment subscription follows the possibly new display.
+            slot.retarget(&display);
+            if let Err(error) = slot.reset(&config, &display) {
+                terminate_children(&mut shells);
+                terminate_child(&mut compositor);
+                return Err(error);
+            }
         }
 
         let mut shell_exit = None;
@@ -120,6 +146,9 @@ pub fn run(config: Config) -> Result<(), SessionError> {
                 shell_exit = Some((managed.role, status));
                 break;
             }
+        }
+        if shell_exit.is_none() {
+            shell_exit = slot.exited()?.map(|status| ("wallpaper", status));
         }
         if let Some((role, status)) = shell_exit {
             terminate_children(&mut shells);
@@ -139,15 +168,20 @@ pub fn run(config: Config) -> Result<(), SessionError> {
                     return Err(error);
                 }
             };
+            if let Err(error) = slot.reset(&config, &display) {
+                terminate_children(&mut shells);
+                terminate_child(&mut compositor);
+                return Err(error);
+            }
         }
 
         thread::sleep(POLL_INTERVAL);
     }
 }
 
-struct ManagedChild {
-    role: &'static str,
-    child: Child,
+pub(crate) struct ManagedChild {
+    pub(crate) role: &'static str,
+    pub(crate) child: Child,
 }
 
 fn start_components(
@@ -245,12 +279,8 @@ fn spawn_shells(config: &Config, display: &str) -> Result<Vec<ManagedChild>, Ses
             Err(error) => return Err(cleanup_shell_startup(shells, error)),
         }
     }
-    if config.shell.wallpaper.image.is_some() {
-        match spawn_shell(config, "wallpaper", display) {
-            Ok(shell) => shells.push(shell),
-            Err(error) => return Err(cleanup_shell_startup(shells, error)),
-        }
-    }
+    // The wallpaper child lives in the assignment slot; the assignment
+    // thread and reload events manage it after startup.
     Ok(shells)
 }
 
@@ -307,7 +337,7 @@ fn cleanup_shell_startup(mut shells: Vec<ManagedChild>, error: SessionError) -> 
     error
 }
 
-fn spawn_shell(
+pub(crate) fn spawn_shell(
     config: &Config,
     role: &'static str,
     display: &str,
@@ -417,7 +447,7 @@ fn terminate_children(children: &mut Vec<ManagedChild>) {
     children.clear();
 }
 
-fn terminate_child(child: &mut Child) {
+pub(crate) fn terminate_child(child: &mut Child) {
     #[cfg(unix)]
     {
         let _ = unsafe { libc::kill(child.id() as libc::pid_t, libc::SIGTERM) };

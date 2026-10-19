@@ -5,10 +5,10 @@ pub mod notifications;
 use std::{
     env,
     ffi::OsStr,
-    io::{self, BufRead, BufReader, Write},
+    io::{self, BufRead, BufReader, Read, Write},
     net::Shutdown,
     os::unix::net::UnixStream,
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::Duration,
 };
 
@@ -135,31 +135,43 @@ pub enum DesktopRequest {
     },
 }
 
+/// Interleaved notification frames. Subscription connections emit a snapshot
+/// before any event and coalesce events raised while one is still unread.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum DesktopResponse {
     Ok,
     Snapshot(DesktopSnapshot),
+    /// An interleaved `DesktopEvent` on a subscription connection.
+    Event(DesktopEvent),
     Windows(Vec<WindowSummary>),
     Workspaces(Vec<WorkspaceSummary>),
     Devices(Vec<DeviceSummary>),
     ActiveWindow(Option<WindowSummary>),
     ActiveWorkspace(WorkspaceId),
     WorkspacePreview(WorkspacePreview),
-    Version { component: String },
+    Version {
+        component: String,
+    },
     Error(DesktopError),
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "event", content = "payload", rename_all = "snake_case")]
+#[serde(tag = "event", content = "payload", rename_all = "kebab-case")]
 pub enum DesktopEvent {
-    SnapshotChanged { generation: u64 },
+    /// The compositor published a replacement desktop snapshot.
+    SnapshotChanged {
+        generation: u64,
+    },
     WindowOpened(WindowSummary),
     WindowClosed(WindowId),
     WindowFocused(Option<WindowId>),
     WindowMinimized(WindowId),
     WindowRestored(WindowId),
     WorkspaceChanged(WorkspaceId),
+    /// A completed compositor configuration reload, emitted after Villain has
+    /// applied the revalidated settings. Sent only to open subscriptions;
+    /// events are not replayed to later subscribers.
     ConfigurationReloaded,
 }
 
@@ -259,9 +271,11 @@ impl SubscriptionCancel {
     }
 }
 
-/// Snapshot stream. The first frame is a complete initial state;
+/// Subscription stream. The first frame is a complete initial state;
 /// subsequent frames replace it. Intermediate states may be coalesced.
-/// Use a separate DesktopClient for commands and preview requests.
+/// Event frames are interleaved and carry no snapshot state; consume them
+/// with `next_event`, or let `next_snapshot` skip them. Use a separate
+/// DesktopClient for commands and preview requests.
 pub struct DesktopSubscription {
     reader: BufReader<UnixStream>,
     initial: Option<DesktopSnapshot>,
@@ -269,7 +283,14 @@ pub struct DesktopSubscription {
 }
 impl DesktopSubscription {
     pub fn connect() -> Result<Self, ClientError> {
-        let mut stream = UnixStream::connect(socket_path()?)?;
+        Self::connect_to_path(&socket_path()?)
+    }
+
+    /// Connects to an explicit desktop socket, for session-owned consumers
+    /// that resolve the compositor display themselves instead of through
+    /// the environment.
+    pub fn connect_to_path(path: &Path) -> Result<Self, ClientError> {
+        let mut stream = UnixStream::connect(path)?;
         stream.set_read_timeout(Some(Duration::from_secs(2)))?;
         stream.set_write_timeout(Some(Duration::from_secs(2)))?;
         serde_json::to_writer(&mut stream, &DesktopRequest::Subscribe)?;
@@ -279,7 +300,7 @@ impl DesktopSubscription {
             initial: None,
             poisoned: false,
         };
-        subscription.initial = Some(subscription.read_snapshot()?);
+        subscription.initial = Some(subscription.next_snapshot()?);
         // A healthy idle desktop sends nothing. Cancellation shuts down this socket.
         subscription.reader.get_ref().set_read_timeout(None)?;
         Ok(subscription)
@@ -292,44 +313,75 @@ impl DesktopSubscription {
     pub fn next_snapshot(&mut self) -> Result<DesktopSnapshot, ClientError> {
         match self.initial.take() {
             Some(snapshot) => Ok(snapshot),
-            None => self.read_snapshot(),
+            None => loop {
+                match self.read_frame()? {
+                    DesktopResponse::Event(_) => continue,
+                    DesktopResponse::Snapshot(snapshot) => break Ok(snapshot),
+                    _ => break Err(ClientError::UnexpectedResponse),
+                }
+            },
         }
     }
 
-    fn read_snapshot(&mut self) -> Result<DesktopSnapshot, ClientError> {
-        use std::io::Read;
-        if self.poisoned {
-            return Err(ClientError::FrameTooLarge);
+    /// Blocks until an event frame arrives, skipping snapshot frames. Events
+    /// raise while any earlier event unread are coalesced by the sender, so
+    /// this returns the newest pending event, not a sequence.
+    pub fn next_event(&mut self) -> Result<DesktopEvent, ClientError> {
+        loop {
+            match self.read_frame()? {
+                DesktopResponse::Event(event) => break Ok(event),
+                DesktopResponse::Snapshot(_) => continue,
+                _ => break Err(ClientError::UnexpectedResponse),
+            }
         }
-        let mut line = String::new();
-        let bytes = self
-            .reader
-            .by_ref()
-            .take(MAX_SNAPSHOT_FRAME_BYTES + 1)
-            .read_line(&mut line)?;
-        if bytes == 0 {
-            return Err(ClientError::Disconnected);
-        }
-        if bytes as u64 > MAX_SNAPSHOT_FRAME_BYTES {
-            // The unread tail still belongs to this frame; it cannot be parsed safely.
-            self.poisoned = true;
-            let _ = self.reader.get_ref().shutdown(Shutdown::Both);
-            return Err(ClientError::FrameTooLarge);
-        }
-        if !line.ends_with('\n') {
-            return Err(ClientError::Disconnected);
-        }
-        match serde_json::from_str(&line)? {
-            DesktopResponse::Snapshot(snapshot) => Ok(snapshot),
-            DesktopResponse::Error(error) => Err(ClientError::Remote(error)),
-            _ => Err(ClientError::UnexpectedResponse),
-        }
+    }
+
+    fn read_frame(&mut self) -> Result<DesktopResponse, ClientError> {
+        next_response(&mut self.reader, &mut self.poisoned)
+    }
+}
+
+/// Reads one newline-terminated JSON response frame. The caller owns the
+/// poisoned flag because an oversized frame cannot be recovered from a stream.
+fn next_response<R: BufRead>(
+    reader: &mut R,
+    poisoned: &mut bool,
+) -> Result<DesktopResponse, ClientError> {
+    if *poisoned {
+        return Err(ClientError::FrameTooLarge);
+    }
+    let mut line = String::new();
+    let mut taken = reader.by_ref().take(MAX_SNAPSHOT_FRAME_BYTES + 1);
+    let bytes = taken.read_line(&mut line)?;
+    if bytes == 0 {
+        return Err(ClientError::Disconnected);
+    }
+    if bytes as u64 > MAX_SNAPSHOT_FRAME_BYTES {
+        // The unread tail still belongs to this frame; it cannot be parsed safely.
+        *poisoned = true;
+        return Err(ClientError::FrameTooLarge);
+    }
+    if !line.ends_with('\n') {
+        return Err(ClientError::Disconnected);
+    }
+    match serde_json::from_str(&line)? {
+        DesktopResponse::Error(error) => Err(ClientError::Remote(error)),
+        response => Ok(response),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_socket_connect_reports_missing_server() {
+        let directory = tempfile::tempdir().unwrap();
+        let error = DesktopSubscription::connect_to_path(&directory.path().join("absent.sock"))
+            .err()
+            .expect("connect to an absent socket fails");
+        assert!(!matches!(error, ClientError::MissingEnvironment(_)));
+    }
 
     #[test]
     fn request_is_one_json_line() {
@@ -366,6 +418,46 @@ mod tests {
             r#"{"type":"version","payload":{"component":"villain 0.1.0"}}"#
         );
         assert!(!encoded.contains("protocol"));
+    }
+
+    #[test]
+    fn event_frames_are_one_json_line() {
+        let encoded =
+            serde_json::to_string(&DesktopResponse::Event(DesktopEvent::ConfigurationReloaded))
+                .unwrap();
+        assert_eq!(
+            encoded,
+            r#"{"type":"event","payload":{"event":"configuration-reloaded"}}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<DesktopResponse>(&encoded).unwrap(),
+            DesktopResponse::Event(DesktopEvent::ConfigurationReloaded)
+        );
+    }
+
+    #[test]
+    fn snapshot_readers_skip_interleaved_event_frames() {
+        let snapshot = DesktopSnapshot {
+            generation: 2,
+            overview_visible: false,
+            workspaces: Vec::new(),
+            windows: Vec::new(),
+        };
+        let (mut writer, reader) = UnixStream::pair().unwrap();
+        for frame in [
+            DesktopResponse::Event(DesktopEvent::ConfigurationReloaded),
+            DesktopResponse::Snapshot(snapshot.clone()),
+        ] {
+            serde_json::to_writer(&writer, &frame).unwrap();
+            writer.write_all(b"\n").unwrap();
+        }
+        let mut subscription = DesktopSubscription {
+            reader: BufReader::new(reader),
+            initial: Some(snapshot),
+            poisoned: false,
+        };
+        assert_eq!(subscription.next_snapshot().unwrap().generation, 2);
+        assert!(subscription.next_event().unwrap() == DesktopEvent::ConfigurationReloaded);
     }
 
     #[test]

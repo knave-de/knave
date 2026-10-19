@@ -173,7 +173,8 @@ def main():
         import knave_dev_tty as tty
 
         tty.reload_config(state, args.feature)
-        print('Configuration reloaded. Startup settings need a session restart.')
+        print('Configuration reloaded; wallpaper assignment is included.')
+        print('Other startup-only settings still need a session restart.')
     elif args.command == 'tty':
         import knave_dev_tty as tty
 

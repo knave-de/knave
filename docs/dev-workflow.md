@@ -83,9 +83,10 @@ require a rebuild and do not extend its original automated verification.
 
 Compositor layout, bindings, appearance and input settings support reload.
 Environment changes affect newly launched applications, not existing processes.
-Session settings, shell process startup and wallpaper startup need a restart:
-exit the test desktop, then run `./knave-dev session FEATURE` again. Restarting
-also selects the feature's latest verified build. Nested previews need
+Wallpaper image and fit reload with the compositor settings. Session settings,
+shell process startup and starting a wallpaper where none was configured need a
+restart: exit the test desktop, then run `./knave-dev session FEATURE` again.
+Restarting also selects the feature's latest verified build. Nested previews need
 `session FEATURE --stop` followed by `session FEATURE --nested` to apply changes.
 
 `session FEATURE --config /path/to/config.toml` explicitly overrides the feature

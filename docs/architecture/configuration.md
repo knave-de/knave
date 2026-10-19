@@ -68,16 +68,31 @@ configured default. Restart discards all overrides. To roll back, restore the
 previous Villain binary and remove `resize-master`/`reset-master` entries from
 custom bindings; the new percentage key may remain for a later upgrade.
 
+## Focus switching
+
+The additive `[compositor] focus_cycle_order` setting selects the order
+`focus-next`/`focus-previous` shortcuts walk a workspace's windows: `layout`
+(master, then stack top to bottom) or `mru` (most recently focused first).
+Default `layout`; both directions wrap. The
+`[compositor.input]` table gains `focus_follows_mouse` (default true): when
+true, moving the pointer onto a window switches keyboard focus; when false,
+window focus changes on click only. Both keys are consumed by Villain's
+`feat/focus-switching` change; consumers using complete `CompositorConfig`
+literals need the new fields, and the Knave configuration library must deploy
+before the matching Villain dependency pin.
+
 ## Input devices
 
 The additive `[compositor.input]` table sets the global touchpad policy:
-`tap_to_click` and `natural_scroll`, both defaulting to true. Per-device
+`tap_to_click`, `natural_scroll`, and `focus_follows_mouse`, all defaulting
+to true. Per-device
 overrides use one or more `[[compositor.device]]` rules:
 
 ```toml
 [compositor.input]
 tap_to_click = true
 natural_scroll = true
+focus_follows_mouse = true
 
 [[compositor.device]]
 name = "Example Touchpad"
@@ -142,8 +157,11 @@ fit = "cover"
 
 `cover` fills the screen with a centered crop; `contain` shows the full image
 with black bars; `stretch` fills the screen and may distort it. PNG is supported;
-convert other formats first. Omit `image` to return to black. Restart the session
-to apply changes. See [ownership and limits](decisions/0008-static-wallpaper.md).
+convert other formats first. Omit `image` to return to black. Wallpaper
+changes — a new assignment, a cleared one, and image or fit changes — apply
+on `knavectl reload` without a session restart; the session spawns or stops
+the wallpaper process as part of the assignment. See
+[ownership and limits](decisions/0008-static-wallpaper.md).
 
 ## Desktop theme
 

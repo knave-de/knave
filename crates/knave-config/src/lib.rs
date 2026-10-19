@@ -106,12 +106,35 @@ impl Default for ShellConfig {
         }
     }
 }
+/// Walk order that focus-switching cycle shortcuts use across windows.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FocusCycleOrder {
+    /// Master first, then stack windows top to bottom: the visible layout order.
+    Layout,
+    /// Most recently focused window first.
+    Mru,
+}
+
+impl FocusCycleOrder {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Layout => "layout",
+            Self::Mru => "mru",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CompositorInputConfig {
     #[serde(default = "default_true")]
     pub tap_to_click: bool,
     #[serde(default = "default_true")]
     pub natural_scroll: bool,
+    /// Move keyboard focus to the window under the pointer while it moves.
+    /// `false` keeps focus on click only.
+    #[serde(default = "default_true")]
+    pub focus_follows_mouse: bool,
 }
 
 impl Default for CompositorInputConfig {
@@ -119,6 +142,7 @@ impl Default for CompositorInputConfig {
         Self {
             tap_to_click: true,
             natural_scroll: true,
+            focus_follows_mouse: true,
         }
     }
 }
@@ -246,6 +270,9 @@ pub struct CompositorConfig {
     pub master_percent: u8,
     #[serde(default = "default_modkey")]
     pub modkey: String,
+    /// Order focus-switching cycle shortcuts walk a workspace's windows in.
+    #[serde(default = "default_focus_cycle_order")]
+    pub focus_cycle_order: FocusCycleOrder,
     #[serde(default)]
     pub environment_file: Option<String>,
     #[serde(default)]
@@ -265,6 +292,10 @@ fn default_modkey() -> String {
     "Super".into()
 }
 
+fn default_focus_cycle_order() -> FocusCycleOrder {
+    FocusCycleOrder::Layout
+}
+
 impl Default for CompositorConfig {
     fn default() -> Self {
         Self {
@@ -273,6 +304,7 @@ impl Default for CompositorConfig {
             appearance: WindowAppearance::default(),
             master_percent: default_master_percent(),
             modkey: default_modkey(),
+            focus_cycle_order: default_focus_cycle_order(),
             environment_file: None,
             input: CompositorInputConfig::default(),
             device: Vec::new(),
@@ -628,6 +660,12 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
         "modkey",
         value(config.compositor.modkey.clone()),
     );
+    set_table_value(
+        document,
+        "compositor",
+        "focus_cycle_order",
+        value(config.compositor.focus_cycle_order.as_str()),
+    );
     if let Some(environment_file) = &config.compositor.environment_file {
         set_table_value(
             document,
@@ -646,6 +684,7 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
             let mut input = Table::new();
             input["tap_to_click"] = value(config.compositor.input.tap_to_click);
             input["natural_scroll"] = value(config.compositor.input.natural_scroll);
+            input["focus_follows_mouse"] = value(config.compositor.input.focus_follows_mouse);
             input
         }),
     );
@@ -856,6 +895,35 @@ fn config_path() -> Result<PathBuf, ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compositor_policy_defaults_validate_and_preserve_unknown_options() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(
+            &path,
+            "[compositor]\nunknown_option = 7\n[compositor.input]\nunknown_input = true\n",
+        )
+        .unwrap();
+        let mut document = ConfigDocument::load(&path).unwrap();
+        assert_eq!(
+            document.config().compositor.focus_cycle_order,
+            FocusCycleOrder::Layout
+        );
+        assert!(document.config().compositor.input.focus_follows_mouse);
+        let mut config = document.config().clone();
+        config.compositor.focus_cycle_order = FocusCycleOrder::Mru;
+        config.compositor.input.focus_follows_mouse = false;
+        document.write(config).unwrap();
+        let reloaded = ConfigDocument::load(&path).unwrap();
+        assert_eq!(
+            reloaded.config().compositor.focus_cycle_order,
+            FocusCycleOrder::Mru
+        );
+        assert!(!reloaded.config().compositor.input.focus_follows_mouse);
+        assert!(document.source().contains("unknown_option = 7"));
+        assert!(document.source().contains("focus_follows_mouse = false"));
+    }
 
     #[test]
     fn master_percentage_defaults_validates_and_round_trips() {
