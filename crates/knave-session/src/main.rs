@@ -5,12 +5,14 @@ use knave_config::ConfigDocument;
 fn usage() -> &'static str {
     "usage:
   knave-session start
-  knave-session check"
+  knave-session check
+  knave-session notifications"
 }
 
 fn run() -> Result<(), String> {
     match std::env::args().nth(1).as_deref() {
         Some("--help") | Some("-h") => println!("{}", usage()),
+        Some("notifications") => knave_session::notifications::run_default()?,
         Some("start") => knave_session::run_default().map_err(|error| error.to_string())?,
         Some("check") => {
             let document = ConfigDocument::at_default_path().map_err(|error| error.to_string())?;

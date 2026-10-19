@@ -13,6 +13,7 @@ use toml_edit::{Array, ArrayOfTables, DocumentMut, Item, Table, value};
 
 pub mod appearance;
 pub mod gesture;
+pub mod notifications;
 pub use appearance::WindowAppearance;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -385,6 +386,8 @@ impl Default for PortalConfig {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct Config {
     #[serde(default)]
+    pub notifications: notifications::NotificationConfig,
+    #[serde(default)]
     pub portal: PortalConfig,
     #[serde(default)]
     pub appearance: AppearanceConfig,
@@ -398,6 +401,7 @@ pub struct Config {
 
 impl Config {
     pub fn validate(&self) -> Result<(), ConfigError> {
+        self.notifications.validate()?;
         let accent: Vec<_> = self
             .portal
             .accent_color
@@ -572,6 +576,7 @@ impl ConfigDocument {
 }
 
 fn apply_config(document: &mut DocumentMut, config: &Config) {
+    notifications::apply(document, &config.notifications);
     // Harness/config serializers may normalize the projection to an inline table.
     if let Some(table) = document
         .get("compositor")

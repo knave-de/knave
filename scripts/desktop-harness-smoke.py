@@ -42,7 +42,9 @@ def main():
         call('record-start', 'computer-use-demo')
         call('key', 'Super_L')
         wait_snapshot(lambda s: s['overview_visible'])
-        call('click', '460', '54')
+        # The overview projects the desktop bar, so the search field starts
+        # below it. Click the field itself to focus it.
+        call('click', '460', '90')
         call('type', 'kitty')
         # Give the asynchronous app catalog time to filter before taking evidence.
         time.sleep(1)

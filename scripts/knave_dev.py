@@ -459,6 +459,7 @@ def bundle(state, name):
                 'desktop-harness.py',
                 'desktop-harness-smoke.py',
                 'desktop-gesture-smoke.py',
+                'desktop-notification-smoke.py',
                 'knave_dev.py',
                 'knave-dev.py',
                 'knave_dev_tty.py',

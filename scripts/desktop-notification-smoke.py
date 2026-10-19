@@ -1,0 +1,371 @@
+#!/usr/bin/env python3
+"""Verify notification delivery, persistence and actual shell interaction on a frozen bundle."""
+import argparse
+import base64
+import struct
+import zlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import signal
+import subprocess
+import time
+from gi.repository import Gio, GLib
+
+STANDARD = 'org.freedesktop.Notifications'
+CONTROL = 'org.knave.Notifications'
+
+
+def connect(address):
+    return Gio.DBusConnection.new_for_address_sync(address, Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION, None, None)
+
+
+def invoke(bus, destination, path, interface, method, signature='()', values=()):
+    return bus.call_sync(destination, path, interface, method, GLib.Variant(signature, values), None, Gio.DBusCallFlags.NO_AUTO_START, 3000, None).unpack()
+
+
+def state(bus):
+    return json.loads(invoke(bus, CONTROL, '/org/knave/Notifications', CONTROL, 'Snapshot')[0])
+
+
+def command(bus, op, **values):
+    invoke(bus, CONTROL, '/org/knave/Notifications', CONTROL, 'Command', '(s)', (json.dumps(dict(op=op, **values)),))
+
+
+def notify(bus, summary, body='', app='Knave demo', app_id='org.knave.Demo', timeout=1500, actions=(), hints=None):
+    hints = dict(hints or {})
+    hints['desktop-entry'] = GLib.Variant('s', app_id)
+    return invoke(bus, STANDARD, '/org/freedesktop/Notifications', STANDARD, 'Notify', '(susssasa{sv}i)', (app, 0, 'dialog-information', summary, body, list(actions), hints, timeout))[0]
+
+
+def image_hint(width=240, height=120):
+    colors = [(242, 93, 98, 255), (88, 101, 242, 255), (65, 192, 133, 128), (255, 208, 85, 255)]
+    pixels = bytes(channel for y in range(height) for x in range(width) for channel in colors[min(3, x * 4 // width)])
+    return GLib.Variant('(iiibiiay)', (width, height, width * 4, True, 8, 4, pixels)), pixels
+
+
+def png_fixture(path):
+    width, height = 80, 160
+    pixels = bytes([65, 192, 133, 255] * width * height)
+    def chunk(kind, data):
+        return struct.pack('!I', len(data)) + kind + data + struct.pack('!I', zlib.crc32(kind + data))
+    rows = b''.join(b'\0' + pixels[y*width*4:(y+1)*width*4] for y in range(height))
+    path.write_bytes(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('!2I5B', width, height, 8, 6, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
+    return pixels
+
+
+def wait(predicate, label, seconds=10):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        context = GLib.MainContext.default()
+        while context.pending():
+            context.iteration(False)
+        try:
+            result = predicate()
+            if result:
+                return result
+        except GLib.Error:
+            pass
+        time.sleep(0.05)
+    raise AssertionError(label)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--run', type=Path, required=True)
+    parser.add_argument('--bundle', type=Path, required=True)
+    parser.add_argument('--display', default='96')
+    parser.add_argument('--size', default='1280x800')
+    parser.add_argument('--light', action='store_true')
+    parser.add_argument('--high-contrast', action='store_true')
+    args = parser.parse_args()
+    directory, bundle = args.run.resolve(), args.bundle.resolve()
+    spec = importlib.util.spec_from_file_location('notification_harness', Path(__file__).with_name('desktop-harness.py'))
+    harness = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(harness)
+    checks, resources = [], {}
+    width, height = map(int, args.size.split('x'))
+    config = directory.with_suffix('.toml')
+    with config.open('x') as output:
+        output.write(f'[appearance]\ntheme = "{"light" if args.light else "dark"}"\n[portal]\nhigh_contrast = {str(args.high_contrast).lower()}\n[notifications]\nbanner_timeout_ms = 1500\n')
+
+    def call(operation, *values):
+        return harness.request(directory, operation, list(values))
+
+    def check(condition, label):
+        if not condition:
+            raise AssertionError(label)
+        checks.append(label)
+
+    def shot(name):
+        time.sleep(0.25)
+        result = call('screenshot', name)
+        time.sleep(0.8)
+        return result
+
+    def key(*keys):
+        call('key', *keys)
+
+    def open_center():
+        call('click', width - 28, 18, 1)
+        wait(lambda: state(bus)['center_open'], 'bar bell opens center')
+        time.sleep(0.25)
+
+    def close_center():
+        key('Escape')
+        wait(lambda: not state(bus)['center_open'], 'Escape closes center')
+
+    def sample(pid):
+        base = Path('/proc') / str(pid)
+        fields = (base / 'stat').read_text().split(') ', 1)[1].split()
+        status = dict(line.split(':', 1) for line in (base / 'status').read_text().splitlines() if ':' in line)
+        return dict(ticks=int(fields[11]) + int(fields[12]), rss_kib=int(status['VmRSS'].split()[0]), threads=int(status['Threads']), fds=len(list((base / 'fd').iterdir())), context_switches=int(status['voluntary_ctxt_switches'])+int(status['nonvoluntary_ctxt_switches']), at=time.monotonic())
+
+    def sample_set():
+        return {str(pid): sample(pid) for pid in process_ids if Path(f'/proc/{pid}').exists()}
+
+    started = False
+    try:
+        subprocess.run(['python3', str(Path(__file__).with_name('desktop-harness.py')), '--run', str(directory), 'start', '--bundle', str(bundle), '--display', args.display, '--no-vnc', '--size', args.size, '--config', str(config)], check=True, capture_output=True, text=True, timeout=90)
+        started = True
+        session = call('status')['processes']['session']
+        raw = Path(f'/proc/{session}/environ').read_bytes().split(b'\0')
+        session_env = dict(entry.decode().split('=', 1) for entry in raw if b'=' in entry)
+        session_env['WAYLAND_DISPLAY'] = next(p.name for p in Path(session_env['XDG_RUNTIME_DIR']).glob('wayland-*') if p.is_socket())
+        bus = connect(session_env['DBUS_SESSION_BUS_ADDRESS'])
+        wait(lambda: state(bus)['owned'], 'Knave owns delivery')
+        check(state(bus)['notifications'] == [], 'fresh harness history is isolated')
+        process_ids = [session] + [int(p) for p in Path(f'/proc/{session}/task/{session}/children').read_text().split()]
+        resources['idle_before'] = sample_set()
+        time.sleep(2)
+        resources['idle_after'] = sample_set()
+        call('record-start', 'notifications-demo')
+        hint, pixels = image_hint()
+        picture = notify(bus, 'A picture arrived', 'The attached image keeps its colors, alpha and aspect ratio.', app='Image demo', app_id='org.knave.ImageDemo', timeout=0, hints={'image-data': hint})
+        image = next(n for n in state(bus)['notifications'] if n['id'] == picture)['image']
+        check(base64.b64decode(image['rgba']) == pixels, 'raw image preserves RGBA pixels')
+        summary = json.loads(invoke(bus, CONTROL, '/org/knave/Notifications', CONTROL, 'Summary')[0])
+        check(not any(n.get('image') for n in summary['notifications']), 'bar summary excludes image payloads')
+        shot('attached-image-banner')
+        open_center()
+        shot('attached-image-history')
+        close_center()
+        command(bus, 'clear')
+        path = directory / 'temporary picture.png'
+        expected = png_fixture(path)
+        portrait = notify(bus, 'A portrait attachment', 'This preview survives deletion of its temporary source file.', app='Image demo', app_id='org.knave.ImageDemo', timeout=0, hints={'image-path': GLib.Variant('s', path.as_uri())})
+        path.unlink()
+        image = next(n for n in state(bus)['notifications'] if n['id'] == portrait)['image']
+        check(base64.b64decode(image['rgba']) == expected, 'local file image is captured before its source disappears')
+        open_center()
+        shot('portrait-image-history')
+        close_center()
+        command(bus, 'set_dnd', enabled=True)
+        hint, _ = image_hint(320,320)
+        for index in range(12):
+            notify(bus, f'Image burst {index}', app='Image demo', app_id='org.knave.ImageDemo', timeout=1, hints={'image-data': hint})
+        images = state(bus)['notifications']
+        retained = sum(len(base64.b64decode(n['image']['rgba'])) for n in images if n.get('image'))
+        check(retained <= 4*1024*1024 and len(images) == 13, 'image memory capped without losing text notifications')
+        resources['images'] = sample_set()
+        command(bus, 'set_dnd', enabled=False)
+        command(bus, 'clear')
+        first = notify(bus, 'Your files are ready', '12 files copied to Documents.', app='Files', app_id='org.knave.Files')
+        second = notify(bus, 'Project review', 'The revised mockups are ready. This notification remains in history after its banner disappears.', app='Mail', app_id='org.knave.Mail')
+        wait(lambda: sum(n['unread'] for n in state(bus)['notifications']) == 2, 'unread count reaches two')
+        shot('banners-and-badge')
+        wait(lambda: not any(n['banner'] for n in state(bus)['notifications']), 'banners expire')
+        check(len(state(bus)['notifications']) == 2, 'banner expiry retains history')
+        shot('retained-unread-badge')
+        open_center()
+        wait(lambda: any(not n['unread'] for n in state(bus)['notifications']), 'visible center entries become read')
+        shot('notification-history')
+        # Focus starts on Close; keyboard traversal reaches DND without relying on layout coordinates.
+        key('Tab', 'space')
+        wait(lambda: state(bus)['dnd'], 'DND toggled through actual shell button')
+        close_center()
+        notify(bus, 'Arrived quietly', 'Do not disturb keeps this notification in history.', app='Mail', app_id='org.knave.Mail')
+        check(not any(n['banner'] for n in state(bus)['notifications']), 'DND suppresses banners')
+        check(len(state(bus)['notifications']) == 3, 'DND preserves delivery and history')
+        shot('do-not-disturb')
+        open_center()
+        key('Tab', 'space')
+        wait(lambda: not state(bus)['dnd'], 'DND disabled through actual shell button')
+        check(not any(n['banner'] for n in state(bus)['notifications']), 'disabling DND does not replay backlog')
+        close_center()
+        transient = notify(bus, 'Volume 65%', hints={'transient': GLib.Variant('b', True)}, timeout=700)
+        wait(lambda: any(n['id'] == transient and n['banner'] for n in state(bus)['notifications']), 'transient banner displayed')
+        wait(lambda: not any(n['id'] == transient for n in state(bus)['notifications']), 'transient disappears without history')
+        command(bus, 'clear')
+        action_id = notify(bus, 'Download complete', 'Application actions, progress and urgency use the same notification card.', app='Downloads', app_id='org.knave.Downloads', timeout=0, actions=('default', 'Open containing folder', 'retry', 'Download another copy with a longer action label'), hints={'value': GLib.Variant('i', 100), 'urgency': GLib.Variant('y', 2), 'resident': GLib.Variant('b', True)})
+        open_center()
+        shot('actions-progress-critical')
+        action_events = []
+        subscription = bus.signal_subscribe(None, STANDARD, 'ActionInvoked', '/org/freedesktop/Notifications', None, Gio.DBusSignalFlags.NONE, lambda *event: action_events.append(event[5].unpack()))
+        # Close, DND, Mark read, Clear, Dismiss, then the first action.
+        key('Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'space')
+        wait(lambda: (action_id, 'default') in action_events, 'actual shell action reaches originating application')
+        check(next(n for n in state(bus)['notifications'] if n['id'] == action_id)['live'], 'resident action keeps its live card')
+        bus.signal_unsubscribe(subscription)
+        close_center()
+        command(bus, 'clear')
+        muted = notify(bus, 'Per-application controls', 'Mute only this application’s future banners.', timeout=0)
+        open_center()
+        key('Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'space')
+        wait(lambda: state(bus)['app_banners'].get('org.knave.Demo') is False, 'per-app banner preference saved by actual UI')
+        close_center()
+        notify(bus, 'Muted app still has history', 'This should not display a banner.')
+        check(not any(n['banner'] for n in state(bus)['notifications']), 'muted application retains history without banners')
+        command(bus, 'set_app_banners', app_id='org.knave.Demo', enabled=True)
+        command(bus, 'clear')
+        for index in range(30):
+            notify(bus, f'History item {index+1}', 'Long wrapping text 日本語 café العربية. ' * 12, app='History test', app_id='org.knave.History', timeout=400)
+        wait(lambda: not any(n['banner'] for n in state(bus)['notifications']), 'burst banners expire')
+        check(len(state(bus)['notifications']) == 30, 'burst history retained without lost deliveries')
+        open_center()
+        shot('long-content-and-pagination')
+        # The footer remains outside the scroll region, even on narrow/short outputs.
+        call('click', width - 42, height - 52, 1)
+        shot('older-history-page')
+        close_center()
+        resources['normal'] = sample_set()
+        command(bus, 'set_dnd', enabled=True)
+        for index in range(220):
+            notify(bus, f'Bounded history stress {index}', timeout=1)
+        wait(lambda: all(not n['live'] for n in state(bus)['notifications']), 'stress entries expire')
+        check(len(state(bus)['notifications']) == 200, 'history bounded at configured 200 entries')
+        resources['stress'] = sample_set()
+        for pid, before in resources['idle_before'].items():
+            after = resources['stress'].get(pid)
+            if after:
+                check(after['threads'] <= before['threads'] + 2, f'bounded threads for process {pid}')
+                check(after['fds'] <= before['fds'] + 8, f'bounded descriptors for process {pid}')
+        command(bus, 'set_dnd', enabled=False)
+        open_center()
+        key('Tab', 'Tab', 'Tab', 'space')
+        wait(lambda: not state(bus)['notifications'], 'Clear all works through shell control')
+        shot('empty-history')
+        close_center()
+        key('Super_L+Return')
+        wait(lambda: any(w['app_id'] == 'kitty' and w['focused'] for w in call('snapshot')['payload']['windows']), 'terminal focused before opening center')
+        open_center()
+        close_center()
+        notify(bus, 'Banners leave your keyboard alone', 'Keep working while a banner is visible.', timeout=1500)
+        import shlex
+        focus_file = directory / 'focus-restored.txt'
+        call('type', "printf 'focus restored' > " + shlex.quote(str(focus_file)))
+        key('Return')
+        wait(lambda: focus_file.exists() and focus_file.read_text() == 'focus restored', 'keyboard focus returns to application and passive banner does not steal it')
+        checks.append('center dismissal restores application input; passive banners retain focus')
+        shot('application-focus-restored')
+        key('Super_L+q')
+        call('record-stop')
+        standalone_checks(bundle, directory, session_env, checks)
+        (directory / 'notification-result.json').write_text(json.dumps(dict(passed=True, assertions=checks, resources=resources, bundle=str(bundle), size=args.size, light=args.light, high_contrast=args.high_contrast), indent=2)+'\n')
+        print(json.dumps(dict(passed=True, assertions=len(checks), video=str(directory / 'notifications-demo.mp4'))))
+    finally:
+        if started:
+            call('stop')
+
+
+def standalone_checks(bundle, directory, inherited, checks):
+    """Restart the real service on a separate bus; never interrupt the desktop session."""
+    private_services = directory / 'standalone-services'
+    private_services.mkdir()
+    bus_config = directory / 'standalone-bus.conf'
+    from xml.sax.saxutils import escape
+    bus_config.write_text('<busconfig><type>session</type><listen>unix:tmpdir=/tmp</listen>'
+        f'<servicedir>{escape(str(private_services))}</servicedir>'
+        '<policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>')
+    daemon = subprocess.Popen(['dbus-daemon', '--config-file=' + str(bus_config), '--nofork', '--print-address=1'], env=inherited, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    service = None
+    competitor = None
+    gtk = None
+    connection = None
+    try:
+        address = daemon.stdout.readline().strip()
+        env = dict(inherited, DBUS_SESSION_BUS_ADDRESS=address, XDG_STATE_HOME=str(directory / 'restart-state'), GDK_BACKEND='wayland', GTK_USE_PORTAL='0', NO_AT_BRIDGE='1', GIO_USE_VFS='local')
+        env['KNAVE_CONFIG'] = str(directory.with_suffix('.toml'))
+        connection = connect(address)
+        log = (directory / 'standalone.log').open('w')
+        def start():
+            return subprocess.Popen([str(bundle / 'bin/knave-session'), 'notifications'], env=env, stdout=log, stderr=log)
+        service = start()
+        wait(lambda: state(connection)['owned'], 'standalone notification service starts')
+        restart_hint, restart_pixels = image_hint(2,1)
+        saved = notify(connection, 'Survives restart', 'Stored transactionally', timeout=0, actions=('default', 'Open'), hints={'image-data': restart_hint})
+        command(connection, 'set_dnd', enabled=True)
+        service.terminate()
+        service.wait(timeout=5)
+        service = start()
+        wait(lambda: state(connection)['notifications'], 'history restored after service restart')
+        restored = state(connection)
+        assert restored['dnd'] and restored['notifications'][0]['id'] == saved
+        assert not restored['notifications'][0]['live'] and not restored['notifications'][0]['banner'] and not restored['notifications'][0]['actions']
+        checks.append('real service restart preserves history/DND and disables stale actions/banners')
+        assert base64.b64decode(restored['notifications'][0]['image']['rgba']) == restart_pixels
+        checks.append('image pixels survive a real service restart')
+        new = notify(connection, 'New protocol identity', timeout=0)
+        assert new > saved
+        checks.append('protocol ID not reused after restart')
+        command(connection, 'set_dnd', enabled=False)
+        subprocess.run(['notify-send', '-t', '2000', 'Fire and forget', 'Sender exits immediately'], env=env, check=True, timeout=5)
+        assert any(n['summary'] == 'Fire and forget' and n['banner'] for n in state(connection)['notifications'])
+        checks.append('notify-send exit leaves its banner visible')
+        if Path('/usr/lib/xdg-desktop-portal-gtk').exists():
+            gtk = subprocess.Popen(['/usr/lib/xdg-desktop-portal-gtk'], env=env, stdout=log, stderr=log)
+            wait(lambda: invoke(connection, 'org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'NameHasOwner', '(s)', ('org.freedesktop.impl.portal.desktop.gtk',))[0], 'private GTK portal backend starts')
+            invoke(connection, 'org.freedesktop.impl.portal.desktop.gtk', '/org/freedesktop/portal/desktop', 'org.freedesktop.impl.portal.Notification', 'AddNotification', '(ssa{sv})', ('org.knave.PortalDemo', 'test-notification', {'title': GLib.Variant('s', 'Portal notification'), 'body': GLib.Variant('s', 'Forwarded through the existing GTK backend')}))
+            wait(lambda: any(n['summary'] == 'Portal notification' for n in state(connection)['notifications']), 'GTK portal forwards notification into Knave')
+            invoke(connection, 'org.freedesktop.impl.portal.desktop.gtk', '/org/freedesktop/portal/desktop', 'org.freedesktop.impl.portal.Notification', 'RemoveNotification', '(ss)', ('org.knave.PortalDemo', 'test-notification'))
+            wait(lambda: not any(n['summary'] == 'Portal notification' for n in state(connection)['notifications']), 'portal withdrawal removes notification')
+            checks.append('existing GTK Notification portal forwards delivery and withdrawal')
+            gtk.terminate()
+            gtk.wait(timeout=5)
+            gtk = None
+
+        # A later contender cannot replace Knave, even if it explicitly requests replacement.
+        contender = connect(address)
+        reply = invoke(contender, 'org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'RequestName', '(su)', (STANDARD, 6))[0]
+        assert reply == 3
+        checks.append('later notification service cannot take over Knave')
+        contender.close_sync(None)
+        service.terminate()
+        service.wait(timeout=5)
+        service = None
+        # Exercise the same first-owner semantics with an external daemon when available.
+        wayland = inherited.get('WAYLAND_DISPLAY')
+        if wayland and Path('/usr/bin/swaync').exists():
+            competitor = subprocess.Popen(['/usr/bin/swaync'], env=env, stdout=log, stderr=log)
+            wait(lambda: invoke(connection, 'org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'NameHasOwner', '(s)', (STANDARD,))[0], 'swaync owns private notification bus')
+        else:
+            contender = connect(address)
+            invoke(contender, 'org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'RequestName', '(su)', (STANDARD, 5))
+        service = start()
+        wait(lambda: not state(connection)['owned'], 'existing external owner wins')
+        checks.append('existing external notification service remains owner')
+        if competitor:
+            competitor.terminate()
+            competitor.wait(timeout=5)
+            competitor = None
+        else:
+            contender.close_sync(None)
+        time.sleep(0.3)
+        assert not invoke(connection, 'org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'NameHasOwner', '(s)', (STANDARD,))[0]
+        checks.append('losing Knave never queues or reclaims after external service stops')
+    finally:
+        if connection and not connection.is_closed():
+            connection.close_sync(None)
+        for process in (competitor, gtk, service, daemon):
+            if process is not None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+
+
+if __name__ == '__main__':
+    main()

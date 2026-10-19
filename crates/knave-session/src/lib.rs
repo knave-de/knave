@@ -1,5 +1,7 @@
 //! Owns Knave compositor and shell process lifecycle.
 
+pub mod notifications;
+
 use std::{
     collections::HashSet,
     env,
@@ -35,6 +37,8 @@ static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 pub enum SessionError {
     #[error("{0} does not support Overview service mode; install a matching Knave Shell")]
     UnsupportedOverviewService(String),
+    #[error("{0} does not support notification service mode; install a matching Knave Shell")]
+    UnsupportedNotificationService(String),
     #[error("could not locate XDG_RUNTIME_DIR")]
     MissingRuntimeDirectory,
     #[error("could not read runtime directory {path}: {source}")]
@@ -68,6 +72,17 @@ pub fn run_default() -> Result<(), SessionError> {
 pub fn run(config: Config) -> Result<(), SessionError> {
     SHUTDOWN_REQUESTED.store(false, Ordering::SeqCst);
     install_signal_handlers();
+    let _notifications = if config.notifications.enabled {
+        match notifications::NotificationService::start(config.clone()) {
+            Ok(service) => Some(service),
+            Err(error) => {
+                eprintln!("knave-session: notifications unavailable: {error}");
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     let runtime = runtime_directory()?;
     let mut restarts = 0;
@@ -242,7 +257,16 @@ fn spawn_shells(config: &Config, display: &str) -> Result<Vec<ManagedChild>, Ses
     if config.shell.start_overview_service {
         check_overview_service(&config.session.shell_binary, CAPABILITY_WAIT)?;
     }
+    if config.notifications.enabled {
+        check_notification_service(&config.session.shell_binary, CAPABILITY_WAIT)?;
+    }
     let mut shells = Vec::new();
+    if config.notifications.enabled {
+        match spawn_shell(config, "notifications", display) {
+            Ok(shell) => shells.push(shell),
+            Err(error) => return Err(cleanup_shell_startup(shells, error)),
+        }
+    }
     if config.shell.start_bar {
         match spawn_shell(config, "bar", display) {
             Ok(shell) => shells.push(shell),
@@ -261,8 +285,22 @@ fn spawn_shells(config: &Config, display: &str) -> Result<Vec<ManagedChild>, Ses
 }
 
 fn check_overview_service(binary: &str, timeout: Duration) -> Result<(), SessionError> {
+    if check_capability(binary, "--supports-overview-service", timeout)? {
+        Ok(())
+    } else {
+        Err(SessionError::UnsupportedOverviewService(binary.into()))
+    }
+}
+fn check_notification_service(binary: &str, timeout: Duration) -> Result<(), SessionError> {
+    if check_capability(binary, "--supports-notifications-service", timeout)? {
+        Ok(())
+    } else {
+        Err(SessionError::UnsupportedNotificationService(binary.into()))
+    }
+}
+fn check_capability(binary: &str, flag: &str, timeout: Duration) -> Result<bool, SessionError> {
     let mut child = Command::new(binary)
-        .arg("--supports-overview-service")
+        .arg(flag)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -274,7 +312,7 @@ fn check_overview_service(binary: &str, timeout: Duration) -> Result<(), Session
     let deadline = Instant::now() + timeout;
     loop {
         match child.try_wait() {
-            Ok(Some(status)) if status.success() => return Ok(()),
+            Ok(Some(status)) if status.success() => return Ok(true),
             Ok(Some(_)) => break,
             Ok(None) if Instant::now() < deadline => thread::sleep(POLL_INTERVAL),
             Err(error) => {
@@ -291,7 +329,7 @@ fn check_overview_service(binary: &str, timeout: Duration) -> Result<(), Session
             }
         }
     }
-    Err(SessionError::UnsupportedOverviewService(binary.into()))
+    Ok(false)
 }
 
 fn cleanup_shell_startup(mut shells: Vec<ManagedChild>, error: SessionError) -> SessionError {
@@ -309,6 +347,14 @@ pub(crate) fn spawn_shell(
         .arg(role)
         .env("WAYLAND_DISPLAY", display)
         .env("KNAVE_SESSION", "1")
+        .env(
+            "KNAVE_NOTIFICATIONS_ENABLED",
+            if config.notifications.enabled {
+                "1"
+            } else {
+                "0"
+            },
+        )
         .env("XDG_CURRENT_DESKTOP", "Knave:Villain")
         .env("XDG_SESSION_DESKTOP", "knave");
     if role == "wallpaper" {
