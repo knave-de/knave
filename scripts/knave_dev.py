@@ -1,4 +1,4 @@
-"""Deterministic workspace and bundle operations for knave-dev (Python 3.11+)."""
+"""Deterministic workspace and bundle operations for knave-dev (Python 3.12+)."""
 
 import contextlib
 import datetime
@@ -249,6 +249,8 @@ def build(state, name, profile='debug', jobs=1):
             'complete': False,
         }
         atomic_json(output / 'build.json', manifest)
+        # A failed latest attempt must not silently hand back an older build.
+        atomic_json(root / 'latest-build.json', {'path': str(output)})
         for repo, revision in revisions.items():
             snapshot(root / repo, revision, sources / repo)
             manifest['repositories'][repo] = {
@@ -283,7 +285,7 @@ def build(state, name, profile='debug', jobs=1):
         }
         for repo in REPOSITORIES:
             directory = sources / repo
-            env['CARGO_TARGET_DIR'] = str(root / 'targets' / repo)
+            env['CARGO_TARGET_DIR'] = str(state / 'targets' / repo)
             cargo = ['cargo']
             # Resolve the local patches in snapshot locks only. Subsequent steps are locked.
             metadata = subprocess.run(
@@ -293,10 +295,14 @@ def build(state, name, profile='debug', jobs=1):
                 env=env,
                 capture_output=True,
                 text=True,
-                check=True,
+                check=False,
             )
             (output / f'{repo}-metadata.json').write_text(metadata.stdout)
             (output / f'{repo}-resolution.log').write_text(metadata.stderr)
+            if metadata.returncode:
+                raise RuntimeError(
+                    f'dependency resolution failed; see {output / (repo + "-resolution.log")}'
+                )
             resolved = json.loads(metadata.stdout)
             for package in resolved['packages']:
                 if (
@@ -338,7 +344,7 @@ def build(state, name, profile='debug', jobs=1):
                 atomic_json(output / 'build.json', manifest)
         artifacts = output / 'artifacts'
         for binary, (repo, destination) in BINARIES.items():
-            source = root / 'targets' / repo / profile / binary
+            source = state / 'targets' / repo / profile / binary
             target = artifacts / destination
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, target)
@@ -408,6 +414,8 @@ def bundle(state, name):
                 'desktop-harness.py',
                 'desktop-harness-smoke.py',
                 'knave_dev.py',
+                'knave-dev.py',
+                'knave_dev_tty.py',
             ):
                 path = staging / 'tools' / script
                 path.parent.mkdir(exist_ok=True)
@@ -604,15 +612,15 @@ def pull_requests(state, name, bundle_path, base='master'):
             committer = git(directory, 'var', 'GIT_COMMITTER_IDENT').split('>')[0]
             if author != committer:
                 raise ValueError(f'{repo}: author and committer identities differ')
+            publication_base = git(
+                directory, 'rev-parse', '--verify', 'origin/' + base + '^{commit}'
+            )
             outgoing = git(
-                directory,
-                'log',
-                '--format=fuller',
-                data['repositories'][repo]['base'] + '..HEAD',
+                directory, 'log', '--format=fuller', publication_base + '..HEAD'
             )
             (root / f'{repo}-commit-audit.txt').write_text(outgoing + '\n')
             if re.search(
-                r'(?im)^(?:Author|Commit|Co-authored-by|Signed-off-by):.*\b(?:codex|claude|openai|chatgpt)\b',
+                r'(?im)^\s*(?:Author|Commit|Co-authored-by|Signed-off-by):.*\b(?:codex|claude|openai|chatgpt)\b',
                 outgoing,
             ):
                 raise ValueError(
@@ -635,6 +643,34 @@ def pull_requests(state, name, bundle_path, base='master'):
                 cwd=directory,
             )
             git(directory, 'push', '--set-upstream', 'origin', entry['branch'])
+            # Check GitHub's published attribution, not only local Git config.
+            for revision in git(
+                directory, 'rev-list', 'origin/' + base + '..HEAD'
+            ).splitlines():
+                local = git(
+                    directory,
+                    'show',
+                    '-s',
+                    '--format=%an%x00%ae%x00%cn%x00%ce%x00%B',
+                    revision,
+                ).split('\x00', 4)
+                remote = json.loads(
+                    capture(
+                        ['gh', 'api', f'repos/{repository}/commits/{revision}'],
+                        cwd=directory,
+                    )
+                )['commit']
+                published = [
+                    remote['author']['name'],
+                    remote['author']['email'],
+                    remote['committer']['name'],
+                    remote['committer']['email'],
+                    remote['message'].strip(),
+                ]
+                if [*local[:4], local[4].strip()] != published:
+                    raise ValueError(
+                        f'{repo}: published commit attribution/message differs: {revision}'
+                    )
             found = json.loads(
                 capture(
                     [

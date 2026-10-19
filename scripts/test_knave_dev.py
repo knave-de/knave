@@ -139,6 +139,8 @@ class WorkspaceTests(unittest.TestCase):
                     'desktop-harness.py',
                     'desktop-harness-smoke.py',
                     'knave_dev.py',
+                    'knave-dev.py',
+                    'knave_dev_tty.py',
                 ):
                     shutil.copyfile(SCRIPTS / name, path / 'scripts' / name)
                 self.commit(path)
@@ -159,6 +161,81 @@ class WorkspaceTests(unittest.TestCase):
         # Feature changes the local API; consumers' lockfiles still reference value 1.
         (shared / 'src/lib.rs').write_text('pub fn value() -> u32 {\n    7\n}\n')
         self.commit(knave)
+
+    def test_pr_publication_checks_exact_revisions_and_reuses_prs(self):
+        root = dev.create(self.state, 'publish', self.sources, ['knave', 'villain'], {})
+        revisions = {}
+        for repo in dev.REPOSITORIES:
+            path = root / repo
+            dev.git(path, 'update-ref', 'refs/remotes/origin/master', 'HEAD')
+            if repo in ('knave', 'villain'):
+                (path / 'feature').write_text('feature')
+                self.commit(path)
+            revisions[repo] = {'commit': dev.git(path, 'rev-parse', 'HEAD')}
+        bundle = self.root / 'publication-bundle'
+        bundle.mkdir()
+        (bundle / 'bundle.json').write_text('{}')
+        manifest = {'id': 'tested', 'repositories': revisions}
+        invoke = dev.capture
+        created = {}
+        edits = []
+
+        def capture(argv, cwd=None):
+            argv = list(map(str, argv))
+            if argv[0] == 'git' and 'push' in argv:
+                return ''
+            if argv[0] != 'gh':
+                return invoke(argv, cwd=cwd)
+            repo = cwd.name
+            if argv[1:3] == ['repo', 'view']:
+                return f'fixture/{repo}'
+            if argv[1] == 'api':
+                revision = argv[2].rsplit('/', 1)[-1]
+                local = dev.git(
+                    cwd,
+                    'show',
+                    '-s',
+                    '--format=%an%x00%ae%x00%cn%x00%ce%x00%B',
+                    revision,
+                ).split('\x00', 4)
+                return json.dumps(
+                    {
+                        'commit': {
+                            'author': {'name': local[0], 'email': local[1]},
+                            'committer': {'name': local[2], 'email': local[3]},
+                            'message': local[4].strip(),
+                        }
+                    }
+                )
+            if argv[1:3] == ['pr', 'list']:
+                return json.dumps([{'url': created[repo]}] if repo in created else [])
+            if argv[1:3] == ['pr', 'create']:
+                created[repo] = f'https://github.com/fixture/{repo}/pull/1'
+                return created[repo]
+            if argv[1:3] == ['pr', 'view']:
+                return 'Human review notes.'
+            if argv[1:3] == ['pr', 'edit']:
+                edits.append(Path(argv[-1]).read_text())
+                return ''
+            self.fail(f'unexpected publication command: {argv}')
+
+        with (
+            patch.object(dev, 'tested_bundle', return_value=manifest),
+            patch.object(dev, 'capture', side_effect=capture),
+        ):
+            urls = dev.pull_requests(self.state, 'publish', bundle)
+            self.assertEqual(len(urls), 2)
+            self.assertTrue(
+                all(
+                    'Human review notes.' in body and 'knave-dev-links' in body
+                    for body in edits
+                )
+            )
+            self.assertEqual(dev.pull_requests(self.state, 'publish', bundle), urls)
+            self.assertEqual(len(created), 2)
+            (root / 'knave/unverified').write_text('dirty source')
+            with self.assertRaisesRegex(ValueError, 'worktree changes'):
+                dev.pull_requests(self.state, 'publish', bundle)
 
     @unittest.skipUnless(
         shutil.which('cargo'), 'Cargo is required for the integration fixture'

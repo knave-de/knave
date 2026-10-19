@@ -5,7 +5,7 @@ Knave Shell and the portal backend. It uses ordinary Git worktrees and Cargo;
 there is no parent repository or agent-service dependency. Python 3.12+, Git,
 Rust with rustfmt/Clippy, and each component's native build dependencies are
 required. Nested tests also need the tools in [desktop testing](desktop-testing.md),
-plus `dbus-daemon`, `dbus-update-activation-environment`, and `gdbus`.
+plus `dbus-daemon`, `dbus-update-activation-environment`, `gdbus`, and `pipewire`.
 
 ## Create and develop
 
@@ -54,12 +54,13 @@ bundled. There is one account-wide build lock and one Cargo job by default;
 `--jobs N` permits 1–8 jobs. Components are built sequentially.
 
 Debug builds disable debug information to bound memory/disk usage. Release
-builds use `--profile release`. Targets are cached per workspace and component;
+builds use `--profile release`. Targets are cached per state root and component,
+with the shared build lock protecting them across features;
 build snapshots and evidence are retained until explicitly removed. There are
 no background daemons or watchers. The build is tied to the host toolchain and
 system libraries; it is not a portable or hermetic distribution package.
 
-`bundle` freezes the most recent successful build into a unique directory with
+`bundle` freezes the latest build, only if successful, into a unique directory with
 all six executables, desktop resources, pinned test tools, source/resolved
 lockfile hashes, resolved lockfiles, toolchain, build options and a SHA-256 file
 inventory. Files/directories are made read-only. A feature can have many bundles;
@@ -69,7 +70,7 @@ deliberate modification by its owner. `verify` detects changed files or binaries
 `test` runs the bundled harness against these frozen executables. It verifies
 Overview, launcher search, Kitty focus and typed input, workspace navigation,
 and a finalized MP4. A private D-Bus with its own service directory activates
-the bundled portal backend; Settings.Read and the activated process executable
+the bundled portal backend against a private PipeWire daemon; Settings.Read and the activated process executable
 are checked. It never imports activation into the host bus or systemd manager.
 `--display N` and `--vnc-port N` select unused nested-test resources. VNC defaults
 to disabled for this command. Tests save logs, state assertions, screenshots and
@@ -118,9 +119,9 @@ Archives are trusted local handoffs, not signed release artifacts.
 In the dedicated non-root test account, using default XDG config/data locations:
 
 ```sh
-dev=(python3 /path/to/knave/scripts/knave-dev.py)
+bundle=$(python3 /path/to/knave/scripts/knave-dev.py import /chosen/shared/overview-animations.tar.gz)
+dev=(python3 "$bundle/tools/knave-dev.py")
 "${dev[@]}" tty init --dedicated-test-account
-bundle=$("${dev[@]}" import /chosen/shared/overview-animations.tar.gz)
 "${dev[@]}" tty use "$bundle"
 "${dev[@]}" tty status
 ```
