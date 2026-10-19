@@ -191,3 +191,14 @@ routing defaults are user-local. Start a fresh direct Knave session to activate
 Knave routing. Nested sessions preserve the host activation environment. See
 [the portal decision](docs/architecture/decisions/0006-desktop-portals.md) for
 contracts, supported capabilities, limits, verification and rollback.
+
+## Workspace swipes
+
+Three-finger horizontal touchpad swipes move workspace scenes with your fingers.
+Left advances, right goes back, wrapping at the ends. Release beyond a quarter
+of the output width commits; shorter or cancelled swipes settle back.
+Panels and the cursor stay stationary. See the
+[gesture contract](docs/architecture/decisions/0010-workspace-swipes.md).
+Override entries under `[[compositor.gesture.bind]]` by fingers and direction;
+`action = "none"` disables the matching compositor gesture. These are Villain
+actions, not knavectl commands. Reload applies validated changes atomically.

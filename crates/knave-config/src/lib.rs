@@ -12,6 +12,7 @@ use thiserror::Error;
 use toml_edit::{Array, ArrayOfTables, DocumentMut, Item, Table, value};
 
 pub mod appearance;
+pub mod gesture;
 pub use appearance::WindowAppearance;
 
 pub const CURRENT_SCHEMA_VERSION: u32 = 2;
@@ -229,6 +230,8 @@ pub struct CompositorBinding {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CompositorConfig {
     #[serde(default)]
+    pub gesture: gesture::GestureConfig,
+    #[serde(default)]
     pub appearance: WindowAppearance,
     /// Default master width as a percentage of usable workspace width (10..=90).
     #[serde(default = "default_master_percent")]
@@ -257,6 +260,7 @@ fn default_modkey() -> String {
 impl Default for CompositorConfig {
     fn default() -> Self {
         Self {
+            gesture: gesture::GestureConfig::default(),
             appearance: WindowAppearance::default(),
             master_percent: default_master_percent(),
             modkey: default_modkey(),
@@ -409,6 +413,7 @@ impl Config {
             ));
         }
         self.compositor.appearance.validate()?;
+        self.compositor.gesture.validate()?;
         if let Some(image) = &self.shell.wallpaper.image
             && (!Path::new(image).is_absolute() || image.contains('\0'))
         {
@@ -806,6 +811,7 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
         "appearance",
         appearance.as_table(),
     );
+    gesture::write(&mut document["compositor"], &config.compositor.gesture);
     let mut bindings = ArrayOfTables::new();
     for binding in &config.compositor.bind {
         let mut table = Table::new();

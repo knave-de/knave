@@ -183,3 +183,16 @@ while `theme = "system"`, so existing files keep their behavior; `dark` and
 is required and unknown keys are preserved. Edit `~/.config/knave/config.toml`
 and save; the portal backend watches the file and re-publishes the preference
 without a restart. See [ownership and limits](decisions/0009-theme-preference.md).
+
+## Workspace gestures
+
+`[compositor.gesture]` contains optional `[[compositor.gesture.bind]]` entries
+with `fingers` (integer >= 1), `direction = "horizontal"`, and
+`action = "workspace"` or `"none"`. Entries override matching fingers+direction
+only, in order; later duplicates win. Omitting an entry retains Villain's
+three-finger horizontal workspace default. `none` passes that gesture to clients.
+Unknown source fields survive settings writes; unknown enum values reject the
+configuration. A successful reload cancels any active swipe before replacing
+bindings; failed validation leaves the running configuration intact.
+These are Villain actions, not knavectl commands. See the
+[gesture decision](decisions/0010-workspace-swipes.md).

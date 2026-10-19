@@ -32,6 +32,15 @@ natural_scroll = true
 # name = "*Receiver Mouse"
 # enabled = false
 
+
+# Gesture entries override only matching fingers+direction; later entries win.
+# Default: three-finger horizontal swipe switches workspaces. Use action = "none"
+# to pass that gesture to clients. These are Villain actions, not knavectl commands.
+# [[compositor.gesture.bind]]
+# fingers = 3
+# direction = "horizontal"
+# action = "none"
+
 # Explicit bindings replace the default set. Include MOD to retain Overview.
 [[compositor.bind]]
 keys = "MOD"
