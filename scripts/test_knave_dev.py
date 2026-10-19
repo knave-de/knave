@@ -118,6 +118,7 @@ class WorkspaceTests(unittest.TestCase):
             (path / '.gitignore').write_text('/target/\n')
             text = f'[package]\nname = "{repo}"\nversion = "0.1.0"\nedition = "2024"\n'
             if repo == 'knave':
+                shutil.copyfile(SCRIPTS.parent / 'knave-dev', path / 'knave-dev')
                 text += '[workspace]\nmembers = ["crates/knave-desktop-api"]\n'
             else:
                 text += f'[dependencies]\nknave-desktop-api = {{ git = {json.dumps(knave.as_uri())} }}\n'
@@ -255,6 +256,9 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(dev.capture([output / 'artifacts/bin/villain']), '7')
             bundle = dev.bundle(self.state, 'feature')
             self.assertEqual(dev.verify_bundle(bundle)['profile'], profile)
+            self.assertIn(
+                'feature', dev.capture([bundle / 'knave-dev', 'session', '--help'])
+            )
             self.assertEqual(bundle, dev.bundle(self.state, 'feature'))
             for repo in dev.REPOSITORIES:
                 self.assertEqual(
@@ -297,6 +301,8 @@ class BundleTests(unittest.TestCase):
         manifest = {
             'schema': 1,
             'id': name,
+            'feature': 'example',
+            'created_at': '2026-10-19T00:00:00+00:00',
             'complete': True,
             'binaries': {},
             'files': {},
@@ -341,6 +347,74 @@ class BundleTests(unittest.TestCase):
         (other / 'verification/one.json').write_text('{"passed":false}')
         with self.assertRaisesRegex(ValueError, 'matching successful'):
             dev.tested_bundle(other, imported)
+
+    def test_session_selects_newest_verified_feature_and_ignores_unverified(self):
+        newer = self.make_bundle('two')
+        manifest = json.loads((newer / 'bundle.json').read_text())
+        manifest['created_at'] = '2026-10-20T00:00:00+00:00'
+        dev.atomic_json(newer / 'bundle.json', manifest)
+        # A freshly built bundle is not eligible until it passes nested testing.
+        (self.state / 'verification/two.json').unlink()
+        self.assertEqual(dev.session_bundle(self.state, 'example'), self.bundle)
+        dev.atomic_json(
+            self.state / 'verification/two.json',
+            {'passed': True, 'bundle_sha256': dev.digest(newer / 'bundle.json')},
+        )
+        self.assertEqual(dev.session_bundle(self.state, 'example'), newer)
+        (newer / 'bin/knave').chmod(0o755)
+        (newer / 'bin/knave').write_text('damaged binary')
+        with self.assertRaisesRegex(ValueError, 'hash mismatch'):
+            dev.session_bundle(self.state, 'example')
+
+    def test_session_imports_archive_and_unknown_features_have_clear_errors(self):
+        archive = self.state / 'feature.tar.gz'
+        dev.export_bundle(self.state, self.bundle, archive)
+        other = self.state / 'test-account'
+        imported = dev.session_bundle(other, str(archive))
+        self.assertEqual(dev.session_bundle(other, 'example'), imported)
+        with self.assertRaisesRegex(ValueError, 'not ready for testing'):
+            dev.session_bundle(other, 'missing-feature')
+        with self.assertRaisesRegex(ValueError, 'archive not found'):
+            dev.session_bundle(other, str(self.state / 'missing.tar.gz'))
+
+    def test_session_cli_forwards_feature_and_archive_to_one_locked_start(self):
+        import importlib.util
+        import sys
+
+        spec = importlib.util.spec_from_file_location(
+            'knave_dev_cli', SCRIPTS / 'knave-dev.py'
+        )
+        cli = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cli)
+        archive = self.state / 'feature.tar.gz'
+        dev.export_bundle(self.state, self.bundle, archive)
+        for value in ('example', str(archive)):
+            with (
+                patch.object(
+                    sys,
+                    'argv',
+                    [
+                        'knave-dev',
+                        '--state',
+                        str(self.state),
+                        'session',
+                        value,
+                        '--config',
+                        '/chosen/config.toml',
+                    ],
+                ),
+                patch.object(tty, 'account'),
+                patch.object(cli.os, 'umask'),
+                patch.object(tty, 'start', return_value=7) as start,
+            ):
+                self.assertEqual(cli.main(), 7)
+                start.assert_called_once_with(
+                    self.state, Path('/chosen/config.toml'), bundle=self.bundle
+                )
+
+    def test_missing_account_has_one_time_setup_instruction(self):
+        with self.assertRaisesRegex(ValueError, 'tty init --dedicated-test-account'):
+            tty.account(self.state)
 
     def test_extra_file_and_symlink_are_rejected(self):
         extra = self.bundle / 'extra'
@@ -448,7 +522,19 @@ class BundleTests(unittest.TestCase):
             patch.object(tty, 'systemctl', side_effect=systemctl),
             patch.object(tty, 'capture'),
         ):
-            self.assertEqual(tty.start(self.state), 0)
+            requested = self.make_bundle('requested')
+            select_locked = tty.select_locked
+
+            def locked_selection(*args):
+                with self.assertRaisesRegex(RuntimeError, 'already active'):
+                    with dev.lock(self.state / 'tty.lock'):
+                        self.fail('session did not hold the selection lock')
+                return select_locked(*args)
+
+            with patch.object(tty, 'select_locked', side_effect=locked_selection):
+                self.assertEqual(tty.start(self.state, bundle=requested), 0)
+            self.assertEqual((self.state / 'current').resolve(), requested)
+            self.assertEqual((self.state / 'previous').resolve(), self.bundle)
             self.assertFalse((self.state / 'tty-active.json').exists())
             self.assertTrue(all(not path.exists() for path in paths.values()))
             self.assertIn(('set-environment', 'PATH=/previous/path'), calls)

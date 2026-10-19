@@ -7,6 +7,33 @@ Rust with rustfmt/Clippy, and each component's native build dependencies are
 required. Nested tests also need the tools in [desktop testing](desktop-testing.md),
 plus `dbus-daemon`, `dbus-update-activation-environment`, `gdbus`, and `pipewire`.
 
+## Start testing a feature
+
+From the Knave checkout in your dedicated test account's local TTY:
+
+```sh
+./knave-dev session overview-animations
+```
+
+This finds the feature's newest verified bundle, selects it and starts the
+desktop. You do not need a bundle path, shell variables or separate selection
+commands. Agent-built and imported bundles are found by the feature name in
+their manifest. An unverified build is never selected, and a damaged verified
+bundle produces an error instead of falling back to an older build.
+
+For a feature delivered as an archive, import and start it in one command:
+
+```sh
+./knave-dev session /path/to/overview-animations.tar.gz
+```
+
+Subsequent starts can use `session overview-animations`. The one-time account
+setup is `./knave-dev tty init --dedicated-test-account`, run in the dedicated
+non-root account. Sessions still require an active local TTY and an unused test
+account; exit the current session before starting another feature. Selection
+and startup hold the same lock throughout the session. Existing build, bundle,
+import and `tty` commands below remain available for agents and advanced use.
+
 ## Create and develop
 
 Keep the four source repositories as siblings. From Knave:
@@ -119,11 +146,10 @@ Archives are trusted local handoffs, not signed release artifacts.
 In the dedicated non-root test account, using default XDG config/data locations:
 
 ```sh
-bundle=$(python3 /path/to/knave/scripts/knave-dev.py import /chosen/shared/overview-animations.tar.gz)
-dev=(python3 "$bundle/tools/knave-dev.py")
-"${dev[@]}" tty init --dedicated-test-account
-"${dev[@]}" tty use "$bundle"
-"${dev[@]}" tty status
+./knave-dev tty init --dedicated-test-account # Once per test account
+./knave-dev session /chosen/shared/overview-animations.tar.gz
+# Later:
+./knave-dev session overview-animations
 ```
 
 Initialization explicitly marks this account for testing; it does not create a
@@ -132,12 +158,11 @@ the bundle and its evidence and atomically replaces `STATE/current`. The previou
 selection is retained for `tty rollback`. Selection is refused while a managed
 TTY session is running or recovery is pending.
 
-Log into that account on an active local TTY, then:
+Log into that account on an active local TTY before starting. To use a private
+normalized copy of a chosen configuration:
 
 ```sh
-"${dev[@]}" tty start
-# Or use a private normalized copy of a chosen configuration:
-"${dev[@]}" tty start --config /path/to/config.toml
+./knave-dev session overview-animations --config /path/to/config.toml
 ```
 
 The launcher validates the logind user, active local seat and runtime bus. SSH
@@ -160,8 +185,8 @@ Externally edited activation files are preserved and reported.
 After ending the session:
 
 ```sh
-"${dev[@]}" tty rollback
-"${dev[@]}" tty start
+./knave-dev tty rollback
+./knave-dev tty start
 ```
 
 A new session is required for every bundle change. Bundles are host-compatible

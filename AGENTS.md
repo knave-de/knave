@@ -110,6 +110,10 @@ revision/contract failure to resolve, not a reason to use installed binaries or
 skip a consumer. Keep the tested bundle immutable and report its identity and
 evidence. Use the dedicated-account TTY path for human hardware review; do not
 install development binaries into the contributor's normal desktop implicitly.
+Prepare the verified feature bundle and archive as agent work. Hand the human
+one launch command: `./knave-dev session FEATURE` for an available feature, or
+`./knave-dev session ARCHIVE` for an exported handoff. Account setup is a one-time
+prerequisite; bundle lookup, import, selection and startup belong to the tool.
 
 The development CLI creates workspaces and builds; it does not choose agent
 providers or spawn agents. When agents are explicitly delegated, give each

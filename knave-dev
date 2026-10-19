@@ -1,0 +1,6 @@
+#!/bin/sh
+root=$(dirname -- "$0")
+if [ -f "$root/scripts/knave-dev.py" ]; then
+    exec python3 "$root/scripts/knave-dev.py" "$@"
+fi
+exec python3 "$root/tools/knave-dev.py" "$@"

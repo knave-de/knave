@@ -34,7 +34,13 @@ ACTIVATION_KEYS = (
 
 
 def account(state):
-    marker = json.loads((state / 'tty-account.json').read_text())
+    try:
+        marker = json.loads((state / 'tty-account.json').read_text())
+    except FileNotFoundError:
+        raise ValueError(
+            'Set up the dedicated test account once with: '
+            './knave-dev tty init --dedicated-test-account'
+        ) from None
     if (
         marker != {'uid': os.getuid(), 'home': str(Path.home().resolve())}
         or os.getuid() == 0
@@ -102,24 +108,29 @@ def select(state, bundle, rollback=False):
     account(state)
     with lock(state / 'tty.lock'):
         no_graphical_sessions()
-        if (state / 'tty-active.json').exists():
-            raise ValueError(
-                'interrupted session requires tty recover before selecting a bundle'
-            )
-        if rollback:
-            bundle = (state / 'previous').resolve(strict=True)
-        bundle = bundle.resolve(strict=True)
-        tested_bundle(state, bundle)
-        current = state / 'current'
-        if current.is_symlink():
-            old = current.resolve(strict=True)
-            if old == bundle:
-                return bundle
-            symlink(state / 'previous', old)
-        elif current.exists():
-            raise ValueError('current must be a symlink managed by knave-dev')
-        symlink(current, bundle)
-        return bundle
+        return select_locked(state, bundle, rollback)
+
+
+def select_locked(state, bundle, rollback=False):
+    # Caller holds tty.lock through selection and, for session, through teardown.
+    if (state / 'tty-active.json').exists():
+        raise ValueError(
+            'interrupted session requires tty recover before selecting a bundle'
+        )
+    if rollback:
+        bundle = (state / 'previous').resolve(strict=True)
+    bundle = bundle.resolve(strict=True)
+    tested_bundle(state, bundle)
+    current = state / 'current'
+    if current.is_symlink():
+        old = current.resolve(strict=True)
+        if old == bundle:
+            return bundle
+        symlink(state / 'previous', old)
+    elif current.exists():
+        raise ValueError('current must be a symlink managed by knave-dev')
+    symlink(current, bundle)
+    return bundle
 
 
 def local_tty():
@@ -330,13 +341,17 @@ def recover(state):
         restore(state, journal)
 
 
-def start(state, source=None):
+def start(state, source=None, bundle=None):
     account(state)
     with lock(state / 'tty.lock'):
         runtime = local_tty()
         if (state / 'tty-active.json').exists():
             raise ValueError('interrupted session requires tty recover before starting')
-        bundle = (state / 'current').resolve(strict=True)
+        bundle = (
+            select_locked(state, bundle)
+            if bundle is not None
+            else (state / 'current').resolve(strict=True)
+        )
         manifest = tested_bundle(state, bundle)
         for unit in UNITS:
             if systemctl('is-active', '--quiet', unit, check=False).returncode == 0:

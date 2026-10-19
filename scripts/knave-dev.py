@@ -6,13 +6,14 @@ import json
 import os
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 import knave_dev as dev
 
 
 def parser():
-    result = argparse.ArgumentParser(description=__doc__)
+    result = argparse.ArgumentParser(prog='knave-dev', description=__doc__)
     result.add_argument(
         '--state',
         type=Path,
@@ -47,6 +48,11 @@ def parser():
     test.add_argument('--display', type=int, default=93)
     test.add_argument('--vnc-port', type=int, default=0)
     commands.add_parser('verify').add_argument('bundle', type=Path)
+    session = commands.add_parser(
+        'session', help='start a feature’s latest verified build in the test account'
+    )
+    session.add_argument('feature', help='feature name or exported bundle archive')
+    session.add_argument('--config', type=Path)
     export = commands.add_parser(
         'export',
         help='package a tested bundle and its verification for another account',
@@ -131,6 +137,12 @@ def main():
                 indent=2,
             )
         )
+    elif args.command == 'session':
+        import knave_dev_tty as tty
+
+        tty.account(state)
+        bundle = dev.session_bundle(state, args.feature)
+        return tty.start(state, args.config, bundle=bundle)
     elif args.command == 'tty':
         import knave_dev_tty as tty
 
@@ -169,6 +181,7 @@ if __name__ == '__main__':
         KeyError,
         RuntimeError,
         subprocess.SubprocessError,
+        tarfile.TarError,
     ) as error:
         print(f'knave-dev: {error}', file=sys.stderr)
         if isinstance(error, subprocess.CalledProcessError) and error.stderr:

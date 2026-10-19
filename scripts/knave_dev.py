@@ -426,6 +426,10 @@ def bundle(state, name):
                 path = staging / 'tools' / script
                 path.parent.mkdir(exist_ok=True)
                 shutil.copyfile(sources / 'knave/scripts' / script, path)
+            launcher = sources / 'knave/knave-dev'
+            if launcher.is_file():
+                shutil.copyfile(launcher, staging / 'knave-dev')
+                (staging / 'knave-dev').chmod(0o555)
             manifest['files'] = {
                 str(path.relative_to(staging)): digest(path)
                 for path in sorted(staging.rglob('*'))
@@ -491,6 +495,42 @@ def tested_bundle(state, path):
     ):
         raise ValueError('bundle has no matching successful nested test')
     return manifest
+
+
+def session_bundle(state, feature):
+    archive = Path(feature).expanduser()
+    if archive.is_file():
+        return import_bundle(state, archive.resolve())
+    if (
+        archive.is_absolute()
+        or len(archive.parts) > 1
+        or feature.endswith(('.tar', '.tar.gz', '.tgz'))
+    ):
+        raise ValueError(f'Feature archive not found: {archive}')
+    identifier(feature)
+    candidates = []
+    for path in (state / 'bundles').glob('*/bundle.json'):
+        if path.parent.name.startswith('.'):
+            continue
+        manifest = json.loads(path.read_text())
+        if manifest.get('feature') != feature:
+            continue
+        evidence = state / 'verification' / (path.parent.name + '.json')
+        if (
+            not evidence.is_file()
+            or json.loads(evidence.read_text()).get('passed') is not True
+        ):
+            continue
+        candidates.append((manifest['created_at'], path.parent.name, path.parent))
+    if not candidates:
+        raise ValueError(
+            f'Feature {feature!r} is not ready for testing: no verified bundle. '
+            'Pass its exported archive to session to import and start it.'
+        )
+    selected = max(candidates)[2]
+    # Reject a damaged newest verified build instead of silently launching an older one.
+    tested_bundle(state, selected)
+    return selected
 
 
 def test_bundle(state, path, display=93, vnc_port=0):
