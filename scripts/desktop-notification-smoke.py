@@ -39,6 +39,9 @@ def notify(bus, summary, body='', app='Knave demo', app_id='org.knave.Demo', tim
 def wait(predicate, label, seconds=10):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
+        context = GLib.MainContext.default()
+        while context.pending():
+            context.iteration(False)
         try:
             result = predicate()
             if result:
@@ -108,6 +111,7 @@ def main():
         session = call('status')['processes']['session']
         raw = Path(f'/proc/{session}/environ').read_bytes().split(b'\0')
         session_env = dict(entry.decode().split('=', 1) for entry in raw if b'=' in entry)
+        session_env['WAYLAND_DISPLAY'] = next(p.name for p in Path(session_env['XDG_RUNTIME_DIR']).glob('wayland-*') if p.is_socket())
         bus = connect(session_env['DBUS_SESSION_BUS_ADDRESS'])
         wait(lambda: state(bus)['owned'], 'Knave owns delivery')
         check(state(bus)['notifications'] == [], 'fresh harness history is isolated')
@@ -146,9 +150,13 @@ def main():
         action_id = notify(bus, 'Download complete', 'Application actions, progress and urgency use the same notification card.', app='Downloads', app_id='org.knave.Downloads', timeout=0, actions=('default', 'Open containing folder', 'retry', 'Download another copy with a longer action label'), hints={'value': GLib.Variant('i', 100), 'urgency': GLib.Variant('y', 2), 'resident': GLib.Variant('b', True)})
         open_center()
         shot('actions-progress-critical')
+        action_events = []
+        subscription = bus.signal_subscribe(None, STANDARD, 'ActionInvoked', '/org/freedesktop/Notifications', None, Gio.DBusSignalFlags.NONE, lambda *event: action_events.append(event[5].unpack()))
         # Close, DND, Mark read, Clear, Dismiss, then the first action.
         key('Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'space')
-        wait(lambda: not next(n for n in state(bus)['notifications'] if n['id'] == action_id)['unread'], 'resident action keeps its card')
+        wait(lambda: (action_id, 'default') in action_events, 'actual shell action reaches originating application')
+        check(next(n for n in state(bus)['notifications'] if n['id'] == action_id)['live'], 'resident action keeps its live card')
+        bus.signal_unsubscribe(subscription)
         close_center()
         command(bus, 'clear')
         muted = notify(bus, 'Per-application controls', 'Mute only this application’s future banners.', timeout=0)
@@ -236,7 +244,6 @@ def standalone_checks(bundle, directory, inherited, checks):
         service.wait(timeout=5)
         service = None
         # Exercise the same first-owner semantics with an external daemon when available.
-        shell_children = Path(f'/proc/{inherited.get("KNAVE_TEST_SESSION_PID", "0")}/task').exists()
         wayland = inherited.get('WAYLAND_DISPLAY')
         if wayland and Path('/usr/bin/swaync').exists():
             competitor = subprocess.Popen(['/usr/bin/swaync'], env=env, stdout=log, stderr=log)
