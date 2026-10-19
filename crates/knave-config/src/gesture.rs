@@ -41,13 +41,33 @@ pub(crate) fn write(compositor: &mut Item, config: &GestureConfig) {
     if compositor.get("gesture").is_none() {
         compositor["gesture"] = Item::Table(Table::new());
     }
-    let previous = compositor["gesture"]
-        .get("bind")
-        .and_then(Item::as_array_of_tables);
+    if let Some(table) = compositor["gesture"].as_inline_table().cloned() {
+        compositor["gesture"] = Item::Table(table.into_table());
+    }
+    let previous = compositor["gesture"].get("bind").map(|item| {
+        if let Some(tables) = item.as_array_of_tables() {
+            tables.iter().cloned().collect::<Vec<_>>()
+        } else {
+            item.as_array()
+                .map(|array| {
+                    array
+                        .iter()
+                        .filter_map(|value| {
+                            value
+                                .as_inline_table()
+                                .cloned()
+                                .map(|table| table.into_table())
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        }
+    });
     let mut bindings = ArrayOfTables::new();
     for (index, binding) in config.bind.iter().enumerate() {
         // Match source entries by identity so unknown fields survive reordering.
         let mut table = previous
+            .as_ref()
             .and_then(|tables| {
                 tables
                     .get(index)
@@ -57,15 +77,12 @@ pub(crate) fn write(compositor: &mut Item, config: &GestureConfig) {
                             && table.get("direction").and_then(Item::as_str) == Some("horizontal")
                     })
                     .or_else(|| {
-                        tables
-                            .iter()
-                            .filter(|table| {
-                                table.get("fingers").and_then(Item::as_integer)
-                                    == Some(i64::from(binding.fingers))
-                                    && table.get("direction").and_then(Item::as_str)
-                                        == Some("horizontal")
-                            })
-                            .last()
+                        tables.iter().rfind(|table| {
+                            table.get("fingers").and_then(Item::as_integer)
+                                == Some(i64::from(binding.fingers))
+                                && table.get("direction").and_then(Item::as_str)
+                                    == Some("horizontal")
+                        })
                     })
             })
             .cloned()
@@ -108,6 +125,19 @@ future_option = 42
         assert!(document.source().contains("future = true"));
         assert!(document.source().contains("future_option = 42"));
         assert_eq!(ConfigDocument::load(&path).unwrap().config(), &config);
+        std::fs::remove_file(path).unwrap();
+    }
+    #[test]
+    fn inline_source_preserves_unknown_binding_data() {
+        let path =
+            std::env::temp_dir().join(format!("knave-inline-gesture-{}.toml", std::process::id()));
+        std::fs::write(&path, "schema_version = 2\ncompositor = { gesture = { future = 9, bind = [{fingers = 3, direction = 'horizontal', action = 'none', future_option = 42}] } }\n").unwrap();
+        let mut document = ConfigDocument::load(&path).unwrap();
+        let config = document.config().clone();
+        document.write(config).unwrap();
+        assert!(document.source().contains("future_option = 42"));
+        assert!(document.source().contains("future = 9"));
+        ConfigDocument::load(&path).unwrap();
         std::fs::remove_file(path).unwrap();
     }
     #[test]

@@ -153,6 +153,7 @@ class WorkspaceTests(unittest.TestCase):
                 for name in (
                     'desktop-harness.py',
                     'desktop-harness-smoke.py',
+                    'desktop-gesture-smoke.py',
                     'knave_dev.py',
                     'knave-dev.py',
                     'knave_dev_tty.py',

@@ -136,3 +136,27 @@ entry must be installed. It defaults to display :93 and VNC port 5993; both can 
 overridden. For an interactive feature handoff, use the manual workflow and leave
 the session running. Share the video path, the relevant assertions, and VNC tunnel
 instructions with the user.
+
+## Synthetic workspace gestures
+
+Start with `--gesture-test` to opt into a private Winit-only gesture injector.
+The harness removes inherited test flags; ordinary starts never enable it.
+`gesture '{"op":"begin","fingers":3}'`,
+`gesture '{"op":"update","x":-80,"y":0}'`, and
+`gesture '{"op":"end","cancelled":false}'` call the same handlers as libinput.
+`query` reports active workspace and current visual displacement; `remove`
+simulates device removal. An optional `device` identifies an input stream.
+This is test transport, not a desktop IPC/knavectl action.
+
+After the standard `knave-dev test BUNDLE`, run the frozen feature runner:
+
+```sh
+python3 BUNDLE/tools/desktop-gesture-smoke.py --bundle BUNDLE --run /tmp/swipe-demo-001
+```
+
+It asserts pre-release displacement, both rendered workspace colors, stationary
+panels, commit/snap-back/cancellation, reversal/wrapping, device isolation,
+screenshot interruption, reload/disable/error handling, and bounded resource
+counts. It saves screenshots, JSON assertions and an MP4 and stops its session.
+Protocol tests additionally assert complete client streams and reserved stream
+suppression. Synthetic delivery does not verify touchpad/libinput routing.

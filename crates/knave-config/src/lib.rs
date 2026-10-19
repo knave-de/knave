@@ -659,6 +659,14 @@ fn migrate_config_projection(config: &mut Config) -> Result<(), ConfigError> {
 }
 
 fn apply_config(document: &mut DocumentMut, config: &Config) {
+    // Harness/config serializers may normalize the projection to an inline table.
+    if let Some(table) = document
+        .get("compositor")
+        .and_then(Item::as_inline_table)
+        .cloned()
+    {
+        document["compositor"] = Item::Table(table.into_table());
+    }
     set_table_value(
         document,
         "shell",
