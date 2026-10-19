@@ -86,7 +86,10 @@ def main():
         active(number)
         key('Super_L+Return')
         wait(lambda state: any(w['workspace'] == number and w['app_id'] == 'kitty' and w['focused'] for w in state['windows']), 'Kitty launch')
-        text = f'\\033[48;2;{color}m\\033[2J\\033[H\\n    WORKSPACE {number}\\n\\n    Three-finger workspace swipe\\n    Synthetic input / real compositor rendering\\n'
+        red, green, blue = (int(value) for value in color.split(';'))
+        # A default background survives terminal reflow on minimize/restore.
+        background = f'\\033]11;rgb:{red:02x}/{green:02x}/{blue:02x}\\007'
+        text = background + f'\\033[48;2;{color}m\\033[2J\\033[H\\n    WORKSPACE {number}\\n\\n    Three-finger workspace swipe\\n    Synthetic input / real compositor rendering\\n'
         call('type', 'printf ' + shlex.quote(text))
         key('Return')
         time.sleep(0.3)
