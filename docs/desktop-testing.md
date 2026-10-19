@@ -1,5 +1,12 @@
 # Desktop test harness
 
+For coordinated worktrees and testing frozen binaries from all four repositories,
+use the [development workflow](dev-workflow.md). `start --bundle /absolute/bundle`
+selects those artifacts instead of mutable workspace targets and adds a private
+portal activation/Settings check. `portal-check` repeats that assertion. This
+private bus never imports environment into the host user manager. Ordinary
+workspace mode below retains its existing portal-disabled behavior.
+
 Use `scripts/desktop-harness.py` for feature verification and recorded demos.
 It runs the workspace binaries in a private Xvfb/Winit desktop with software
 rendering, isolated runtime/configuration and D-Bus. It never changes your normal

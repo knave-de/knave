@@ -32,6 +32,10 @@ Build and test it with:
 
 ## CLI
 
+For isolated feature worktrees, coordinated builds, verified desktop bundles,
+draft PRs and dedicated-account TTY testing, see the
+[development workflow](docs/dev-workflow.md).
+
 For agent-controlled feature testing, MP4 demonstrations, and interactive testing
 over an SSH/VNC connection, see the [desktop test harness](docs/desktop-testing.md).
 
