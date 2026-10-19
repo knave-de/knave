@@ -14,8 +14,6 @@ use toml_edit::{Array, ArrayOfTables, DocumentMut, Item, Table, value};
 pub mod appearance;
 pub use appearance::WindowAppearance;
 
-pub const CURRENT_SCHEMA_VERSION: u32 = 2;
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 #[derive(Default)]
@@ -302,14 +300,14 @@ impl Theme {
     }
 }
 
-/// Additive schema-2 desktop appearance preference.
+/// Desktop appearance preference.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AppearanceConfig {
     #[serde(default)]
     pub theme: Theme,
 }
 
-/// Additive schema-2 appearance projection for the portal backend.
+/// Appearance projection for the portal backend.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct PortalConfig {
     #[serde(default = "default_true")]
@@ -338,14 +336,12 @@ impl Default for PortalConfig {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct Config {
     #[serde(default)]
     pub portal: PortalConfig,
     #[serde(default)]
     pub appearance: AppearanceConfig,
-    #[serde(default = "default_schema_version")]
-    pub schema_version: u32,
     #[serde(default)]
     pub compositor: CompositorConfig,
     #[serde(default)]
@@ -354,31 +350,8 @@ pub struct Config {
     pub shell: ShellConfig,
 }
 
-fn default_schema_version() -> u32 {
-    CURRENT_SCHEMA_VERSION
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            compositor: CompositorConfig::default(),
-            portal: PortalConfig::default(),
-            appearance: AppearanceConfig::default(),
-            schema_version: CURRENT_SCHEMA_VERSION,
-            session: SessionConfig::default(),
-            shell: ShellConfig::default(),
-        }
-    }
-}
-
 impl Config {
     pub fn validate(&self) -> Result<(), ConfigError> {
-        if self.schema_version != CURRENT_SCHEMA_VERSION {
-            return Err(ConfigError::SchemaVersion {
-                found: self.schema_version,
-                expected: CURRENT_SCHEMA_VERSION,
-            });
-        }
         let accent: Vec<_> = self
             .portal
             .accent_color
@@ -458,57 +431,12 @@ pub enum ConfigError {
     },
     #[error("invalid Knave configuration: {0}")]
     Invalid(String),
-    #[error("unsupported schema version {found}; expected {expected}")]
-    SchemaVersion { found: u32, expected: u32 },
     #[error("could not write {path}: {source}")]
     Write {
         path: PathBuf,
         source: std::io::Error,
     },
 }
-#[derive(Debug, Default, Deserialize)]
-struct RootCompositorConfig {
-    modkey: Option<String>,
-    environment_file: Option<String>,
-    input: Option<CompositorInputConfig>,
-    bind: Option<Vec<CompositorBinding>>,
-}
-
-fn project_root_compositor(
-    document: &DocumentMut,
-    source: &str,
-    config: &mut Config,
-) -> Result<(), ConfigError> {
-    if document.get("compositor").is_some() {
-        return Ok(());
-    }
-    let root =
-        toml::from_str::<RootCompositorConfig>(source).map_err(|source| ConfigError::Parse {
-            path: PathBuf::from("<root compositor>"),
-            source,
-        })?;
-    if root.modkey.is_none()
-        && root.environment_file.is_none()
-        && root.input.is_none()
-        && root.bind.is_none()
-    {
-        return Ok(());
-    }
-    if let Some(modkey) = root.modkey {
-        config.compositor.modkey = modkey;
-    }
-    if let Some(environment_file) = root.environment_file {
-        config.compositor.environment_file = Some(environment_file);
-    }
-    if let Some(input) = root.input {
-        config.compositor.input = input;
-    }
-    if let Some(bind) = root.bind {
-        config.compositor.bind = bind;
-    }
-    Ok(())
-}
-
 pub struct ConfigDocument {
     path: PathBuf,
     document: DocumentMut,
@@ -536,7 +464,7 @@ impl ConfigDocument {
                     source,
                 })?
         };
-        let mut config = if source.trim().is_empty() {
+        let config = if source.trim().is_empty() {
             Config::default()
         } else {
             toml::from_str::<Config>(&source).map_err(|source| ConfigError::Parse {
@@ -544,10 +472,6 @@ impl ConfigDocument {
                 source,
             })?
         };
-        if !source.trim().is_empty() {
-            project_root_compositor(&document, &source, &mut config)?;
-        }
-        migrate_config_projection(&mut config)?;
         config.validate()?;
 
         Ok(Self {
@@ -586,42 +510,6 @@ impl ConfigDocument {
         Ok(())
     }
 
-    /// Materialize root-level compositor settings under [compositor].
-    ///
-    /// Root-level keys remain in the editable document so users can roll back
-    /// without losing values that were not understood by Knave.
-    pub fn materialize_root_compositor(&mut self) -> Result<bool, ConfigError> {
-        if !self.needs_root_compositor_materialization() {
-            return Ok(false);
-        }
-        self.write(self.config.clone())?;
-        Ok(true)
-    }
-
-    /// Persist the typed projection and any supported schema migration while
-    /// retaining unknown source keys for rollback and forward compatibility.
-    pub fn migrate(&mut self) -> Result<bool, ConfigError> {
-        let old_schema = self
-            .document
-            .get("schema_version")
-            .and_then(Item::as_integer)
-            .unwrap_or(1);
-        if old_schema == i64::from(CURRENT_SCHEMA_VERSION)
-            && !self.needs_root_compositor_materialization()
-        {
-            return Ok(false);
-        }
-        self.write(self.config.clone())?;
-        Ok(true)
-    }
-
-    fn needs_root_compositor_materialization(&self) -> bool {
-        self.document.get("compositor").is_none()
-            && ["modkey", "environment_file", "input", "bind"]
-                .iter()
-                .any(|key| self.document.get(key).is_some())
-    }
-
     pub fn write_default_at(path: impl Into<PathBuf>) -> Result<Self, ConfigError> {
         let path = path.into();
         if path.exists() {
@@ -633,23 +521,6 @@ impl ConfigDocument {
         let mut document = Self::load(path.clone())?;
         document.write(Config::default())?;
         Ok(document)
-    }
-}
-
-fn migrate_config_projection(config: &mut Config) -> Result<(), ConfigError> {
-    match config.schema_version {
-        1 => {
-            // Schema 1 used false for the on-demand Overview process. Schema 2
-            // keeps the service session-owned, so preserve that availability.
-            config.shell.start_overview_service = true;
-            config.schema_version = CURRENT_SCHEMA_VERSION;
-            Ok(())
-        }
-        CURRENT_SCHEMA_VERSION => Ok(()),
-        found => Err(ConfigError::SchemaVersion {
-            found,
-            expected: CURRENT_SCHEMA_VERSION,
-        }),
     }
 }
 
@@ -717,7 +588,6 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
         "reduced_motion",
         value(config.portal.reduced_motion),
     );
-    document["schema_version"] = value(i64::from(config.schema_version));
     set_table_value(
         document,
         "compositor",
@@ -959,11 +829,7 @@ mod tests {
     fn master_percentage_defaults_validates_and_round_trips() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("config.toml");
-        fs::write(
-            &path,
-            "schema_version = 1\n[compositor]\nunknown_layout_option = 42\n",
-        )
-        .unwrap();
+        fs::write(&path, "[compositor]\nunknown_layout_option = 42\n").unwrap();
         let mut document = ConfigDocument::load(&path).unwrap();
         assert_eq!(document.config().compositor.master_percent, 50);
         let mut config = document.config().clone();
@@ -990,7 +856,7 @@ mod tests {
     fn portal_defaults_validate_and_preserve_unknown_preferences() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("config.toml");
-        fs::write(&path, "schema_version = 2\n[portal]\ncustom_option = 42\n").unwrap();
+        fs::write(&path, "[portal]\ncustom_option = 42\n").unwrap();
         let mut document = ConfigDocument::load(&path).unwrap();
         assert_eq!(document.config().portal, PortalConfig::default());
         let mut config = document.config().clone();
@@ -1015,11 +881,7 @@ mod tests {
     fn theme_defaults_to_system_and_round_trips() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("config.toml");
-        fs::write(
-            &path,
-            "schema_version = 2\n[appearance]\ncustom_option = 42\n",
-        )
-        .unwrap();
+        fs::write(&path, "[appearance]\ncustom_option = 42\n").unwrap();
         let mut document = ConfigDocument::load(&path).unwrap();
         assert_eq!(document.config().appearance.theme, Theme::System);
 
@@ -1059,11 +921,7 @@ mod tests {
     fn unknown_theme_value_is_rejected() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("config.toml");
-        fs::write(
-            &path,
-            "schema_version = 2\n[appearance]\ntheme = \"midnight\"\n",
-        )
-        .unwrap();
+        fs::write(&path, "[appearance]\ntheme = \"midnight\"\n").unwrap();
         assert!(ConfigDocument::load(&path).is_err());
     }
 
@@ -1071,11 +929,7 @@ mod tests {
     fn wallpaper_round_trip_clear_and_validation_preserve_unknown_options() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("config.toml");
-        fs::write(
-            &path,
-            "schema_version = 2\n[shell.wallpaper]\nfuture_option = 42\n",
-        )
-        .unwrap();
+        fs::write(&path, "[shell.wallpaper]\nfuture_option = 42\n").unwrap();
         let mut doc = ConfigDocument::load(&path).unwrap();
         let mut config = doc.config().clone();
         assert!(config.shell.wallpaper.image.is_none());
@@ -1112,36 +966,10 @@ mod tests {
     }
 
     #[test]
-    fn schema_one_overview_false_keeps_service_available_and_migrates_preserving_source() {
+    fn overview_service_can_be_disabled() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("config.toml");
-        fs::write(
-            &path,
-            "schema_version = 1\ncustom_value = \"keep\"\n[shell]\nstart_overview_service = false\n",
-        )
-        .unwrap();
-
-        let mut document = ConfigDocument::load(&path).unwrap();
-        assert_eq!(document.config().schema_version, CURRENT_SCHEMA_VERSION);
-        assert!(document.config().shell.start_overview_service);
-        assert!(document.migrate().unwrap());
-
-        let migrated = fs::read_to_string(path).unwrap();
-        assert!(migrated.contains("schema_version = 2"));
-        assert!(migrated.contains("start_overview_service = true"));
-        assert!(migrated.contains("custom_value = \"keep\""));
-        assert!(!document.migrate().unwrap());
-    }
-
-    #[test]
-    fn schema_two_can_disable_overview_service() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("config.toml");
-        fs::write(
-            &path,
-            "schema_version = 2\n[shell]\nstart_overview_service = false\n",
-        )
-        .unwrap();
+        fs::write(&path, "[shell]\nstart_overview_service = false\n").unwrap();
 
         let document = ConfigDocument::load(&path).unwrap();
         assert!(!document.config().shell.start_overview_service);
@@ -1153,7 +981,7 @@ mod tests {
         let path = directory.path().join("config.toml");
         fs::write(
             &path,
-            "schema_version = 1\ncustom_value = \"keep\"\n[session]\nbackend = \"auto\"\n",
+            "custom_value = \"keep\"\n[session]\nbackend = \"auto\"\n",
         )
         .unwrap();
 
@@ -1176,73 +1004,10 @@ mod tests {
         assert!(output.contains(r#"args = ["--force"]"#));
     }
     #[test]
-    fn root_compositor_settings_are_projected() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("config.toml");
-        fs::write(
-            &path,
-            r#"schema_version = 1
-preserved_only = "keep"
-modkey = "Alt"
-[input]
-tap_to_click = false
-natural_scroll = false
-[[bind]]
-keys = "MOD+Q"
-dispatch = "close"
-"#,
-        )
-        .unwrap();
-
-        let document = ConfigDocument::load(&path).unwrap();
-        assert_eq!(document.config().compositor.modkey, "Alt");
-        assert!(!document.config().compositor.input.tap_to_click);
-        assert!(!document.config().compositor.input.natural_scroll);
-        assert_eq!(document.config().compositor.bind.len(), 1);
-        assert_eq!(document.config().compositor.bind[0].dispatch, "close");
-        assert!(document.source().contains("preserved_only = \"keep\""));
-    }
-
-    #[test]
-    fn root_compositor_materialization_writes_typed_projection_and_preserves_source() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("config.toml");
-        fs::write(
-            &path,
-            r#"schema_version = 1
-preserved_only = "keep"
-modkey = "Alt"
-[input]
-tap_to_click = false
-natural_scroll = false
-[[bind]]
-keys = "MOD+Q"
-dispatch = "close"
-"#,
-        )
-        .unwrap();
-
-        let mut document = ConfigDocument::load(&path).unwrap();
-        assert!(document.materialize_root_compositor().unwrap());
-
-        let output = fs::read_to_string(&path).unwrap();
-        assert!(output.contains("[compositor]"));
-        assert_eq!(output.matches("modkey = \"Alt\"").count(), 2);
-        assert!(output.contains("preserved_only = \"keep\""));
-        assert!(output.contains("[input]"));
-        assert!(output.contains("[[bind]]"));
-        assert!(!document.materialize_root_compositor().unwrap());
-    }
-
-    #[test]
     fn clearing_optional_environment_file_removes_known_key() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("config.toml");
-        fs::write(
-            &path,
-            "schema_version = 1\n[compositor]\nenvironment_file = \"environment\"\n",
-        )
-        .unwrap();
+        fs::write(&path, "[compositor]\nenvironment_file = \"environment\"\n").unwrap();
 
         let mut document = ConfigDocument::load(&path).unwrap();
         let mut config = document.config().clone();
@@ -1259,8 +1024,7 @@ dispatch = "close"
         let path = directory.path().join("config.toml");
         fs::write(
             &path,
-            r#"schema_version = 2
-[compositor]
+            r#"[compositor]
 future_option = 7
 
 [[compositor.device]]

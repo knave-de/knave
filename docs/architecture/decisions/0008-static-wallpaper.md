@@ -1,10 +1,10 @@
 # Static wallpaper
 
-Knave owns the additive schema-2 `[shell.wallpaper]` settings. `image` is an
+Knave owns the optional `[shell.wallpaper]` settings. `image` is an
 optional absolute PNG path; omission keeps the black compositor background.
 `fit` is `cover` (default, centered crop), `contain` (whole image with black
 letterboxing), or `stretch` (fills output without preserving aspect ratio).
-Existing config files need no migration. Atomic settings writes preserve unknown
+Atomic settings writes preserve unknown
 wallpaper keys and remove `image` when cleared.
 
 Session passes the validated path and fit as separate arguments to one supervised

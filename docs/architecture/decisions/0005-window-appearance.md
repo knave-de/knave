@@ -3,7 +3,7 @@
 ## Context and decision
 
 Window geometry and visual effects must share one typed contract. Knave adds
-optional schema-2 appearance settings; Villain implements gaps, border reservation,
+optional appearance settings; Villain implements gaps, border reservation,
 rounded content/input masks, independent side shadows, focus-specific content
 opacity/background blur, and independent per-view gates. Fullscreen always
 bypasses effects. Defaults preserve the current compositor appearance. Settings
@@ -14,12 +14,9 @@ worker, timer or subscription is introduced. See [the contract](../window-appear
 
 Consumers are knave-config, Knave CLI/session configuration loading, and Villain's
 config reload, layout, split input, rendering, previews and overview panes.
-Schema stays 2 because all fields are additive with defaults; existing schema-1
-projection remains unchanged. Desktop API, shell protocol and binary/library
-versions stay unchanged. Rust consumers constructing complete CompositorConfig
-literals must initialize `appearance`. Older Knave preserves this unknown nested
-TOML during ordinary writes; older Villain ignores the settings. No migration is
-needed, and new Knave writes preserve unknown leaves inside appearance tables,
+The fields are optional with defaults. Desktop API and shell protocol remain
+unchanged. Rust consumers constructing complete CompositorConfig literals must
+initialize `appearance`. Settings writes preserve unknown appearance leaves,
 including inline tables. Invalid values reject loading/writing/reload atomically.
 
 ## Resource ownership
