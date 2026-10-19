@@ -356,7 +356,10 @@ def start(state, source=None, bundle=None):
         for unit in UNITS:
             if systemctl('is-active', '--quiet', unit, check=False).returncode == 0:
                 raise ValueError(
-                    f'{unit} is active; log out other test sessions or stop it first'
+                    f'{unit} is active on this account’s shared user bus; '
+                    'keep development sessions running with '
+                    './knave-dev session FEATURE --nested, or use a separate '
+                    'Unix test account for TTY testing'
                 )
         paths = metadata_paths()
         for path in paths.values():

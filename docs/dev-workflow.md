@@ -34,6 +34,13 @@ account; exit the current session before starting another feature. Selection
 and startup hold the same lock throughout the session. Existing build, bundle,
 import and `tty` commands below remain available for agents and advanced use.
 
+For an isolated preview from SSH or your current desktop, use
+`./knave-dev session FEATURE --nested`. It starts the verified desktop on a free
+virtual display and prints the loopback VNC endpoint and password-file path.
+Repeating the command reuses the live preview. End it with
+`./knave-dev session FEATURE --stop`. This path uses private runtime/configuration,
+D-Bus and PipeWire services and leaves the account's existing portal setup alone.
+
 ## Create and develop
 
 Keep the four source repositories as siblings. From Knave:

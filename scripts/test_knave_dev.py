@@ -412,6 +412,89 @@ class BundleTests(unittest.TestCase):
                     self.state, Path('/chosen/config.toml'), bundle=self.bundle
                 )
 
+    def test_nested_cli_bypasses_account_and_tty_checks(self):
+        import importlib.util
+        import sys
+
+        spec = importlib.util.spec_from_file_location(
+            'knave_dev_cli_nested', SCRIPTS / 'knave-dev.py'
+        )
+        cli = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cli)
+        for flag in ('--nested', '--stop'):
+            with (
+                patch.object(
+                    sys,
+                    'argv',
+                    [
+                        'knave-dev',
+                        '--state',
+                        str(self.state),
+                        'session',
+                        'example',
+                        flag,
+                    ],
+                ),
+                patch.object(cli.os, 'umask'),
+                patch.object(tty, 'account') as account,
+                patch.object(tty, 'start') as start,
+                patch.object(
+                    dev,
+                    'preview_bundle',
+                    return_value={
+                        'feature': 'example',
+                        'vnc_port': 5901,
+                        'password_file': '/private/password',
+                    },
+                ) as preview,
+                patch.object(dev, 'stop_preview') as stop,
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                self.assertEqual(cli.main(), 0)
+                account.assert_not_called()
+                start.assert_not_called()
+                if flag == '--nested':
+                    preview.assert_called_once_with(self.state, self.bundle, None)
+                    stop.assert_not_called()
+                else:
+                    stop.assert_called_once_with(self.state, 'example')
+                    preview.assert_not_called()
+
+    def test_preview_reuses_live_session_and_stops_once(self):
+        run = self.state / 'preview-run'
+        run.mkdir()
+        command = ['python3', 'harness', '--run', str(run)]
+        dev.atomic_json(
+            self.state / 'previews/example.json',
+            {
+                'run': str(run),
+                'bundle': str(self.bundle),
+                'command': command,
+            },
+        )
+        with patch.object(dev, 'capture', return_value='{"vnc_port":5901}') as capture:
+            result = dev.preview_bundle(self.state, self.bundle)
+            self.assertEqual(result['feature'], 'example')
+            capture.assert_called_once_with(command + ['status'])
+            capture.reset_mock()
+            dev.stop_preview(self.state, 'example')
+            capture.assert_called_once_with(command + ['stop'])
+            (run / 'stopped.json').write_text('{}')
+            capture.reset_mock()
+            dev.stop_preview(self.state, 'example')
+            capture.assert_not_called()
+
+    def test_preview_stops_if_registration_fails(self):
+        with (
+            patch.object(dev.tempfile, 'mkdtemp', return_value=str(self.state)),
+            patch.object(dev, 'capture', return_value='{}') as capture,
+            patch.object(dev, 'atomic_json', side_effect=OSError('disk full')),
+        ):
+            with self.assertRaisesRegex(OSError, 'disk full'):
+                dev.preview_bundle(self.state, self.bundle)
+            self.assertEqual(capture.call_count, 2)
+            self.assertEqual(capture.call_args.args[0][-1], 'stop')
+
     def test_missing_account_has_one_time_setup_instruction(self):
         with self.assertRaisesRegex(ValueError, 'tty init --dedicated-test-account'):
             tty.account(self.state)

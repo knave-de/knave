@@ -53,6 +53,15 @@ def parser():
     )
     session.add_argument('feature', help='feature name or exported bundle archive')
     session.add_argument('--config', type=Path)
+    mode = session.add_mutually_exclusive_group()
+    mode.add_argument(
+        '--nested',
+        action='store_true',
+        help='start an isolated VNC preview, including over SSH',
+    )
+    mode.add_argument(
+        '--stop', action='store_true', help='stop this feature’s nested preview'
+    )
     export = commands.add_parser(
         'export',
         help='package a tested bundle and its verification for another account',
@@ -140,6 +149,17 @@ def main():
     elif args.command == 'session':
         import knave_dev_tty as tty
 
+        if args.stop:
+            dev.stop_preview(state, args.feature)
+            print('Preview stopped.')
+            return 0
+        if args.nested:
+            bundle = dev.session_bundle(state, args.feature)
+            result = dev.preview_bundle(state, bundle, args.config)
+            print(f'Preview running. VNC: 127.0.0.1:{result["vnc_port"]}')
+            print(f'Password file: {result["password_file"]}')
+            print(f'Stop: ./knave-dev session {result["feature"]} --stop')
+            return 0
         tty.account(state)
         bundle = dev.session_bundle(state, args.feature)
         return tty.start(state, args.config, bundle=bundle)

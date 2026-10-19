@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import tarfile
 import tempfile
@@ -531,6 +532,71 @@ def session_bundle(state, feature):
     # Reject a damaged newest verified build instead of silently launching an older one.
     tested_bundle(state, selected)
     return selected
+
+
+def preview_bundle(state, path, config=None):
+    manifest = tested_bundle(state, path)
+    feature = identifier(manifest['feature'])
+    record = state / 'previews' / (feature + '.json')
+    with lock(state / 'preview.lock'):
+        if record.exists():
+            previous = json.loads(record.read_text())
+            run = Path(previous['run'])
+            if not (run / 'stopped.json').exists():
+                # Reuse the live preview; an unreachable daemon is reported rather
+                # than abandoned while launching another desktop.
+                result = json.loads(capture(previous['command'] + ['status']))
+                return dict(result, feature=feature)
+        display = next(
+            (
+                number
+                for number in range(92, 192)
+                if not Path(f'/tmp/.X11-unix/X{number}').exists()
+                and not Path(f'/tmp/.X{number}-lock').exists()
+            ),
+            None,
+        )
+        if display is None:
+            raise RuntimeError('no free nested display')
+        with socket.socket() as reservation:
+            reservation.bind(('127.0.0.1', 0))
+            port = reservation.getsockname()[1]
+        run = Path(tempfile.mkdtemp(prefix='knave-preview-')) / 'run'
+        command = ['python3', str(path / 'tools/desktop-harness.py'), '--run', str(run)]
+        options = ['--config', str(config.resolve(strict=True))] if config else []
+        result = json.loads(
+            capture(
+                command
+                + [
+                    'start',
+                    '--bundle',
+                    str(path),
+                    '--display',
+                    str(display),
+                    '--vnc-port',
+                    str(port),
+                    *options,
+                ]
+            )
+        )
+        try:
+            atomic_json(
+                record, {'run': str(run), 'bundle': str(path), 'command': command}
+            )
+        except BaseException:
+            capture(command + ['stop'])
+            raise
+        return dict(result, feature=feature)
+
+
+def stop_preview(state, feature):
+    record = state / 'previews' / (identifier(feature) + '.json')
+    with lock(state / 'preview.lock'):
+        if not record.is_file():
+            raise ValueError(f'No nested preview for {feature!r}')
+        previous = json.loads(record.read_text())
+        if not (Path(previous['run']) / 'stopped.json').exists():
+            capture(previous['command'] + ['stop'])
 
 
 def test_bundle(state, path, display=93, vnc_port=0):
