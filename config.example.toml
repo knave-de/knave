@@ -8,6 +8,10 @@
 modkey = "Super"
 # Master width in percent; stack receives the remainder (10..90).
 master_percent = 50
+# Order focus-switching shortcuts cycle a workspace's windows in:
+# "layout" walks master then stack top to bottom, "mru" walks
+# most-recently-focused windows first.
+focus_cycle_order = "layout"
 environment_file = "environment"
 
 # Opt in to skipping empty slots for next/previous shortcuts and workspace swipes.
@@ -18,6 +22,9 @@ skip_empty = false
 [compositor.input]
 tap_to_click = true
 natural_scroll = true
+# Focus the window under the pointer while it moves. Set to false to
+# switch window focus on click only.
+focus_follows_mouse = true
 
 # Optional per-device overrides. `name` matches the runtime libinput device
 # name case-insensitively and supports the `*` and `?` wildcards. Unset fields
