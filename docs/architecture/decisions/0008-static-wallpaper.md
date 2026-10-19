@@ -23,11 +23,29 @@ The host currently targets one output. Workspace-only captures exclude shell lay
 workspace panes and PNG previews include the wallpaper background surface but
 exclude other shell layers. Full-output captures include the wallpaper. Per-output/workspace selection and live reload are deferred.
 
+## Live reload of image and fit (2026-10-19)
+
+`knavectl reload` (the same request as `knavectl dispatch reload`) now also
+updates a running wallpaper. After Villain applies a revalidated configuration
+it emits the existing `DesktopEvent::ConfigurationReloaded` event on desktop
+subscriptions; the shell wallpaper process re-reads `[shell.wallpaper]` through
+the typed `knave-config` API and swaps the decoded image and fit on change.
+Decoding stays bounded and off the shell's main loop; a missing or invalid new
+image keeps the previous image and logs an error. Clearing `image` renders
+black. Starting a wallpaper where none was configured still needs a session
+restart, and per-output/workspace selection remains deferred. Snapshot
+consumers skip event frames; the event has no payload, so no desktop API
+revision bump and no configuration migration are required.
+
 Rollback uses the previous Session/Shell pair; the unknown wallpaper table can
 remain in configuration. Verification uses config round trips, decoder tests,
 workspace checks and the isolated software-rendered desktop harness, including
 workspace switching, screenshot inspection and idle/stress resource samples.
-Direct-TTY and hardware-GPU behavior require separate verification.
+The reload path adds one subscription thread and two sockets to the wallpaper
+process: a software-rendered sample showed 13 threads, 49 FDs and RSS flat at
+about 250 MiB across image swaps, fit changes and repeated failed decodes
+(baseline 12 threads, 47 FDs, 230456 KiB on 2026-10-16). Direct-TTY and
+hardware-GPU behavior require separate verification.
 
 ## Software-rendered verification (2026-10-16)
 
