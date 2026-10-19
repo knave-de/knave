@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Verify notification delivery, persistence and actual shell interaction on a frozen bundle."""
 import argparse
+import base64
+import struct
+import zlib
 import importlib.util
 import json
 import os
@@ -34,6 +37,22 @@ def notify(bus, summary, body='', app='Knave demo', app_id='org.knave.Demo', tim
     hints = dict(hints or {})
     hints['desktop-entry'] = GLib.Variant('s', app_id)
     return invoke(bus, STANDARD, '/org/freedesktop/Notifications', STANDARD, 'Notify', '(susssasa{sv}i)', (app, 0, 'dialog-information', summary, body, list(actions), hints, timeout))[0]
+
+
+def image_hint(width=240, height=120):
+    colors = [(242, 93, 98, 255), (88, 101, 242, 255), (65, 192, 133, 128), (255, 208, 85, 255)]
+    pixels = bytes(channel for y in range(height) for x in range(width) for channel in colors[min(3, x * 4 // width)])
+    return GLib.Variant('(iiibiiay)', (width, height, width * 4, True, 8, 4, pixels)), pixels
+
+
+def png_fixture(path):
+    width, height = 80, 160
+    pixels = bytes([65, 192, 133, 255] * width * height)
+    def chunk(kind, data):
+        return struct.pack('!I', len(data)) + kind + data + struct.pack('!I', zlib.crc32(kind + data))
+    rows = b''.join(b'\0' + pixels[y*width*4:(y+1)*width*4] for y in range(height))
+    path.write_bytes(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('!2I5B', width, height, 8, 6, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
+    return pixels
 
 
 def wait(predicate, label, seconds=10):
@@ -122,6 +141,36 @@ def main():
         time.sleep(2)
         resources['idle_after'] = sample_set()
         call('record-start', 'notifications-demo')
+        hint, pixels = image_hint()
+        picture = notify(bus, 'A picture arrived', 'The attached image keeps its colors, alpha and aspect ratio.', app='Image demo', app_id='org.knave.ImageDemo', timeout=0, hints={'image-data': hint})
+        image = next(n for n in state(bus)['notifications'] if n['id'] == picture)['image']
+        check(base64.b64decode(image['rgba']) == pixels, 'raw image preserves RGBA pixels')
+        summary = json.loads(invoke(bus, CONTROL, '/org/knave/Notifications', CONTROL, 'Summary')[0])
+        check(not any(n.get('image') for n in summary['notifications']), 'bar summary excludes image payloads')
+        shot('attached-image-banner')
+        open_center()
+        shot('attached-image-history')
+        close_center()
+        command(bus, 'clear')
+        path = directory / 'temporary picture.png'
+        expected = png_fixture(path)
+        portrait = notify(bus, 'A portrait attachment', 'This preview survives deletion of its temporary source file.', app='Image demo', app_id='org.knave.ImageDemo', timeout=0, hints={'image-path': GLib.Variant('s', path.as_uri())})
+        path.unlink()
+        image = next(n for n in state(bus)['notifications'] if n['id'] == portrait)['image']
+        check(base64.b64decode(image['rgba']) == expected, 'local file image is captured before its source disappears')
+        open_center()
+        shot('portrait-image-history')
+        close_center()
+        command(bus, 'set_dnd', enabled=True)
+        hint, _ = image_hint(320,320)
+        for index in range(12):
+            notify(bus, f'Image burst {index}', app='Image demo', app_id='org.knave.ImageDemo', timeout=1, hints={'image-data': hint})
+        images = state(bus)['notifications']
+        retained = sum(len(base64.b64decode(n['image']['rgba'])) for n in images if n.get('image'))
+        check(retained <= 4*1024*1024 and len(images) == 13, 'image memory capped without losing text notifications')
+        resources['images'] = sample_set()
+        command(bus, 'set_dnd', enabled=False)
+        command(bus, 'clear')
         first = notify(bus, 'Your files are ready', '12 files copied to Documents.', app='Files', app_id='org.knave.Files')
         second = notify(bus, 'Project review', 'The revised mockups are ready. This notification remains in history after its banner disappears.', app='Mail', app_id='org.knave.Mail')
         wait(lambda: sum(n['unread'] for n in state(bus)['notifications']) == 2, 'unread count reaches two')
@@ -244,7 +293,8 @@ def standalone_checks(bundle, directory, inherited, checks):
             return subprocess.Popen([str(bundle / 'bin/knave-session'), 'notifications'], env=env, stdout=log, stderr=log)
         service = start()
         wait(lambda: state(connection)['owned'], 'standalone notification service starts')
-        saved = notify(connection, 'Survives restart', 'Stored transactionally', timeout=0, actions=('default', 'Open'))
+        restart_hint, restart_pixels = image_hint(2,1)
+        saved = notify(connection, 'Survives restart', 'Stored transactionally', timeout=0, actions=('default', 'Open'), hints={'image-data': restart_hint})
         command(connection, 'set_dnd', enabled=True)
         service.terminate()
         service.wait(timeout=5)
@@ -254,6 +304,8 @@ def standalone_checks(bundle, directory, inherited, checks):
         assert restored['dnd'] and restored['notifications'][0]['id'] == saved
         assert not restored['notifications'][0]['live'] and not restored['notifications'][0]['banner'] and not restored['notifications'][0]['actions']
         checks.append('real service restart preserves history/DND and disables stale actions/banners')
+        assert base64.b64decode(restored['notifications'][0]['image']['rgba']) == restart_pixels
+        checks.append('image pixels survive a real service restart')
         new = notify(connection, 'New protocol identity', timeout=0)
         assert new > saved
         checks.append('protocol ID not reused after restart')

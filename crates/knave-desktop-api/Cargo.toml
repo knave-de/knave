@@ -9,3 +9,4 @@ description = "Versioned public desktop contracts shared by Knave components"
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+base64 = "0.22"

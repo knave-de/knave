@@ -10,6 +10,7 @@ fn incoming() -> Incoming {
         replaces: 0,
         app: "Test".into(),
         icon: "dialog-information".into(),
+        image: None,
         summary: "Hello".into(),
         body: "Body".into(),
         app_id: "org.test.App".into(),
@@ -325,7 +326,7 @@ fn real_bus_protocol_actions_validation_and_sender_identity() {
                     "Replacement",
                     "",
                     actions,
-                    HashMap::<String, OwnedValue>::new(),
+                    HashMap::from([("image-data", OwnedValue::from(true))]),
                     0i32,
                 ),
             )
@@ -517,5 +518,169 @@ fn bus_policy_failure_is_unavailable_instead_of_fabricating_an_external_owner() 
         )
         .await;
         assert!(matches!(result,Err(error) if error.contains("name acquisition failed")));
+    });
+}
+
+#[test]
+fn image_budget_drops_old_previews_without_dropping_notifications() {
+    let mut m = model();
+    let image = NotificationImage::new(320, 320, vec![77; MAX_IMAGE_BYTES]).unwrap();
+    for index in 0..20 {
+        let mut n = incoming();
+        n.image = Some(image.clone());
+        n.timeout = 1;
+        m.notify(n, index * 10).unwrap();
+        m.tick(index * 10 + 2);
+    }
+    assert_eq!(m.snapshot.notifications.len(), 20);
+    let retained: usize = m
+        .snapshot
+        .notifications
+        .iter()
+        .filter_map(|n| n.image.as_ref())
+        .map(|i| i.pixels().len())
+        .sum();
+    assert!(retained <= MAX_TOTAL_IMAGE_BYTES);
+    assert!(m.snapshot.notifications[0].image.is_some());
+    assert!(m.snapshot.notifications.last().unwrap().image.is_none());
+    let json = serde_json::to_string(&m.snapshot).unwrap();
+    assert!(json.len() > 4 * 1024 * 1024 && json.len() < MAX_SNAPSHOT_BYTES);
+    assert_eq!(
+        serde_json::from_str::<NotificationSnapshot>(&json).unwrap(),
+        m.snapshot
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("history.sqlite3");
+    let mut store = store::Store::open(&path).unwrap();
+    store.save(&m.durable(), false, m.next).unwrap();
+    assert_eq!(store.load().unwrap().0.len(), 20);
+    let db = rusqlite::Connection::open(&path).unwrap();
+    let texts: Vec<String> = db
+        .prepare("SELECT json FROM history")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert!(
+        texts
+            .iter()
+            .all(|json| !json.contains("image") && json.len() < 16384)
+    );
+    let count: usize = db
+        .query_row("SELECT count(*) FROM notification_images", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(count, MAX_TOTAL_IMAGE_BYTES / MAX_IMAGE_BYTES);
+    store.save(&[], false, m.next).unwrap();
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM notification_images", [], |row| row
+            .get::<_, usize>(
+            0
+        ))
+        .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn image_hints_cross_real_bus_persist_and_replacement_clears_the_preview() {
+    let bus = Bus::new();
+    let dir = tempfile::tempdir().unwrap();
+    runtime().block_on(async {
+        let (service, server) = setup_on(
+            Config::default(),
+            bus.connect().await,
+            dir.path().join("history.sqlite3"),
+        )
+        .await
+        .unwrap();
+        let client = bus.connect().await;
+        let proxy = zbus::Proxy::new(&client, STANDARD_NAME, STANDARD_PATH, STANDARD_NAME)
+            .await
+            .unwrap();
+        let raw = zbus::zvariant::Value::from(zbus::zvariant::Structure::from((
+            2i32,
+            1i32,
+            8i32,
+            true,
+            8i32,
+            4i32,
+            vec![88u8, 101, 242, 255, 255, 255, 255, 128],
+        )));
+        let hints = HashMap::from([("image-data", OwnedValue::try_from(raw).unwrap())]);
+        let id: u32 = proxy
+            .call(
+                "Notify",
+                &(
+                    "Discord",
+                    0u32,
+                    "discord",
+                    "Image",
+                    "Body",
+                    Vec::<String>::new(),
+                    hints,
+                    0i32,
+                ),
+            )
+            .await
+            .unwrap();
+        let snapshot = service.engine.lock().await.model.snapshot.clone();
+        let image = snapshot.notifications[0].image.clone().unwrap();
+        assert_eq!(image.pixels(), [88, 101, 242, 255, 255, 255, 255, 128]);
+        let control = zbus::Proxy::new(&client, BUS_NAME, OBJECT_PATH, INTERFACE)
+            .await
+            .unwrap();
+        let full: String = control.call("Snapshot", &()).await.unwrap();
+        let summary: String = control.call("Summary", &()).await.unwrap();
+        assert_eq!(
+            serde_json::from_str::<NotificationSnapshot>(&full)
+                .unwrap()
+                .notifications[0]
+                .image
+                .as_ref(),
+            Some(&image)
+        );
+        assert!(
+            serde_json::from_str::<NotificationSnapshot>(&summary)
+                .unwrap()
+                .notifications[0]
+                .image
+                .is_none()
+        );
+        {
+            let engine = service.engine.lock().await;
+            let (entries, dnd, next) = engine.store.load().unwrap();
+            let restored = Model::new(Config::default(), entries, dnd, next);
+            assert_eq!(
+                restored.snapshot.notifications[0].image.as_ref(),
+                Some(&image)
+            );
+            assert!(!restored.snapshot.notifications[0].live);
+        }
+        let replaced: u32 = proxy
+            .call(
+                "Notify",
+                &(
+                    "Discord",
+                    id,
+                    "discord",
+                    "Updated",
+                    "Text only",
+                    Vec::<String>::new(),
+                    HashMap::from([("image-data", OwnedValue::from(true))]),
+                    0i32,
+                ),
+            )
+            .await
+            .unwrap();
+        assert_eq!(replaced, id);
+        assert!(
+            service.engine.lock().await.model.snapshot.notifications[0]
+                .image
+                .is_none()
+        );
+        drop(server);
     });
 }

@@ -23,6 +23,7 @@ pub(super) struct Incoming {
     pub replaces: u32,
     pub app: String,
     pub icon: String,
+    pub image: Option<NotificationImage>,
     pub summary: String,
     pub body: String,
     pub app_id: String,
@@ -121,6 +122,7 @@ impl Model {
             app: incoming.app,
             app_id: incoming.app_id,
             icon: incoming.icon,
+            image: incoming.image,
             summary: incoming.summary,
             body: incoming.body,
             created_ms: now,
@@ -320,6 +322,16 @@ impl Model {
         }
         for id in remove {
             self.remove(id, 1, signals);
+        }
+        let mut image_bytes = 0;
+        for n in &mut self.snapshot.notifications {
+            if let Some(image) = &n.image {
+                if image_bytes + image.pixels().len() <= MAX_TOTAL_IMAGE_BYTES {
+                    image_bytes += image.pixels().len();
+                } else {
+                    n.image = None;
+                }
+            }
         }
         let mut banners = 0;
         for n in &mut self.snapshot.notifications {

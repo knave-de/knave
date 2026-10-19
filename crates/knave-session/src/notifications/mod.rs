@@ -1,4 +1,5 @@
 //! One session-owned notification service. Name acquisition is strictly first-owner-wins.
+mod image;
 mod model;
 mod store;
 #[cfg(test)]
@@ -56,6 +57,7 @@ impl Engine {
 struct Service {
     engine: Arc<Mutex<Engine>>,
     wake: Arc<Notify>,
+    image_jobs: Arc<tokio::sync::Semaphore>,
 }
 fn failure(e: impl ToString) -> fdo::Error {
     fdo::Error::Failed(e.to_string())
@@ -166,11 +168,12 @@ impl Service {
             .get("value")
             .and_then(|v| i32::try_from(v).ok())
             .map(|v| v.clamp(0, 100) as u8);
-        let incoming = Incoming {
+        let mut incoming = Incoming {
             sender: sender(&header)?,
             replaces: replaces_id,
             app: bounded(app_name, 128),
             icon: bounded(app_icon, 512),
+            image: None,
             summary: bounded(summary, 512),
             body: bounded(body, 4096),
             app_id: bounded(app_id, 256),
@@ -198,6 +201,19 @@ impl Service {
             return Err(fdo::Error::InvalidArgs(
                 "action keys must be unique and nonempty".into(),
             ));
+        }
+        if image::has_hint(&hints)
+            && let Ok(permit) = self.image_jobs.clone().try_acquire_owned()
+        {
+            incoming.image = tokio::task::spawn_blocking(move || {
+                let _permit = permit;
+                image::decode(&hints)
+            })
+            .await
+            .unwrap_or_else(|error| {
+                eprintln!("knave-notifications: image decoder failed: {error}");
+                None
+            });
         }
         let mut engine = self.engine.lock().await;
         let (id, signals) = engine
@@ -229,6 +245,13 @@ struct Control(Service);
 impl Control {
     async fn snapshot(&self) -> fdo::Result<String> {
         serde_json::to_string(&self.0.engine.lock().await.model.snapshot).map_err(failure)
+    }
+    async fn summary(&self) -> fdo::Result<String> {
+        let mut snapshot = self.0.engine.lock().await.model.snapshot.clone();
+        for notification in &mut snapshot.notifications {
+            notification.image = None;
+        }
+        serde_json::to_string(&snapshot).map_err(failure)
     }
     async fn command(
         &self,
@@ -301,6 +324,7 @@ impl NotificationService {
                     },Err(error)=>{let _=ready.send(Err(error));}
                 }
             });
+            runtime.shutdown_timeout(Duration::from_secs(1));
         }).map_err(|e|e.to_string())?;
         match result.recv_timeout(Duration::from_secs(5)) {
             Ok(Ok(())) => Ok(Self {
@@ -359,6 +383,7 @@ async fn setup_on(
     let service = Service {
         engine: Arc::new(Mutex::new(engine)),
         wake: Arc::new(Notify::new()),
+        image_jobs: Arc::new(tokio::sync::Semaphore::new(2)),
     };
     connection
         .object_server()

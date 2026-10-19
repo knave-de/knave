@@ -226,5 +226,8 @@ enabled = true
 banners = false
 ```
 
+Notifications also show attached raw images and local PNG/JPEG/WebP image hints.
+Bounded previews are kept with history; the app icon remains separate.
+
 Restart the session to apply edited notification settings. Per-app banner controls
 in the center apply immediately. See [notification architecture](docs/architecture/decisions/0012-notifications.md).

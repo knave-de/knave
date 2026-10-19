@@ -13,11 +13,12 @@ alone. Knave never queues, retries acquisition, stops another daemon or changes
 its activation files. Session shutdown releases only Knave's own connection.
 
 The private `org.knave.Notifications` interface at `/org/knave/Notifications`
-exposes Snapshot (JSON), Command (JSON) and an invalidation-only Changed signal.
+exposes Snapshot (JSON), image-free Summary (JSON) for the bar, Command (JSON)
+and an invalidation-only Changed signal.
 Typed payloads live in `knave-desktop-api::notifications`. Shell clients subscribe
 before their initial snapshot, use a one-slot snapshot mailbox and a 16-command
 queue, reconnect with capped backoff, and cancel their worker on shutdown.
-No healthy connection polls. Standard methods, signals and external application
+Invalidation bursts are coalesced; no healthy connection polls. Standard methods, signals and external application
 IDs follow the freedesktop notification protocol; the private contract has no
 independent version. Ship matching Knave and Shell revisions.
 
@@ -45,7 +46,25 @@ Resident hints retain live entries after actions. An application exiting removes
 its action buttons but leaves fire-and-forget banners visible. Restoration never
 replays banners or revives actions, and protocol IDs are not reused after restart.
 The service advertises actions, body and static icons; it does not claim sound,
-inline replies, markup, image-data or protocol persistence capabilities.
+inline replies, markup or protocol persistence capabilities.
+
+Standard `image-data`, `image-path` and legacy underscore/icon-data hints supply
+an image separately from the application icon. Raw RGB/RGBA validates dimensions,
+8-bit samples, channels, rowstride and byte count. Paths support local absolute
+files and local `file://` URIs in PNG/JPEG/WebP formats; remote URLs and themed
+image-path names are ignored. Invalid images leave text delivery intact.
+Two bounded blocking decoder jobs capture temporary files before Notify returns;
+when both are busy, new notifications retain text without a preview. Files/raw
+inputs are capped at 4 MiB and 4096 pixels per edge; file decoding allows at most
+64 MiB per job. Shutdown waits at most one second for decoder work. Static
+previews preserve aspect ratio, alpha and sRGB pixels, with a maximum 320px edge.
+Newest previews share a 4 MiB decoded budget; older previews are discarded while
+their text remains. Durable previews use a separate table in the same SQLite
+transaction, leaving text rows readable by earlier builds. Previews are removed
+with their notification and survive source-file deletion and session restart.
+Snapshot image pixels use bounded base64; clients enforce a 32 MiB JSON limit.
+The bar requests image-free Summary, and the shell reuses image textures across
+text/read-state changes.
 
 DND suppresses new banners while preserving history; disabling it does not replay
 the backlog. Critical banners bypass DND only with `critical_in_dnd = true`.
@@ -74,6 +93,8 @@ Shell's host exposes dynamic input regions, keyboard mode and background-update
 draining; existing applications retain their defaults. Stable element IDs and
 retained tree replacement preserve scroll, focus and pointer captures on updates.
 Light, dark and high-contrast palettes derive from Knave appearance settings.
+Image previews use square corners, fit within card width and are capped at 180px
+in banners or 220px in history; long cards remain scrollable.
 When an external daemon owns delivery, the bell has no numeric badge and the
 center clearly identifies saved history as Knave-only. No external count or
 history is fabricated.
