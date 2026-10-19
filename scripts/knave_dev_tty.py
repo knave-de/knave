@@ -1,5 +1,6 @@
 """Dedicated-account bundle selection and direct-TTY session activation."""
 
+import base64
 import hashlib
 import json
 import os
@@ -269,6 +270,18 @@ def configure(bundle, run, source):
     )
 
 
+def replace_file(path, data, mode=0o600):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix='.' + path.name, dir=path.parent)
+    try:
+        with os.fdopen(descriptor, 'wb') as stream:
+            stream.write(data)
+            os.fchmod(stream.fileno(), mode)
+        Path(temporary).replace(path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
 def restore(state, journal):
     errors = []
     failures = []
@@ -278,11 +291,24 @@ def restore(state, journal):
         errors.append(result.stderr.strip())
     for name, expected in journal['files'].items():
         path = Path(name)
-        if not path.exists() and not path.is_symlink():
-            continue
-        if path.is_symlink() or not path.is_file() or digest(path) != expected:
-            failures.append(f'preserved externally changed activation file: {path}')
-        else:
+        backup = journal.get('previous_files', {}).get(name)
+        original = base64.b64decode(backup['data']) if backup else None
+        exists = path.exists() or path.is_symlink()
+        if exists:
+            if path.is_symlink() or not path.is_file():
+                failures.append(f'preserved externally changed activation file: {path}')
+                continue
+            current = digest(path)
+            # A retry or interrupted setup may still have the original file.
+            if original is not None and current == hashlib.sha256(original).hexdigest():
+                path.chmod(backup['mode'])
+                continue
+            if current != expected:
+                failures.append(f'preserved externally changed activation file: {path}')
+                continue
+        if original is not None:
+            replace_file(path, original, backup['mode'])
+        elif exists:
             path.unlink()
     try:
         reload_activation()
@@ -311,6 +337,9 @@ def restore(state, journal):
         raise RuntimeError(
             'TTY cleanup incomplete; run tty recover: ' + '; '.join(active + failures)
         )
+    if journal.get('active_units'):
+        # Restore services only after their files and activation environment.
+        systemctl('start', *journal['active_units'])
     (state / 'tty-active.json').unlink(missing_ok=True)
     if errors:
         print('TTY cleanup diagnostics: ' + '; '.join(errors), file=sys.stderr)
@@ -353,20 +382,21 @@ def start(state, source=None, bundle=None):
             else (state / 'current').resolve(strict=True)
         )
         manifest = tested_bundle(state, bundle)
-        for unit in UNITS:
-            if systemctl('is-active', '--quiet', unit, check=False).returncode == 0:
-                raise ValueError(
-                    f'{unit} is active on this account’s shared user bus; '
-                    'keep development sessions running with '
-                    './knave-dev session FEATURE --nested, or use a separate '
-                    'Unix test account for TTY testing'
-                )
+        active_units = [
+            unit
+            for unit in UNITS
+            if systemctl('is-active', '--quiet', unit, check=False).returncode == 0
+        ]
         paths = metadata_paths()
+        previous_files = {}
         for path in paths.values():
-            if path.exists() or path.is_symlink():
-                raise ValueError(
-                    f'test account already has portal metadata; move it aside explicitly: {path}'
-                )
+            if path.is_symlink() or (path.exists() and not path.is_file()):
+                raise ValueError(f'portal metadata must be a regular file: {path}')
+            if path.exists():
+                previous_files[str(path)] = {
+                    'data': base64.b64encode(path.read_bytes()).decode('ascii'),
+                    'mode': path.stat().st_mode & 0o777,
+                }
         run = Path(tempfile.mkdtemp(prefix='knave-tty-', dir=state))
         configure(bundle, run, source.resolve(strict=True) if source else None)
         env = os.environ.copy()
@@ -413,6 +443,8 @@ def start(state, source=None, bundle=None):
                 str(paths[name]): hashlib.sha256(value.encode()).hexdigest()
                 for name, value in contents.items()
             },
+            'previous_files': previous_files,
+            'active_units': active_units,
             'systemd_environment': {
                 key: old_environment[key]
                 for key in ACTIVATION_KEYS
@@ -423,11 +455,25 @@ def start(state, source=None, bundle=None):
         child = None
         previous_handlers = {}
         try:
+            if active_units:
+                systemctl('stop', *active_units)
             for name, text in contents.items():
                 path = paths[name]
-                path.parent.mkdir(parents=True, exist_ok=True)
-                with path.open('x') as stream:
-                    stream.write(text)
+                # Refuse changes made since the preflight snapshot.
+                backup = previous_files.get(str(path))
+                if (
+                    path.is_symlink()
+                    or (
+                        backup is not None
+                        and (
+                            not path.is_file()
+                            or path.read_bytes() != base64.b64decode(backup['data'])
+                        )
+                    )
+                    or (backup is None and path.exists())
+                ):
+                    raise ValueError(f'portal metadata changed during startup: {path}')
+                replace_file(path, text.encode())
             reload_activation()
             # All desktop descendants have one owned process group. The parent
             # retains tty.lock through service teardown, including signal paths.

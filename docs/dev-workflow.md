@@ -29,9 +29,9 @@ For a feature delivered as an archive, import and start it in one command:
 
 Subsequent starts can use `session overview-animations`. The one-time account
 setup is `./knave-dev tty init --dedicated-test-account`, run in the dedicated
-non-root account. Sessions still require an active local TTY and an unused test
-account; exit the current session before starting another feature. Selection
-and startup hold the same lock throughout the session. Existing build, bundle,
+non-root account. Sessions require an active local TTY and no other graphical
+login under that user. SSH and terminal logins may stay open; exit the current
+test desktop before starting another feature. Selection and startup hold the same lock throughout the session. Existing build, bundle,
 import and `tty` commands below remain available for agents and advanced use.
 
 For an isolated preview from SSH or your current desktop, use
@@ -177,13 +177,17 @@ and inactive/remote seats are rejected. It resolves `current` once, holds the
 session lock through teardown, creates private configuration and pins all
 executable/resource paths to that bundle. It temporarily adds matching user-local
 D-Bus activation, portal routing and a systemd unit. Both direct D-Bus Exec and
-systemd ExecStart use the same pinned backend/configuration. Existing conflicting
-portal metadata or running portal services cause an error instead of being
-overwritten. The dedicated account must not run another graphical session.
+systemd ExecStart use the same pinned backend/configuration. Existing regular
+portal metadata is saved with its permissions in the recovery journal before it is temporarily replaced. Previously active portal services are
+stopped for the test and restarted after their files and activation environment
+are restored. SSH and terminal logins stay running. Portal requests in those
+logins can be interrupted during the switch. Metadata symlinks are refused, and
+the dedicated account must not run another graphical session.
 
 Exit the session normally or send SIGTERM to the launcher. It stops the desktop
-process group and portal services, removes its activation files and restores the
-previous user-manager activation environment. It retains session logs/config.
+process group and portal services, restores the original activation files,
+permissions and user-manager activation environment, then restarts previously
+active portal services. It retains session logs/config.
 It never installs into `/usr/local`, overwrites `~/.local/bin`, or edits the
 canonical configuration. SIGKILL/power loss cannot guarantee cleanup; after an
 interruption run `tty recover` in this account before selecting another bundle.

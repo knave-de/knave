@@ -15,9 +15,13 @@ artifacts are exported to a dedicated account for human direct-TTY testing.
 
 TTY selection uses an atomic symlink under a session lock. A local logind login
 is required. Activation metadata and user units use absolute pinned paths for
-the entire session, and are removed after stopping owned services. Existing
-account files are never overwritten. Interrupted sessions retain a recovery
-journal. The normal user's desktop and canonical config are outside this path.
+the entire session. Existing regular portal metadata and permissions are saved
+in the recovery journal before temporary replacement; active portal services are
+stopped and restored with their original files and environment after the test.
+SSH and terminal logins can stay open, while another graphical login under the
+same user is refused. Metadata symlinks are refused. Interrupted sessions retain
+the recovery journal. The normal user's desktop and canonical config are outside
+this path.
 
 ## Impact and boundaries
 

@@ -631,6 +631,95 @@ class BundleTests(unittest.TestCase):
             self.assertFalse((self.state / 'tty-active.json').exists())
             self.assertTrue(all(not path.exists() for path in paths.values()))
 
+    def test_tty_preserves_existing_portals_and_restarts_services_on_exit_or_failure(
+        self,
+    ):
+        from types import SimpleNamespace
+
+        paths = {
+            name: self.state / 'activation' / name
+            for name in ('descriptor', 'routing', 'villain-routing', 'dbus', 'unit')
+        }
+        originals = {}
+        for name, path in paths.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'previous ' + name.encode() + b'\n')
+            path.chmod(0o640)
+            originals[path] = path.read_bytes()
+        (self.state / 'current').symlink_to(self.bundle)
+        for fail_activation in (False, True):
+            active = {'xdg-desktop-portal.service'}
+            calls = []
+
+            def systemctl(*args, **kwargs):
+                calls.append(args)
+                if args[0] == 'stop':
+                    active.difference_update(args[1:])
+                elif args[0] == 'start':
+                    # Restore data and environment before restarting services.
+                    for path, data in originals.items():
+                        self.assertEqual(path.read_bytes(), data)
+                    self.assertTrue(any(call[0] == 'set-environment' for call in calls))
+                    active.update(args[1:])
+                return SimpleNamespace(
+                    returncode=(0 if args[-1] in active else 3)
+                    if args[0] == 'is-active'
+                    else 0,
+                    stdout='PATH=/previous/path\n',
+                    stderr='',
+                )
+
+            with (
+                patch.object(tty, 'account'),
+                patch.object(tty, 'local_tty', return_value=self.state),
+                patch.object(tty, 'metadata_paths', return_value=paths),
+                patch.object(tty, 'systemctl', side_effect=systemctl),
+                patch.object(tty, 'capture'),
+                patch.object(
+                    tty,
+                    'reload_activation',
+                    side_effect=(
+                        [RuntimeError('activation failed'), None]
+                        if fail_activation
+                        else None
+                    ),
+                ),
+            ):
+                if fail_activation:
+                    with self.assertRaisesRegex(RuntimeError, 'activation failed'):
+                        tty.start(self.state)
+                else:
+                    self.assertEqual(tty.start(self.state), 0)
+            self.assertEqual(active, {'xdg-desktop-portal.service'})
+            self.assertFalse((self.state / 'tty-active.json').exists())
+            for path, data in originals.items():
+                self.assertEqual(path.read_bytes(), data)
+                self.assertEqual(path.stat().st_mode & 0o777, 0o640)
+
+    def test_tty_rejects_metadata_symlinks_without_stopping_services(self):
+        from types import SimpleNamespace
+
+        source = self.state / 'original'
+        source.write_text('keep')
+        link = self.state / 'link'
+        link.symlink_to(source)
+        (self.state / 'current').symlink_to(self.bundle)
+        with (
+            patch.object(tty, 'account'),
+            patch.object(tty, 'local_tty', return_value=self.state),
+            patch.object(tty, 'metadata_paths', return_value={'unit': link}),
+            patch.object(
+                tty, 'systemctl', return_value=SimpleNamespace(returncode=0)
+            ) as service,
+        ):
+            with self.assertRaisesRegex(ValueError, 'regular file'):
+                tty.start(self.state)
+            self.assertTrue(
+                all(call.args[0] == 'is-active' for call in service.call_args_list)
+            )
+        self.assertEqual(source.read_text(), 'keep')
+        self.assertTrue(link.is_symlink())
+
     def test_pending_recovery_blocks_selection(self):
         (self.state / 'tty-active.json').write_text('{}')
         with patch.object(tty, 'account'), patch.object(tty, 'no_graphical_sessions'):
