@@ -268,6 +268,47 @@ impl Default for CompositorConfig {
     }
 }
 
+/// Desktop dark/light preference shared by the shell, compositor and portal.
+///
+/// `system` reports no preference; `dark` and `light` force the matching
+/// `org.freedesktop.appearance` `color-scheme`. This slice persists the
+/// preference only; consumers adopt it as their theme layers land.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Theme {
+    #[default]
+    System,
+    Dark,
+    Light,
+}
+
+impl Theme {
+    /// Stable lowercase spelling used in configuration and logs.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::Dark => "dark",
+            Self::Light => "light",
+        }
+    }
+
+    /// `color-scheme` value for `org.freedesktop.appearance` (0/1/2).
+    pub fn color_scheme(self) -> u8 {
+        match self {
+            Self::System => 0,
+            Self::Dark => 1,
+            Self::Light => 2,
+        }
+    }
+}
+
+/// Additive schema-2 desktop appearance preference.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct AppearanceConfig {
+    #[serde(default)]
+    pub theme: Theme,
+}
+
 /// Additive schema-2 appearance projection for the portal backend.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct PortalConfig {
@@ -301,6 +342,8 @@ impl Default for PortalConfig {
 pub struct Config {
     #[serde(default)]
     pub portal: PortalConfig,
+    #[serde(default)]
+    pub appearance: AppearanceConfig,
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
     #[serde(default)]
@@ -320,6 +363,7 @@ impl Default for Config {
         Self {
             compositor: CompositorConfig::default(),
             portal: PortalConfig::default(),
+            appearance: AppearanceConfig::default(),
             schema_version: CURRENT_SCHEMA_VERSION,
             session: SessionConfig::default(),
             shell: ShellConfig::default(),
@@ -642,6 +686,12 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
             })
         }),
     );
+    set_table_value(
+        document,
+        "appearance",
+        "theme",
+        value(config.appearance.theme.as_str()),
+    );
     set_table_value(document, "portal", "enabled", value(config.portal.enabled));
     set_table_value(
         document,
@@ -959,6 +1009,62 @@ mod tests {
             config.portal.accent_color = invalid.into();
             assert!(config.validate().is_err());
         }
+    }
+
+    #[test]
+    fn theme_defaults_to_system_and_round_trips() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(
+            &path,
+            "schema_version = 2\n[appearance]\ncustom_option = 42\n",
+        )
+        .unwrap();
+        let mut document = ConfigDocument::load(&path).unwrap();
+        assert_eq!(document.config().appearance.theme, Theme::System);
+
+        let mut config = document.config().clone();
+        config.appearance.theme = Theme::Dark;
+        document.write(config.clone()).unwrap();
+        assert!(document.source().contains("custom_option = 42"));
+        assert_eq!(
+            ConfigDocument::load(&path)
+                .unwrap()
+                .config()
+                .appearance
+                .theme,
+            Theme::Dark
+        );
+
+        config.appearance.theme = Theme::Light;
+        document.write(config).unwrap();
+        assert_eq!(
+            ConfigDocument::load(&path)
+                .unwrap()
+                .config()
+                .appearance
+                .theme,
+            Theme::Light
+        );
+    }
+
+    #[test]
+    fn theme_color_scheme_matches_portal_values() {
+        assert_eq!(Theme::System.color_scheme(), 0);
+        assert_eq!(Theme::Dark.color_scheme(), 1);
+        assert_eq!(Theme::Light.color_scheme(), 2);
+    }
+
+    #[test]
+    fn unknown_theme_value_is_rejected() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(
+            &path,
+            "schema_version = 2\n[appearance]\ntheme = \"midnight\"\n",
+        )
+        .unwrap();
+        assert!(ConfigDocument::load(&path).is_err());
     }
 
     #[test]
