@@ -102,6 +102,19 @@ passes tests.
 
 ## Build policy
 
+For coordinated feature work, use `scripts/knave-dev.py` and
+`docs/dev-workflow.md`. Create matching worktrees with explicit affected
+repositories, commit the component changes, then build, freeze a bundle, and
+run the nested test against that bundle. A failed coordinated build is a
+revision/contract failure to resolve, not a reason to use installed binaries or
+skip a consumer. Keep the tested bundle immutable and report its identity and
+evidence. Use the dedicated-account TTY path for human hardware review; do not
+install development binaries into the contributor's normal desktop implicitly.
+
+The development CLI creates workspaces and builds; it does not choose agent
+providers or spawn agents. When agents are explicitly delegated, give each
+independent feature its own managed workspace and share the bounded build queue.
+
 The Knave stack is Rust/Cargo-first. Use Cargo for libraries, binaries, tests,
 and workspace orchestration across the environment. The Rust/wgpu shell is the
 supported shell implementation; no Qt/CMake build is part of the supported
