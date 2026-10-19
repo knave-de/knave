@@ -146,7 +146,7 @@ class Harness:
         self.ready_directory.mkdir(mode=0o700)
         self.env = os.environ.copy()
         for key in ('WAYLAND_DISPLAY', 'KNAVE_SOCKET', 'KNAVE_SESSION',
-                    'KNAVE_OVERVIEW_SERVICE', 'DBUS_SESSION_BUS_ADDRESS'):
+                    'KNAVE_OVERVIEW_SERVICE', 'DBUS_SESSION_BUS_ADDRESS', 'VILLAIN_GESTURE_TEST'):
             self.env.pop(key, None)
         self.env.update(DISPLAY=f':{args.display}', XDG_RUNTIME_DIR=str(self.runtime),
                         XAUTHORITY=str(self.directory / 'Xauthority'),
@@ -157,6 +157,8 @@ class Harness:
                                ('XDG_CACHE_HOME', 'cache')):
             (self.directory / directory).mkdir(mode=0o700)
             self.env[key] = str(self.directory / directory)
+        if args.gesture_test:
+            self.env['VILLAIN_GESTURE_TEST'] = '1'
         self.binaries = {
             'knave': ROOT / 'target' / args.profile / 'knave',
             'knavectl': ROOT / 'target' / args.profile / 'knavectl',
@@ -409,6 +411,27 @@ class Harness:
             if not (0 <= x < width and 0 <= y < height and 1 <= button <= 9):
                 raise ValueError('click outside display or unsupported button')
             run(['xdotool', 'mousemove', str(x), str(y), 'click', str(button)], env=self.env)
+        elif command == 'gesture':
+            if not self.args.gesture_test:
+                raise ValueError('start with --gesture-test to enable synthetic swipes')
+            message = json.loads(values[0])
+            if not isinstance(message, dict):
+                raise ValueError('gesture request must be a JSON object')
+            payload = json.dumps(message).encode()
+            if len(payload) > 512:
+                raise ValueError('gesture request exceeds 512 bytes')
+            client_path = self.runtime / 'gesture-driver.sock'
+            with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as client:
+                try:
+                    client.bind(str(client_path))
+                    client.settimeout(2)
+                    client.sendto(payload, str(self.runtime / 'villain-gesture-test.sock'))
+                    response = json.loads(client.recv(4096))
+                finally:
+                    client_path.unlink(missing_ok=True)
+            if 'error' in response:
+                raise RuntimeError(response['error'])
+            return response
         elif command == 'snapshot':
             return json.loads(run([str(self.binaries['knavectl']), 'snapshot'], env=self.env))
         elif command == 'portal-check':
@@ -519,6 +542,7 @@ def parser():
     commands = result.add_subparsers(dest='command', required=True)
     for name in ('start', '_serve'):
         command = commands.add_parser(name)
+        command.add_argument('--gesture-test', action='store_true', help='enable private synthetic swipe input (Winit only)')
         command.add_argument('--profile', choices=('debug', 'release'), default='release')
         command.add_argument('--bundle', type=Path, help='verified immutable bundle instead of workspace artifacts')
         command.add_argument('--display', type=int, default=92)
@@ -532,6 +556,7 @@ def parser():
         commands.add_parser(name).add_argument('name')
     commands.add_parser('key').add_argument('keys', nargs='+')
     commands.add_parser('type').add_argument('text')
+    commands.add_parser('gesture').add_argument('json_request')
     click = commands.add_parser('click')
     click.add_argument('x', type=int)
     click.add_argument('y', type=int)
@@ -564,13 +589,15 @@ def main():
         command = [sys.executable, str(Path(__file__).resolve()), '--run', str(args.run),
                    '_serve', '--profile', args.profile, '--display', str(args.display),
                    '--size', args.size, '--vnc-port', str(args.vnc_port)]
+        if args.gesture_test:
+            command += ['--gesture-test']
         if args.config:
             command += ['--config', str(args.config)]
         if args.bundle:
             command += ['--bundle', str(args.bundle)]
         print(json.dumps(start_daemon(command, args.run), indent=2))
     else:
-        values = {'key': getattr(args, 'keys', []), 'type': [getattr(args, 'text', '')],
+        values = {'gesture': [getattr(args, 'json_request', '')], 'key': getattr(args, 'keys', []), 'type': [getattr(args, 'text', '')],
                   'click': [getattr(args, 'x', 0), getattr(args, 'y', 0), getattr(args, 'button', 1)],
                   'screenshot': [getattr(args, 'name', '')],
                   'record-start': [getattr(args, 'name', '')]}.get(args.command, [])

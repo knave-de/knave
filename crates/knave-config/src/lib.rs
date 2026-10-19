@@ -12,6 +12,7 @@ use thiserror::Error;
 use toml_edit::{Array, ArrayOfTables, DocumentMut, Item, Table, value};
 
 pub mod appearance;
+pub mod gesture;
 pub use appearance::WindowAppearance;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -227,6 +228,8 @@ pub struct CompositorBinding {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CompositorConfig {
     #[serde(default)]
+    pub gesture: gesture::GestureConfig,
+    #[serde(default)]
     pub appearance: WindowAppearance,
     /// Default master width as a percentage of usable workspace width (10..=90).
     #[serde(default = "default_master_percent")]
@@ -255,6 +258,7 @@ fn default_modkey() -> String {
 impl Default for CompositorConfig {
     fn default() -> Self {
         Self {
+            gesture: gesture::GestureConfig::default(),
             appearance: WindowAppearance::default(),
             master_percent: default_master_percent(),
             modkey: default_modkey(),
@@ -382,6 +386,7 @@ impl Config {
             ));
         }
         self.compositor.appearance.validate()?;
+        self.compositor.gesture.validate()?;
         if let Some(image) = &self.shell.wallpaper.image
             && (!Path::new(image).is_absolute() || image.contains('\0'))
         {
@@ -525,6 +530,14 @@ impl ConfigDocument {
 }
 
 fn apply_config(document: &mut DocumentMut, config: &Config) {
+    // Harness/config serializers may normalize the projection to an inline table.
+    if let Some(table) = document
+        .get("compositor")
+        .and_then(Item::as_inline_table)
+        .cloned()
+    {
+        document["compositor"] = Item::Table(table.into_table());
+    }
     set_table_value(
         document,
         "shell",
@@ -676,6 +689,7 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
         "appearance",
         appearance.as_table(),
     );
+    gesture::write(&mut document["compositor"], &config.compositor.gesture);
     let mut bindings = ArrayOfTables::new();
     for binding in &config.compositor.bind {
         let mut table = Table::new();
