@@ -305,6 +305,12 @@ def build(state, name, profile='debug', jobs=1):
                 )
             resolved = json.loads(metadata.stdout)
             for package in resolved['packages']:
+                if package['source'] is None and not Path(
+                    package['manifest_path']
+                ).resolve().is_relative_to(sources):
+                    raise ValueError(
+                        f'{repo} resolved an unrecorded local dependency: {package["name"]}'
+                    )
                 if (
                     package['name'] in shared
                     and Path(package['manifest_path']).resolve()

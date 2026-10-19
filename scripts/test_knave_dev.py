@@ -270,6 +270,14 @@ class WorkspaceTests(unittest.TestCase):
                 dev.verify_bundle(bundle)
             member.write_bytes(original)
             member.chmod(0o444)
+        # A later failed attempt cannot silently hand out the earlier artifacts.
+        with patch.object(
+            dev, 'command', side_effect=RuntimeError('fixture build failure')
+        ):
+            with self.assertRaisesRegex(RuntimeError, 'fixture build failure'):
+                dev.build(self.state, 'feature')
+        with self.assertRaisesRegex(ValueError, 'did not complete'):
+            dev.bundle(self.state, 'feature')
         # Make test fixture cleanup possible despite intentionally immutable bundles.
         for item in self.state.rglob('*'):
             if item.is_dir():

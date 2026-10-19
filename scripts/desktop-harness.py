@@ -230,6 +230,8 @@ class Harness:
             for tool in ('dbus-daemon', 'dbus-update-activation-environment', 'gdbus', 'pipewire'):
                 if not shutil.which(tool):
                     raise RuntimeError(f'missing bundle-test dependency: {tool}')
+            self.env['PIPEWIRE_RUNTIME_DIR'] = str(self.runtime)
+            self.env['PIPEWIRE_REMOTE'] = 'pipewire-0'
             self.start_bundle_bus()
             self.launch('pipewire', ['pipewire'])
             self.wait_for(lambda: (self.runtime / 'pipewire-0').exists(), 'private PipeWire')
