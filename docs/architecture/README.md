@@ -9,6 +9,7 @@ package versions, build, and change-impact policy.
 - [Package versions](versioning.md)
 - [CLI contract](cli.md)
 - [Build and packaging](build-and-packaging.md)
+- [ADR 0010: isolated development bundles](decisions/0010-isolated-development-bundles.md)
 - [Performance and resource usage](performance.md)
 - [Change impact](change-impact.md)
 - [ADR 0001: environment boundaries](decisions/0001-knave-environment-boundaries.md)

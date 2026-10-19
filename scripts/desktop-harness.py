@@ -6,7 +6,6 @@ import datetime
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import secrets
 import shutil
@@ -17,6 +16,7 @@ import sys
 import tempfile
 import time
 import tomllib
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_REQUEST = 65536
@@ -154,12 +154,24 @@ class Harness:
                         KNAVE_CONFIG=str(self.directory / 'config.toml'),
                         KNAVE_HARNESS_READY_DIR=str(self.ready_directory),
                         LIBGL_ALWAYS_SOFTWARE='1', LP_NUM_THREADS='4', WGPU_BACKEND='gl')
+        for key, directory in (('XDG_CONFIG_HOME', 'config-home'), ('XDG_DATA_HOME', 'data'),
+                               ('XDG_CACHE_HOME', 'cache')):
+            (self.directory / directory).mkdir(mode=0o700)
+            self.env[key] = str(self.directory / directory)
         self.binaries = {
             'knave': ROOT / 'target' / args.profile / 'knave',
             'knavectl': ROOT / 'target' / args.profile / 'knavectl',
             'villain': ROOT.parent / 'villain' / 'target' / args.profile / 'villain',
             'knave-shell': ROOT.parent / 'knaveshell' / 'target' / args.profile / 'knave-shell',
         }
+        self.bundle_manifest = None
+        if args.bundle:
+            from knave_dev import BINARIES, verify_bundle
+            self.bundle_manifest = verify_bundle(args.bundle)
+            self.binaries = {name: args.bundle / destination
+                             for name, (_, destination) in BINARIES.items()}
+            self.env['PATH'] = str(args.bundle / 'bin') + ':' + self.env.get('PATH', '/usr/bin')
+            self.env['XDG_DATA_DIRS'] = str(args.bundle / 'share') + ':' + self.env.get('XDG_DATA_DIRS', '/usr/local/share:/usr/share')
 
     def launch(self, name, command, env=None):
         log = (self.directory / f'{name}.log').open('ab')
@@ -214,8 +226,19 @@ class Harness:
                 return False
 
         self.wait_for(display_ready, 'X display')
-        self.launch('session', ['dbus-run-session', '--', str(self.binaries['knave']),
-                                'session', 'start'])
+        if self.bundle_manifest:
+            for tool in ('dbus-daemon', 'dbus-update-activation-environment', 'gdbus', 'pipewire'):
+                if not shutil.which(tool):
+                    raise RuntimeError(f'missing bundle-test dependency: {tool}')
+            self.env['PIPEWIRE_RUNTIME_DIR'] = str(self.runtime)
+            self.env['PIPEWIRE_REMOTE'] = 'pipewire-0'
+            self.start_bundle_bus()
+            self.launch('pipewire', ['pipewire'])
+            self.wait_for(lambda: (self.runtime / 'pipewire-0').exists(), 'private PipeWire')
+            self.launch('session', [str(self.binaries['knave']), 'session', 'start'])
+        else:
+            self.launch('session', ['dbus-run-session', '--', str(self.binaries['knave']),
+                                    'session', 'start'])
         self.wait_for(lambda: any(self.runtime.glob('knave/desktop-wayland-*.sock')), 'desktop socket')
         desktop_socket = next(self.runtime.glob('knave/desktop-wayland-*.sock'))
         self.env['KNAVE_SOCKET'] = str(desktop_socket)
@@ -242,6 +265,12 @@ class Harness:
             roles.add('wallpaper')
         self.wait_for(lambda: shell_services_ready(self.ready_directory, roles),
                       'configured shell services')
+        if self.bundle_manifest:
+            # Update only this private bus, without --systemd or host imports.
+            run(['dbus-update-activation-environment', 'WAYLAND_DISPLAY', 'KNAVE_CONFIG',
+                 'XDP_KNAVE_SHELL_BINARY=' + str(self.binaries['knave-shell']),
+                 'XDP_KNAVE_ENABLED=1'], env=self.env)
+            self.portal_check()
         if self.args.vnc_port:
             with socket.socket() as reservation:
                 reservation.bind(('127.0.0.1', self.args.vnc_port))
@@ -275,11 +304,56 @@ class Harness:
             with path.open('rb') as source:
                 digest = hashlib.file_digest(source, 'sha256').hexdigest()
             manifest['binaries'][name] = {'path': str(path), 'sha256': digest}
-        for repo in (ROOT, ROOT.parent / 'villain', ROOT.parent / 'knaveshell'):
-            manifest['repositories'][repo.name] = {
-                'commit': run(['git', '-C', str(repo), 'rev-parse', 'HEAD']),
-                'status': run(['git', '-C', str(repo), 'status', '--short'])}
+        if self.bundle_manifest:
+            manifest['repositories'] = self.bundle_manifest['repositories']
+            manifest['bundle'] = str(self.args.bundle)
+            manifest['bundle_sha256'] = hashlib.sha256((self.args.bundle / 'bundle.json').read_bytes()).hexdigest()
+        else:
+            for repo in (ROOT, ROOT.parent / 'villain', ROOT.parent / 'knaveshell'):
+                manifest['repositories'][repo.name] = {
+                    'commit': run(['git', '-C', str(repo), 'rev-parse', 'HEAD']),
+                    'status': run(['git', '-C', str(repo), 'status', '--short'])}
         (self.directory / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+
+    def start_bundle_bus(self):
+        from xml.sax.saxutils import escape
+        services = self.directory / 'portal-services'
+        services.mkdir()
+        executable = str(self.binaries['xdg-desktop-portal-knave']).replace('\\', '\\\\').replace('"', '\\"')
+        (services / 'org.freedesktop.impl.portal.desktop.knave.service').write_text(
+            '[D-BUS Service]\nName=org.freedesktop.impl.portal.desktop.knave\n'
+            f'Exec="{executable}"\n')
+        address = 'unix:path=' + str(self.runtime / 'bus')
+        config = self.directory / 'bus.conf'
+        config.write_text('<busconfig><type>session</type><listen>' + escape(address) + '</listen>'
+                          '<servicedir>' + escape(str(services)) + '</servicedir>'
+                          '<policy context="default"><allow send_destination="*"/>'
+                          '<allow receive_sender="*"/><allow own="*"/></policy></busconfig>')
+        self.env['DBUS_SESSION_BUS_ADDRESS'] = address
+        self.launch('dbus', ['dbus-daemon', '--nofork', '--config-file=' + str(config)])
+        self.wait_for(lambda: (self.runtime / 'bus').exists(), 'private session bus')
+
+    def portal_check(self):
+        if not self.bundle_manifest:
+            raise ValueError('portal activation checks require --bundle')
+        def call(destination, path, method, *args):
+            return run(['gdbus', 'call', '--session', '--dest', destination, '--object-path', path,
+                        '--method', method, *args], env=self.env)
+        settings = call('org.freedesktop.impl.portal.desktop.knave', '/org/freedesktop/portal/desktop',
+                        'org.freedesktop.impl.portal.Settings.Read', 'org.freedesktop.appearance', 'color-scheme')
+        response = call('org.freedesktop.DBus', '/org/freedesktop/DBus',
+                        'org.freedesktop.DBus.GetConnectionUnixProcessID', 'org.freedesktop.impl.portal.desktop.knave')
+        match = re.fullmatch(r'\(uint32 (\d+),\)', response)
+        if not match:
+            raise RuntimeError(f'unexpected portal PID response: {response}')
+        pid = int(match.group(1))
+        if Path(f'/proc/{pid}/exe').resolve() != self.binaries['xdg-desktop-portal-knave']:
+            raise RuntimeError('D-Bus activated a backend outside the selected bundle')
+        if not re.fullmatch(r'\(<uint32 [012]>,\)', settings):
+            raise RuntimeError(f'unexpected portal color-scheme response: {settings}')
+        result = {'settings': settings, 'pid': pid, 'executable': str(self.binaries['xdg-desktop-portal-knave'])}
+        (self.directory / 'portal-result.json').write_text(json.dumps(result, indent=2) + '\n')
+        return result
 
     def artifact(self, name, extension):
         if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,80}', name):
@@ -338,6 +412,8 @@ class Harness:
             run(['xdotool', 'mousemove', str(x), str(y), 'click', str(button)], env=self.env)
         elif command == 'snapshot':
             return json.loads(run([str(self.binaries['knavectl']), 'snapshot'], env=self.env))
+        elif command == 'portal-check':
+            return self.portal_check()
         elif command == 'record-start':
             if self.recording:
                 raise ValueError('a recording is already running')
@@ -445,12 +521,13 @@ def parser():
     for name in ('start', '_serve'):
         command = commands.add_parser(name)
         command.add_argument('--profile', choices=('debug', 'release'), default='release')
+        command.add_argument('--bundle', type=Path, help='verified immutable bundle instead of workspace artifacts')
         command.add_argument('--display', type=int, default=92)
         command.add_argument('--size', default='1280x800')
         command.add_argument('--config', type=Path, help='copy of a config to test; source is never modified')
         command.add_argument('--vnc-port', type=int, default=5992)
         command.add_argument('--no-vnc', action='store_const', const=0, dest='vnc_port')
-    for name in ('status', 'stop', 'snapshot', 'record-stop'):
+    for name in ('status', 'stop', 'snapshot', 'record-stop', 'portal-check'):
         commands.add_parser(name)
     for name in ('screenshot', 'record-start'):
         commands.add_parser(name).add_argument('name')
@@ -477,6 +554,8 @@ def main():
             raise ValueError('invalid display or VNC port')
         if args.config:
             args.config = args.config.resolve()
+        if args.bundle:
+            args.bundle = args.bundle.resolve(strict=True)
     if args.command == '_serve':
         os.umask(0o077)
         Harness(args).serve()
@@ -488,6 +567,8 @@ def main():
                    '--size', args.size, '--vnc-port', str(args.vnc_port)]
         if args.config:
             command += ['--config', str(args.config)]
+        if args.bundle:
+            command += ['--bundle', str(args.bundle)]
         print(json.dumps(start_daemon(command, args.run), indent=2))
     else:
         values = {'key': getattr(args, 'keys', []), 'type': [getattr(args, 'text', '')],

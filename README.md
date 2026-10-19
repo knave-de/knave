@@ -32,6 +32,18 @@ Build and test it with:
 
 ## CLI
 
+For isolated feature worktrees, coordinated builds, verified desktop bundles,
+draft PRs and dedicated-account TTY testing, see the
+[development workflow](docs/dev-workflow.md).
+
+To start a prepared feature from your test account's local TTY:
+
+    ./knave-dev session overview-animations
+
+You can also pass a feature archive; import and selection are handled automatically:
+
+    ./knave-dev session /path/to/overview-animations.tar.gz
+
 For agent-controlled feature testing, MP4 demonstrations, and interactive testing
 over an SSH/VNC connection, see the [desktop test harness](docs/desktop-testing.md).
 

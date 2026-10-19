@@ -3,9 +3,9 @@
 
 import argparse
 import json
-from pathlib import Path
 import subprocess
 import time
+from pathlib import Path
 
 HARNESS = Path(__file__).with_name('desktop-harness.py')
 
@@ -15,6 +15,7 @@ def main():
     parser.add_argument('--run', type=Path, required=True)
     parser.add_argument('--display', default='93')
     parser.add_argument('--vnc-port', default='5993')
+    parser.add_argument('--bundle', type=Path)
     args = parser.parse_args()
     directory = args.run.resolve()
     command = ['python3', str(HARNESS), '--run', str(directory)]
@@ -35,7 +36,8 @@ def main():
 
     started = False
     try:
-        call('start', '--display', args.display, '--vnc-port', args.vnc_port)
+        options = ['--bundle', str(args.bundle.resolve())] if args.bundle else []
+        call('start', '--display', args.display, '--vnc-port', args.vnc_port, *options)
         started = True
         call('record-start', 'computer-use-demo')
         call('key', 'Super_L')
@@ -67,6 +69,9 @@ def main():
         report = {'passed': True, 'checks': ['overview shortcut', 'launcher click and search',
                   'Kitty launch and focus', 'application keyboard input', 'workspace mouse navigation',
                   'MP4 finalization and ffprobe validation'], **video}
+        if args.bundle:
+            report['portal'] = call('portal-check')
+            report['checks'].append('private D-Bus activation, Settings.Read and backend executable identity')
         (directory / 'smoke-result.json').write_text(json.dumps(report, indent=2) + '\n')
         print(json.dumps(report, indent=2))
     finally:
