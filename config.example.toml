@@ -50,6 +50,38 @@ focus_follows_mouse = true
 # direction = "horizontal"
 # action = "none"
 
+# Screenshots save under ~/Pictures/Screenshots and post a notification with
+# an image preview. `PRINT` selects a region, `SHIFT+PRINT` captures the
+# focused output and `MOD+PRINT` the focused window. Add `CTRL` to copy to the
+# clipboard instead of saving; copied captures are preview-only. A saved
+# capture's notification shows its path and opens it with xdg-open when the
+# notification is activated. Every entry below only overrides the default with
+# the same keys, so define just the shortcuts you want to change.
+# [[compositor.bind]]
+# keys = "PRINT"
+# dispatch = "screenshot"
+# args = ["region", "save"]
+# [[compositor.bind]]
+# keys = "SHIFT+PRINT"
+# dispatch = "screenshot"
+# args = ["output", "save"]
+# [[compositor.bind]]
+# keys = "MOD+PRINT"
+# dispatch = "screenshot"
+# args = ["window", "save"]
+# [[compositor.bind]]
+# keys = "CTRL+PRINT"
+# dispatch = "screenshot"
+# args = ["region", "clipboard"]
+# [[compositor.bind]]
+# keys = "CTRL+SHIFT+PRINT"
+# dispatch = "screenshot"
+# args = ["output", "clipboard"]
+# [[compositor.bind]]
+# keys = "MOD+SHIFT+PRINT"
+# dispatch = "screenshot"
+# args = ["window", "clipboard"]
+
 # Each entry overrides the default binding with the same keys; unmentioned
 # defaults stay active and other entries are additions.
 [[compositor.bind]]
