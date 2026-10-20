@@ -14,6 +14,11 @@ master_percent = 50
 focus_cycle_order = "layout"
 environment_file = "environment"
 
+# Workspace switches slide windows and wallpaper for 160 ms with cubic ease-out.
+# Focus changes immediately; panels stay stationary. A click or scroll finishes
+# the transition before input is delivered. Duration, easing and style are fixed;
+# there are currently no compositor animation settings. Overview browsing is separate.
+
 # Opt in to skipping empty slots for next/previous shortcuts and workspace swipes.
 # Number shortcuts and bar clicks can still select any workspace.
 [compositor.workspace]
@@ -122,6 +127,22 @@ dispatch = "toggle-floating"
 # Horizontal stack dividers resize only their two neighbors. No binding is needed.
 # Drag thresholds, hit margins and stack minimum heights currently have no setting.
 
+# Built-in workspace navigation. MOD follows modkey above.
+# Next/previous keep their slide direction through wrapping and skipped empty slots.
+# Number shortcuts MOD+1 through MOD+9 and MOD+0 select workspaces 1 through 10.
+# [[compositor.bind]]
+# keys = "MOD+RIGHT"
+# dispatch = "next-workspace"
+# [[compositor.bind]]
+# keys = "MOD+LEFT"
+# dispatch = "previous-workspace"
+
+# Return to the last workspace used; replace this combination to override it.
+# TILDE and ~ are aliases for GRAVE (no Shift required).
+[[compositor.bind]]
+keys = "MOD+GRAVE"
+dispatch = "last-workspace"
+
 [session]
 # auto selects the production backend once the session supervisor is complete.
 # Other accepted values are tty and winit.
@@ -176,4 +197,6 @@ enabled = true
 color_scheme = 0
 accent_color = "0.21,0.52,0.89"
 high_contrast = false
+# Reports the preference to applications through the portal; it currently does
+# not disable Villain workspace transitions.
 reduced_motion = false
