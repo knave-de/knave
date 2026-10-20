@@ -109,6 +109,13 @@ pub fn run(config: Config) -> Result<(), SessionError> {
             .try_wait()
             .map_err(|error| SessionError::Process(format!("villain wait failed: {error}")))?
         {
+            // A clean compositor exit is the session's logout path, including
+            // `knavectl dispatch quit`; only failures consume the restart budget.
+            if status.success() {
+                slot.shutdown();
+                terminate_children(&mut shells);
+                return Ok(());
+            }
             // The wallpaper surface belongs to the dead compositor; hand it
             // back to the reaper before any restart attempt.
             slot.disown();
@@ -161,6 +168,15 @@ pub fn run(config: Config) -> Result<(), SessionError> {
             }
             restarts += 1;
             thread::sleep(restart_delay(restarts));
+            // Shells may observe Wayland disconnection before the compositor
+            // exits. Let its exit status decide logout versus recovery.
+            if compositor
+                .try_wait()
+                .map_err(|error| SessionError::Process(format!("villain wait failed: {error}")))?
+                .is_some()
+            {
+                continue;
+            }
             shells = match spawn_shells(&config, &display) {
                 Ok(shells) => shells,
                 Err(error) => {

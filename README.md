@@ -73,7 +73,8 @@ binary, waits for a newly-created wayland-* socket, and starts the configured
 shell roles. SIGINT and SIGTERM stop the children with a bounded grace period.
 Failed components are restarted with capped exponential backoff when
 restart_on_failure is enabled; the current supervisor permits at most three
-restart attempts per session.
+restart attempts per session. A successful compositor exit, including
+`knavectl dispatch quit`, stops the session without restarting it.
 
 ## Configuration
 

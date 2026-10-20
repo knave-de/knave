@@ -51,6 +51,10 @@ children before returning an error. SIGINT and SIGTERM set an atomic shutdown
 flag; the supervisor sends SIGTERM, waits up to two seconds, then force-kills
 and reaps any remaining direct child.
 
+A successful compositor exit (including `knavectl dispatch quit`) ends the
+session successfully, stops and reaps the shell roles and wallpaper, and never
+restarts the compositor, regardless of `restart_on_failure`.
+
 A compositor or shell failure stops its sibling shell processes before restart.
 Restarts use 100, 200, and 400 millisecond delays and are capped at three
 attempts per session. A failure after the cap returns a non-zero error and
