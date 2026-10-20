@@ -89,6 +89,39 @@ keys = "MOD+Q"
 dispatch = "exec"
 args = ["bemenu-run"]
 
+# Built-in window bindings, written explicitly so you can customize them.
+# MOD follows modkey above (Super or Alt). Combine it with CTRL, SHIFT or ALT.
+# Mouse names: BUTTON_LEFT, BUTTON_RIGHT, BUTTON_MIDDLE.
+# A different combination adds a binding; it keeps the original default active.
+
+# Move a floating window, or drag a tile and swap with its drop target.
+# args = ["pointer"] selects the window under the pointer; omit args to use focus.
+[[compositor.bind]]
+keys = "MOD+BUTTON_LEFT"
+dispatch = "move-window"
+args = ["pointer"]
+
+# Resize a floating window from the nearest corner; for tiles, adjust master width.
+[[compositor.bind]]
+keys = "MOD+BUTTON_RIGHT"
+dispatch = "resize-window"
+args = ["pointer"]
+
+# Toggle the focused window between tiled and floating; remember floating geometry.
+[[compositor.bind]]
+keys = "MOD+V"
+dispatch = "toggle-floating"
+
+# Keyboard alternative: move the focused window with the pointer, then left click
+# or press Enter to commit. Escape cancels. resize-window also supports this mode.
+# [[compositor.bind]]
+# keys = "MOD+SHIFT+G"
+# dispatch = "move-window"
+
+# Floating edges/corners and tiled dividers resize with an unmodified left drag.
+# Horizontal stack dividers resize only their two neighbors. No binding is needed.
+# Drag thresholds, hit margins and stack minimum heights currently have no setting.
+
 [session]
 # auto selects the production backend once the session supervisor is complete.
 # Other accepted values are tty and winit.
