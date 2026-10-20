@@ -41,6 +41,9 @@ JSON response. `KNAVE_SOCKET` overrides socket discovery for isolated tests.
 | `knavectl active-window` | Print the focused window, if any. |
 | `knavectl active-workspace` | Print the active workspace. |
 | `knavectl version` | Query the compositor package identity and version. |
+| `knavectl dispatch move-window [--target TARGET] [--window ID]` | Begin interactive movement/rearrangement; target selectors are mutually exclusive. |
+| `knavectl dispatch resize-window [--target TARGET] [--window ID] [--edge EDGE]` | Begin floating resize or tiled master split adjustment. |
+| `knavectl dispatch toggle-floating` | Toggle the focused window between tiled and floating. |
 | `knavectl dispatch close` | Close the focused window. |
 | `knavectl dispatch maximize` | Maximize the focused window within the usable workspace area. |
 | `knavectl dispatch unmaximize` | Restore its underlying tiled/floating layout without changing fullscreen or minimization. |
@@ -63,3 +66,11 @@ and a usage diagnostic.
 Shared command and payload changes require consumer discovery, coordinated
 updates in Knave, Villain, Shell, and portal components that use them, and tests
 for the resulting package set.
+
+Interactive commands resolve their target once (focused by default), acknowledge
+startup immediately, and continue after the CLI disconnects. Move/resize use
+pointer motion; left-button release or Enter commits and Escape cancels. Explicit
+edges apply to floating windows and accept top, bottom, left, right, top-left,
+top-right, bottom-left, bottom-right. Without an edge, resize selects the corner
+nearest the initial pointer. Background, minimized, maximized/fullscreen targets
+and competing grabs are rejected. There is no cancellation IPC command.

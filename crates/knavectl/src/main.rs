@@ -1,8 +1,8 @@
 use std::process::ExitCode;
 
 use knave_desktop_api::{
-    DesktopClient, DesktopCommand, DesktopQuery, DesktopRequest, DesktopResponse, WindowId,
-    WorkspaceId,
+    DesktopClient, DesktopCommand, DesktopQuery, DesktopRequest, DesktopResponse, ResizeEdge,
+    WindowId, WindowTarget, WorkspaceId,
 };
 
 fn usage() -> &'static str {
@@ -10,6 +10,9 @@ fn usage() -> &'static str {
   knavectl reload
   knavectl dispatch reload
   knavectl snapshot
+  knavectl dispatch move-window [--target focused|pointer | --window <id>]
+  knavectl dispatch resize-window [--target focused|pointer | --window <id>] [--edge <edge>]
+  knavectl dispatch toggle-floating
   knavectl dispatch close
   knavectl dispatch minimize
   knavectl dispatch maximize
@@ -54,6 +57,42 @@ fn parse_workspace(value: Option<String>) -> Result<WorkspaceId, String> {
     }
 }
 
+fn parse_interaction(
+    args: impl Iterator<Item = String>,
+    resize: bool,
+) -> Result<DesktopRequest, String> {
+    let mut args = args;
+    let mut target = None;
+    let mut edge: Option<ResizeEdge> = None;
+    while let Some(flag) = args.next() {
+        match flag.as_str() {
+            "--target" if target.is_none() => {
+                target = Some(match args.next().as_deref() {
+                    Some("focused") => WindowTarget::Focused,
+                    Some("pointer") => WindowTarget::Pointer,
+                    _ => return Err("--target requires focused or pointer".into()),
+                })
+            }
+            "--window" if target.is_none() => {
+                target = Some(WindowTarget::Window(WindowId(parse_number(
+                    args.next(),
+                    "window id",
+                )?)))
+            }
+            "--edge" if resize && edge.is_none() => {
+                edge = Some(args.next().ok_or("missing resize edge")?.parse()?)
+            }
+            _ => return Err(format!("unexpected interaction argument: {flag}")),
+        }
+    }
+    let target = target.unwrap_or_default();
+    Ok(DesktopRequest::Dispatch(if resize {
+        DesktopCommand::ResizeWindow { target, edge }
+    } else {
+        DesktopCommand::MoveWindow { target }
+    }))
+}
+
 fn parse_request(mut args: impl Iterator<Item = String>) -> Result<DesktopRequest, String> {
     match args.next().as_deref() {
         Some("reload") => {
@@ -67,10 +106,18 @@ fn parse_request(mut args: impl Iterator<Item = String>) -> Result<DesktopReques
             Ok(DesktopRequest::Query(DesktopQuery::Snapshot))
         }
         Some("dispatch") => match args.next().as_deref() {
+            Some("move-window") => parse_interaction(args, false),
+            Some("resize-window") => parse_interaction(args, true),
             Some("reload") => {
                 ensure_no_args(&mut args, "dispatch reload")?;
                 Ok(DesktopRequest::Dispatch(
                     DesktopCommand::ReloadConfiguration,
+                ))
+            }
+            Some("toggle-floating") => {
+                ensure_no_args(&mut args, "dispatch toggle-floating")?;
+                Ok(DesktopRequest::Dispatch(
+                    DesktopCommand::ToggleFloatingFocused,
                 ))
             }
             Some("close") => {
@@ -243,6 +290,50 @@ mod tests {
             );
             assert!(
                 parse_request(["dispatch", name, "extra"].map(str::to_owned).into_iter()).is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn interaction_targets_edges_and_invalid_flags() {
+        let parse = |args: &[&str]| parse_request(args.iter().map(|s| s.to_string()));
+        assert_eq!(
+            parse(&["dispatch", "move-window"]).unwrap(),
+            DesktopRequest::Dispatch(DesktopCommand::MoveWindow {
+                target: WindowTarget::Focused
+            })
+        );
+        assert_eq!(
+            parse(&[
+                "dispatch",
+                "resize-window",
+                "--window",
+                "42",
+                "--edge",
+                "top-left"
+            ])
+            .unwrap(),
+            DesktopRequest::Dispatch(DesktopCommand::ResizeWindow {
+                target: WindowTarget::Window(WindowId(42)),
+                edge: Some(ResizeEdge::TopLeft)
+            })
+        );
+        assert_eq!(
+            parse(&["dispatch", "move-window", "--target", "pointer"]).unwrap(),
+            DesktopRequest::Dispatch(DesktopCommand::MoveWindow {
+                target: WindowTarget::Pointer
+            })
+        );
+        for args in [
+            vec!["move-window", "--edge", "top"],
+            vec!["move-window", "--target"],
+            vec!["move-window", "--window", "-1"],
+            vec!["resize-window", "--edge", "bogus"],
+            vec!["move-window", "--target", "pointer", "--window", "2"],
+            vec!["resize-window", "--edge", "top", "--edge", "left"],
+        ] {
+            assert!(
+                parse_request(std::iter::once("dispatch").chain(args).map(str::to_owned)).is_err()
             );
         }
     }

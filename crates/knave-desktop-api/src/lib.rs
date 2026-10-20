@@ -87,9 +87,59 @@ pub struct DesktopSnapshot {
     pub windows: Vec<WindowSummary>,
 }
 
+/// A drag target is resolved once, when the interaction starts.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "window", rename_all = "kebab-case")]
+pub enum WindowTarget {
+    #[default]
+    Focused,
+    Pointer,
+    Window(WindowId),
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ResizeEdge {
+    Top,
+    Bottom,
+    Left,
+    Right,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+impl std::str::FromStr for ResizeEdge {
+    type Err = String;
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "top" => Ok(Self::Top),
+            "bottom" => Ok(Self::Bottom),
+            "left" => Ok(Self::Left),
+            "right" => Ok(Self::Right),
+            "top-left" => Ok(Self::TopLeft),
+            "top-right" => Ok(Self::TopRight),
+            "bottom-left" => Ok(Self::BottomLeft),
+            "bottom-right" => Ok(Self::BottomRight),
+            _ => Err(format!("invalid resize edge: {value}")),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", rename_all = "kebab-case")]
 pub enum DesktopCommand {
+    ToggleFloatingFocused,
+    MoveWindow {
+        #[serde(default)]
+        target: WindowTarget,
+    },
+    ResizeWindow {
+        #[serde(default)]
+        target: WindowTarget,
+        #[serde(default)]
+        edge: Option<ResizeEdge>,
+    },
     ReloadConfiguration,
     CloseFocused,
     MinimizeFocused,
@@ -97,12 +147,22 @@ pub enum DesktopCommand {
     UnmaximizeFocused,
     ToggleMaximizeFocused,
     RestoreLastMinimized,
-    FocusWorkspace { workspace: WorkspaceId },
-    FocusWindow { window: WindowId },
-    RestoreWindow { window: WindowId },
-    Spawn { argv: Vec<String> },
+    FocusWorkspace {
+        workspace: WorkspaceId,
+    },
+    FocusWindow {
+        window: WindowId,
+    },
+    RestoreWindow {
+        window: WindowId,
+    },
+    Spawn {
+        argv: Vec<String>,
+    },
     Quit,
-    SetOverviewVisible { visible: bool },
+    SetOverviewVisible {
+        visible: bool,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -373,6 +433,36 @@ fn next_response<R: BufRead>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn interaction_commands_roundtrip_and_default_target() {
+        for command in [
+            DesktopCommand::MoveWindow {
+                target: WindowTarget::Pointer,
+            },
+            DesktopCommand::ResizeWindow {
+                target: WindowTarget::Window(WindowId(4)),
+                edge: Some(ResizeEdge::BottomRight),
+            },
+            DesktopCommand::ToggleFloatingFocused,
+        ] {
+            let wire = serde_json::to_value(&command).unwrap();
+            assert_eq!(
+                serde_json::from_value::<DesktopCommand>(wire).unwrap(),
+                command
+            );
+        }
+        assert_eq!(
+            serde_json::from_str::<DesktopCommand>(r#"{"action":"move-window"}"#).unwrap(),
+            DesktopCommand::MoveWindow {
+                target: WindowTarget::Focused
+            }
+        );
+        assert!(
+            serde_json::from_str::<DesktopCommand>(r#"{"action":"resize-window","edge":"bogus"}"#)
+                .is_err()
+        );
+    }
 
     #[test]
     fn explicit_socket_connect_reports_missing_server() {
