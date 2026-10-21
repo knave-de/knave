@@ -155,6 +155,7 @@ class WorkspaceTests(unittest.TestCase):
                     'desktop-harness-smoke.py',
                     'desktop-gesture-smoke.py',
                     'desktop-notification-smoke.py',
+                    'desktop-quick-settings-smoke.py',
                     'knave_dev.py',
                     'knave-dev.py',
                     'knave_dev_tty.py',
