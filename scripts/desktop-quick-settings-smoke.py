@@ -142,6 +142,9 @@ def main():
         check(state()['night']['active'],'native Night Light enabled')
         time.sleep(.5)
         call('screenshot','night-light-warm')
+        def blue(path):
+            return float(subprocess.check_output(['magick',str(path),'-crop','300x30+880+50','-format','%[fx:mean.b]','info:'],text=True))
+        check(blue(directory/'night-light-warm.png')<blue(directory/'quick-settings-main.png')*.8,'Night Light reduces rendered blue channel across the output')
         command('set-night-light',enabled=False,temperature=4000,start=None,end=None)
         check(not state()['night']['active'],'Night Light disabled')
         config=tomllib.loads((directory/'config.toml').read_text())
@@ -150,6 +153,8 @@ def main():
         wait(lambda:not state()['open'],'Escape closes quick settings')
         call('key','Super_L')
         wait(lambda:call('snapshot')['payload']['overview_visible'],'Overview opens')
+        time.sleep(.8)
+        call('screenshot','overview-before-settings')
         call('click',1180,18,1)
         wait(lambda:state()['open'] and not call('snapshot')['payload']['overview_visible'],'Overview hides before quick settings opens')
         check(True,'Overview quick-settings handoff')

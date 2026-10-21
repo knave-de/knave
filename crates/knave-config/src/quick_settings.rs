@@ -67,3 +67,23 @@ mod tests {
         assert!(c.validate().is_err());
     }
 }
+
+#[cfg(test)]
+mod document_tests {
+    use crate::ConfigDocument;
+    #[test]
+    fn switching_schedule_to_manual_removes_only_known_optional_fields() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        std::fs::write(&path,"[quick_settings.night_light]\nenabled=true\ntemperature=4000\nstart=1140\nend=420\nfuture_setting='preserved'\n").unwrap();
+        let mut document = ConfigDocument::load(&path).unwrap();
+        let mut config = document.config().clone();
+        config.quick_settings.night_light.start = None;
+        config.quick_settings.night_light.end = None;
+        document.write(config).unwrap();
+        let reloaded = ConfigDocument::load(&path).unwrap();
+        assert!(reloaded.config().quick_settings.night_light.start.is_none());
+        assert!(reloaded.config().quick_settings.night_light.end.is_none());
+        assert!(reloaded.source().contains("future_setting='preserved'"));
+    }
+}
