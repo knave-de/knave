@@ -129,11 +129,13 @@ def main():
         command('set-wifi',enabled=False)
         check(not state()['network']['wifi'],'Wi-Fi radio control')
         command('set-wifi',enabled=True)
+        command('set-brightness',percent=1)
+        check(state()['brightness']==1,'brightness supports 1 percent')
         command('set-brightness',percent=55)
         command('set-bluetooth',enabled=True)
         command('set-power-profile',profile='power-saver')
         check(state()['brightness']==55 and state()['bluetooth'] and state()['power']['active']=='power-saver','brightness, Bluetooth and power profiles')
-        for action,values in [('set-volume',dict(input=False,percent=101)),('set-charge-limit',dict(percent=49)),('set-night-light',dict(enabled=True,temperature=0,start=None,end=None)),('connect',dict(uuid='not-a-connection'))]:
+        for action,values in [('set-brightness',dict(percent=0)),('set-volume',dict(input=False,percent=101)),('set-charge-limit',dict(percent=49)),('set-night-light',dict(enabled=True,temperature=0,start=None,end=None)),('connect',dict(uuid='not-a-connection'))]:
             rejected=False
             try:command(action,**values)
             except GLib.Error:rejected=True

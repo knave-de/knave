@@ -4,7 +4,9 @@ Knave Session owns `org.knave.QuickSettings` on the session bus. The typed JSON
 snapshot and commands live in `knave-desktop-api::quick_settings`. Shell's
 `quick-settings` role uses the retained knave-ui toolkit, shares the notification
 panel geometry, and consumes this service through a bounded, cancellable worker.
-Both the bar and Overview open the panel; Overview first hides itself.
+Both the bar and Overview open the panel; Overview first hides itself. Power is a
+menu in the main header only; its actions use a modal confirmation popup. Subpages
+have no global footer or manual refresh controls. Brightness covers 1–100%.
 
 NetworkManager owns connection credentials and routing. One Network entry prefers
 an active Ethernet connection for presentation, with saved Wi-Fi connections and
@@ -24,7 +26,12 @@ KNAVE_CONFIG override). Unknown source data survives writes. The default leaves
 the firmware charge limit unchanged. Only explicit Apply requests authentication
 through pkexec; the helper accepts a battery name and a 50–100% limit and writes
 only its kernel charge threshold. No root daemon or permission relaxation is
-installed. A desktop authentication agent is required for a root-owned threshold.
+installed. For a root-owned threshold or a power authorization request, Knave reuses
+an existing Hyprpolkitagent bus owner or starts the first installed Hypr/KDE/GNOME/
+MATE/LXQt agent on demand. An agent it starts belongs to the service and stops with
+it. Quick settings unmaps while authentication is pending so its exclusive input
+cannot block the authentication window. If no agent is installed, the existing
+pkexec failure remains explicit.
 
 Villain consumes the additive `SetNightLight` desktop command, validates 2500–6500 K,
 and applies an output-wide GLES RGB transform on both backends. The disabled path
