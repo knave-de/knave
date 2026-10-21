@@ -389,15 +389,15 @@ pub fn run() -> Result<(), String> {
     let interface=connection.object_server().interface::<_,Service>(OBJECT_PATH).await.map_err(|e|e.to_string())?;
     let s=interface.get().await;
     let mut term=tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).map_err(|e|e.to_string())?;
-    if let Err(e)=s.night().await{s.model.lock().await.snapshot.errors.push(e)}
+    if let Err(e)=s.night().await{s.model.lock().await.snapshot.errors=vec![e]}
     loop {
         let m=s.model.lock().await;let open=m.snapshot.open;let scheduled=m.settings.night_light.enabled&&m.settings.night_light.start.is_some();drop(m);
         // No hidden hardware polling. An open panel samples external CLI/sysfs changes.
         let delay=if open{Some(Duration::from_secs(3))}else if scheduled{Some(Duration::from_secs(60))}else{None};
         tokio::select!{_=term.recv()=>break,_=tokio::signal::ctrl_c()=>break,_=s.wake.notified()=>{},_=async{if let Some(d)=delay{tokio::time::sleep(d).await}else{std::future::pending::<()>().await}}=>{
             if let Ok(_permit)=s.operation.try_acquire(){
-                if open && let Err(e)=s.refresh().await{s.model.lock().await.snapshot.errors.push(e)}
-                if let Err(e)=s.night().await{s.model.lock().await.snapshot.errors.push(e)}
+                if open && let Err(e)=s.refresh().await{s.model.lock().await.snapshot.errors=vec![e]}
+                if let Err(e)=s.night().await{s.model.lock().await.snapshot.errors=vec![e]}
                 let _=s.changed(&connection).await;
             }
         }}

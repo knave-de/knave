@@ -57,9 +57,24 @@ fn exercise(status: &str, restart: bool, launches: usize, success: bool) {
         ),
     )
     .unwrap();
+    // Every real session service stays on a private bus, including parallel fixtures.
+    let mut bus = Session(
+        Command::new("dbus-daemon")
+            .args(["--session", "--nofork", "--print-address=1"])
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    let mut address = String::new();
+    std::io::BufRead::read_line(
+        &mut std::io::BufReader::new(bus.0.stdout.take().unwrap()),
+        &mut address,
+    )
+    .unwrap();
     let mut session = Session(
         Command::new(env!("CARGO_BIN_EXE_knave-session"))
             .arg("start")
+            .env("DBUS_SESSION_BUS_ADDRESS", address.trim())
             .env("XDG_RUNTIME_DIR", root)
             .env("XDG_CONFIG_HOME", root)
             .env("KNAVE_LIFECYCLE_TEST_ROOT", root)
@@ -126,7 +141,7 @@ fn component() {
         .append(true)
         .open(root.join(log))
         .unwrap();
-    writeln!(file, "{pid}").unwrap();
+    file.write_all(format!("{pid}\n").as_bytes()).unwrap();
     if let Some(display) = shell {
         fs::write(root.join(display).with_extension("ready"), "").unwrap();
         thread::sleep(Duration::from_secs(15));
