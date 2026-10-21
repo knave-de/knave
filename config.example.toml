@@ -187,8 +187,9 @@ opacity = false
 blur = false
 
 [appearance]
-# system reports no preference; dark and light force the color scheme that
-# applications receive through the Settings portal.
+# Set to "dark" to prefer dark mode, "light" to prefer light mode, or
+# "system" to report no preference. This is passed to apps through the
+# Settings portal. Change this value to "dark" to prefer a dark theme.
 theme = "system"
 
 [portal]
