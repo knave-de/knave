@@ -178,6 +178,22 @@ top_left = 0
 top_right = 0
 bottom_right = 0
 bottom_left = 0
+# Focused is the active window; unfocused covers inactive windows.
+# Set each profile's opacity and edge colors independently.
+[compositor.appearance.focused]
+opacity = 100
+[compositor.appearance.focused.border_color]
+top = "#8aadffff"
+right = "#8aadffff"
+bottom = "#8aadffff"
+left = "#8aadffff"
+[compositor.appearance.unfocused]
+opacity = 85
+[compositor.appearance.unfocused.border_color]
+top = "#505868ff"
+right = "#505868ff"
+bottom = "#505868ff"
+left = "#505868ff"
 [compositor.appearance.views.maximized]
 gaps = false
 borders = false
