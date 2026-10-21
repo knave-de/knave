@@ -21,8 +21,8 @@ environment_file = "environment"
 
 # Opt in to skipping empty slots for next/previous shortcuts and workspace swipes.
 # Number shortcuts and bar clicks can still select any workspace.
-[compositor.workspace]
-skip_empty = false
+# [compositor.workspace]
+# skip_empty = true
 
 [compositor.input]
 tap_to_click = true
