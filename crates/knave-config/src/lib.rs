@@ -1,5 +1,7 @@
 //! Canonical Knave configuration loading, validation, and atomic writing.
 
+pub mod quick_settings;
+
 use std::{
     fs,
     io::Write,
@@ -386,6 +388,8 @@ impl Default for PortalConfig {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct Config {
     #[serde(default)]
+    pub quick_settings: quick_settings::QuickSettingsConfig,
+    #[serde(default)]
     pub notifications: notifications::NotificationConfig,
     #[serde(default)]
     pub portal: PortalConfig,
@@ -402,6 +406,7 @@ pub struct Config {
 impl Config {
     pub fn validate(&self) -> Result<(), ConfigError> {
         self.notifications.validate()?;
+        self.quick_settings.validate()?;
         let accent: Vec<_> = self
             .portal
             .accent_color
@@ -576,6 +581,28 @@ impl ConfigDocument {
 }
 
 fn apply_config(document: &mut DocumentMut, config: &Config) {
+    let quick = toml::to_string(&config.quick_settings)
+        .expect("validated settings serialize")
+        .parse::<DocumentMut>()
+        .expect("settings TOML");
+    if let Some(table) = document
+        .get_mut("quick_settings")
+        .and_then(Item::as_table_mut)
+    {
+        if config.quick_settings.charge_limit.is_none() {
+            table.remove("charge_limit");
+        }
+        if let Some(night) = table.get_mut("night_light").and_then(Item::as_table_mut) {
+            if config.quick_settings.night_light.start.is_none() {
+                night.remove("start");
+            }
+            if config.quick_settings.night_light.end.is_none() {
+                night.remove("end");
+            }
+        }
+    }
+    merge_known_table(document.as_item_mut(), "quick_settings", quick.as_table());
+
     notifications::apply(document, &config.notifications);
     // Harness/config serializers may normalize the projection to an inline table.
     if let Some(table) = document

@@ -1,6 +1,7 @@
 //! Desktop contracts and transport client for the Knave desktop environment.
 
 pub mod notifications;
+pub mod quick_settings;
 
 use std::{
     env,
@@ -129,6 +130,9 @@ impl std::str::FromStr for ResizeEdge {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", rename_all = "kebab-case")]
 pub enum DesktopCommand {
+    SetNightLight {
+        temperature: Option<u16>,
+    },
     ToggleFloatingFocused,
     MoveWindow {
         #[serde(default)]

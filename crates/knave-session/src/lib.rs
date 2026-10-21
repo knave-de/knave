@@ -1,6 +1,7 @@
 //! Owns Knave compositor and shell process lifecycle.
 
 pub mod notifications;
+pub mod quick_settings;
 
 use std::{
     collections::HashSet,
@@ -277,6 +278,14 @@ fn spawn_shells(config: &Config, display: &str) -> Result<Vec<ManagedChild>, Ses
         check_notification_service(&config.session.shell_binary, CAPABILITY_WAIT)?;
     }
     let mut shells = Vec::new();
+    if config.shell.start_bar || config.shell.start_overview_service {
+        for role in ["quick-settings-service", "quick-settings"] {
+            match spawn_shell(config, role, display) {
+                Ok(shell) => shells.push(shell),
+                Err(error) => return Err(cleanup_shell_startup(shells, error)),
+            }
+        }
+    }
     if config.notifications.enabled {
         match spawn_shell(config, "notifications", display) {
             Ok(shell) => shells.push(shell),
@@ -358,7 +367,15 @@ pub(crate) fn spawn_shell(
     role: &'static str,
     display: &str,
 ) -> Result<ManagedChild, SessionError> {
-    let mut command = Command::new(&config.session.shell_binary);
+    let mut command = if role == "quick-settings-service" {
+        Command::new(
+            env::current_exe()
+                .map_err(|e| SessionError::Process(e.to_string()))?
+                .with_file_name("knave-session"),
+        )
+    } else {
+        Command::new(&config.session.shell_binary)
+    };
     command
         .arg(role)
         .env("WAYLAND_DISPLAY", display)
