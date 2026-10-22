@@ -2,7 +2,7 @@
 
 Knave needs authentication for desktop actions without depending on another
 shell's agent. Knave Session now supervises `knave-shell polkit-agent` for the
-whole session and checks `--supports-polkit-agent` before startup. Quick settings
+whole direct session and checks `--supports-polkit-agent` before startup. Quick settings
 no longer discovers or launches third-party agents.
 
 The shell owns presentation and transport to the system Polkit authority.
@@ -23,6 +23,11 @@ submission, focus loss and cancellation. This does not promise locked memory or
 erasure of temporary copies made by platform libraries. PAM and polkitd alone
 decide authorization; a successful D-Bus conversation reply does not grant it.
 
+Winit sessions do not start the agent: they can resolve the enclosing host's
+logind session and must not claim its authentication requests. Auto sessions
+with inherited DISPLAY/WAYLAND_DISPLAY also skip it conservatively. Explicit
+TTY sessions always start it, even with inherited display variables.
+
 No configuration, desktop API or compositor protocol changes. Package versions
 remain 0.1.0; deploy these Knave and Shell revisions together. Existing agents
 are not displaced: registration errors are logged. Rollback both repositories
@@ -30,6 +35,5 @@ together to restore the previous on-demand third-party fallback.
 
 Verification covers masked input, cancellation, queue/response limits, private
 D-Bus sender checks and request lifecycle, plus supervisor child reaping. The
-isolated Winit harness checks rendering and input separately. A nested desktop
-without a logind session cannot establish real PAM authorization, direct TTY,
+isolated Winit harness checks rendering and input separately. Nested tests do not establish real PAM authorization, direct TTY,
 or hardware GPU coverage; these require review in a dedicated logind session.

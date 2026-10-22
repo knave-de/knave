@@ -52,7 +52,7 @@ fn exercise(status: &str, restart: bool, launches: usize, success: bool) {
     fs::write(
         config_dir.join("config.toml"),
         format!(
-            "[session]\ncompositor_binary = {binary}\nshell_binary = {binary}\nrestart_on_failure = {restart}\n[shell]\nstart_overview_service = false\n[notifications]\nenabled = false\n",
+            "[session]\nbackend = \"tty\"\ncompositor_binary = {binary}\nshell_binary = {binary}\nrestart_on_failure = {restart}\n[shell]\nstart_overview_service = false\n[notifications]\nenabled = false\n",
             binary = serde_json::to_string(wrapper.to_str().unwrap()).unwrap(),
         ),
     )
