@@ -9,7 +9,10 @@ The shell owns presentation and transport to the system Polkit authority.
 GLib/GIO and libpolkit handle registration and PAM helper conversations on one
 owned worker thread. One pending request and one queued command bound work;
 additional requests fail explicitly. Only the authority's current unique bus
-owner can invoke requests. Offered Unix user identities constrain selection.
+owner can invoke requests. The current effective user is selected from the
+offered Unix user identities. If absent, the first permitted administrator is
+used and named explicitly. The password prompt has no identity picker or
+action-detail panel.
 Cancellation completes the pending invocation and stops its helper. Authority
 replacement cancels old cookies and re-registers; setup/system-bus failures retry
 after five seconds, with identical diagnostics suppressed. Healthy idle operation
@@ -22,6 +25,13 @@ text. Response buffers are bounded to 4096 bytes and zeroized on replacement,
 submission, focus loss and cancellation. This does not promise locked memory or
 erasure of temporary copies made by platform libraries. PAM and polkitd alone
 decide authorization; a successful D-Bus conversation reply does not grant it.
+
+Knave stores no authorization tokens or passwords. Polkit owns temporary
+authorizations according to each action's policy. `knave-shell polkit-cache`
+queries the authority for the current login session and prints active actions
+with expiry times. Errors remain explicit. A missing retention hint in a prompt
+does not imply that authorization will be one-shot; the compact dialog only
+shows a retention label when the authority provides one.
 
 Winit sessions do not start the agent: they can resolve the enclosing host's
 logind session and must not claim its authentication requests. Auto sessions
