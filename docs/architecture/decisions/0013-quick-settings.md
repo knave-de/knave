@@ -26,12 +26,10 @@ KNAVE_CONFIG override). Unknown source data survives writes. The default leaves
 the firmware charge limit unchanged. Only explicit Apply requests authentication
 through pkexec; the helper accepts a battery name and a 50–100% limit and writes
 only its kernel charge threshold. No root daemon or permission relaxation is
-installed. For a root-owned threshold or a power authorization request, Knave reuses
-an existing Hyprpolkitagent bus owner or starts the first installed Hypr/KDE/GNOME/
-MATE/LXQt agent on demand. An agent it starts belongs to the service and stops with
-it. Quick settings unmaps while authentication is pending so its exclusive input
-cannot block the authentication window. If no agent is installed, the existing
-pkexec failure remains explicit.
+installed. For a root-owned threshold or a power authorization request,
+the session-owned native Polkit agent handles authentication (ADR 0015). Quick
+settings unmaps while authentication is pending so its exclusive input cannot
+block the authentication surface. pkexec failures remain explicit.
 
 Villain consumes the additive `SetNightLight` desktop command, validates 2500–6500 K,
 and applies an output-wide GLES RGB transform on both backends. The disabled path

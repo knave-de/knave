@@ -35,6 +35,12 @@ visibility; it does not spawn Overview processes. Setting the option false
 disables that session service. Runtime state and socket identity are discovered
 at startup; they are not persisted in config.toml.
 
+The supervisor always starts one `polkit-agent` shell role and probes
+`--supports-polkit-agent` before spawning shell children. It shares their bounded
+restart and cleanup policy. The native agent registers for the current logind
+session; a missing system service or logind session is logged without ending
+the desktop. See [ADR 0015](decisions/0015-native-polkit-agent.md).
+
 Before starting shell roles, the supervisor probes the configured binary with
 `--supports-overview-service`. A supported Shell returns exit status 0 without
 opening Wayland or GPU resources; unknown/unsupported flags return nonzero. A

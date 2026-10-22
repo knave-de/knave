@@ -1,5 +1,4 @@
 //! One session process owns controls. Queries run off the compositor/shell frame threads.
-mod polkit;
 mod system;
 use knave_config::{
     ConfigDocument,
@@ -18,7 +17,6 @@ struct Model {
     settings: QuickSettingsConfig,
 }
 struct Service {
-    agent: Mutex<polkit::Agent>,
     model: Arc<Mutex<Model>>,
     operation: Arc<Semaphore>,
     wake: Arc<Notify>,
@@ -269,7 +267,6 @@ impl Service {
                     .clone()
                     .filter(|b| b.limit.is_some())
                     .ok_or("Battery charge thresholds are not supported")?;
-                self.agent.lock().await.ensure().await?;
                 system::set_charge(&battery.name, percent).await?;
                 let mut settings = self.model.lock().await.settings.clone();
                 settings.charge_limit = Some(percent);
@@ -305,7 +302,6 @@ impl Service {
                 self.night().await?;
             }
             Suspend | Reboot | PowerOff => {
-                self.agent.lock().await.ensure().await?;
                 let verb = match command {
                     Suspend => "suspend",
                     Reboot => "reboot",
@@ -386,7 +382,6 @@ pub fn run() -> Result<(), String> {
         ..Default::default()
     };
     let service = Service {
-        agent: Mutex::new(polkit::Agent::default()),
         model: Arc::new(Mutex::new(Model { snapshot, settings })),
         operation: Arc::new(Semaphore::new(1)),
         wake: Arc::new(Notify::new()),

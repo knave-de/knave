@@ -40,6 +40,8 @@ pub enum SessionError {
     UnsupportedOverviewService(String),
     #[error("{0} does not support notification service mode; install a matching Knave Shell")]
     UnsupportedNotificationService(String),
+    #[error("{0} does not support Polkit agent mode; install a matching Knave Shell")]
+    UnsupportedPolkitAgent(String),
     #[error("could not locate XDG_RUNTIME_DIR")]
     MissingRuntimeDirectory,
     #[error("could not read runtime directory {path}: {source}")]
@@ -271,6 +273,15 @@ fn resolved_binary(binary: &str) -> String {
 }
 
 fn spawn_shells(config: &Config, display: &str) -> Result<Vec<ManagedChild>, SessionError> {
+    if !check_capability(
+        &config.session.shell_binary,
+        "--supports-polkit-agent",
+        CAPABILITY_WAIT,
+    )? {
+        return Err(SessionError::UnsupportedPolkitAgent(
+            config.session.shell_binary.clone(),
+        ));
+    }
     if config.shell.start_overview_service {
         check_overview_service(&config.session.shell_binary, CAPABILITY_WAIT)?;
     }
@@ -278,6 +289,10 @@ fn spawn_shells(config: &Config, display: &str) -> Result<Vec<ManagedChild>, Ses
         check_notification_service(&config.session.shell_binary, CAPABILITY_WAIT)?;
     }
     let mut shells = Vec::new();
+    match spawn_shell(config, "polkit-agent", display) {
+        Ok(shell) => shells.push(shell),
+        Err(error) => return Err(cleanup_shell_startup(shells, error)),
+    }
     if config.shell.start_bar || config.shell.start_overview_service {
         for role in ["quick-settings-service", "quick-settings"] {
             match spawn_shell(config, role, display) {
