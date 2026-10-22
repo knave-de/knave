@@ -273,6 +273,12 @@ fn resolved_binary(binary: &str) -> String {
 }
 
 fn spawn_shells(config: &Config, display: &str) -> Result<Vec<ManagedChild>, SessionError> {
+    if config.shell.start_overview_service {
+        check_overview_service(&config.session.shell_binary, CAPABILITY_WAIT)?;
+    }
+    if config.notifications.enabled {
+        check_notification_service(&config.session.shell_binary, CAPABILITY_WAIT)?;
+    }
     if !check_capability(
         &config.session.shell_binary,
         "--supports-polkit-agent",
@@ -281,12 +287,6 @@ fn spawn_shells(config: &Config, display: &str) -> Result<Vec<ManagedChild>, Ses
         return Err(SessionError::UnsupportedPolkitAgent(
             config.session.shell_binary.clone(),
         ));
-    }
-    if config.shell.start_overview_service {
-        check_overview_service(&config.session.shell_binary, CAPABILITY_WAIT)?;
-    }
-    if config.notifications.enabled {
-        check_notification_service(&config.session.shell_binary, CAPABILITY_WAIT)?;
     }
     let mut shells = Vec::new();
     match spawn_shell(config, "polkit-agent", display) {
@@ -569,6 +569,12 @@ mod tests {
         assert!(matches!(
             spawn_shells(&config, "unused"),
             Err(SessionError::UnsupportedOverviewService(_))
+        ));
+        config.shell.start_overview_service = false;
+        config.notifications.enabled = false;
+        assert!(matches!(
+            spawn_shells(&config, "unused"),
+            Err(SessionError::UnsupportedPolkitAgent(_))
         ));
     }
 
