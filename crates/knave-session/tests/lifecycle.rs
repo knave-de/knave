@@ -43,7 +43,7 @@ fn exercise(status: &str, restart: bool, launches: usize, success: bool) {
     let quoted = executable.to_str().unwrap().replace('\'', "'\\''");
     fs::write(
         &wrapper,
-        format!("#!/bin/sh\nexec '{quoted}' --ignored --exact component --nocapture\n"),
+        format!("#!/bin/sh\ncase \"$1\" in --supports-*) exit 0;; esac\nexport KNAVE_LIFECYCLE_TEST_ROLE=\"$1\"\nexec '{quoted}' --ignored --exact component --nocapture\n"),
     )
     .unwrap();
     fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o700)).unwrap();
@@ -52,7 +52,7 @@ fn exercise(status: &str, restart: bool, launches: usize, success: bool) {
     fs::write(
         config_dir.join("config.toml"),
         format!(
-            "[session]\ncompositor_binary = {binary}\nshell_binary = {binary}\nrestart_on_failure = {restart}\n[shell]\nstart_overview_service = false\n[notifications]\nenabled = false\n",
+            "[session]\nbackend = \"tty\"\ncompositor_binary = {binary}\nshell_binary = {binary}\nrestart_on_failure = {restart}\n[shell]\nstart_overview_service = false\n[notifications]\nenabled = false\n",
             binary = serde_json::to_string(wrapper.to_str().unwrap()).unwrap(),
         ),
     )
@@ -86,6 +86,7 @@ fn exercise(status: &str, restart: bool, launches: usize, success: bool) {
             .unwrap(),
     );
     wait_until(|| root.join("shells").exists());
+    wait_until(|| root.join("polkit-agent-started").exists());
     fs::write(root.join("quit"), "").unwrap();
     assert_eq!(session.wait().success(), success);
     let compositors = fs::read_to_string(root.join("compositors")).unwrap();
@@ -143,6 +144,9 @@ fn component() {
         .unwrap();
     file.write_all(format!("{pid}\n").as_bytes()).unwrap();
     if let Some(display) = shell {
+        if env::var("KNAVE_LIFECYCLE_TEST_ROLE").as_deref() == Ok("polkit-agent") {
+            fs::write(root.join("polkit-agent-started"), pid.to_string()).unwrap();
+        }
         fs::write(root.join(display).with_extension("ready"), "").unwrap();
         thread::sleep(Duration::from_secs(15));
     } else {

@@ -40,6 +40,8 @@ pub enum SessionError {
     UnsupportedOverviewService(String),
     #[error("{0} does not support notification service mode; install a matching Knave Shell")]
     UnsupportedNotificationService(String),
+    #[error("{0} does not support Polkit agent mode; install a matching Knave Shell")]
+    UnsupportedPolkitAgent(String),
     #[error("could not locate XDG_RUNTIME_DIR")]
     MissingRuntimeDirectory,
     #[error("could not read runtime directory {path}: {source}")]
@@ -277,7 +279,28 @@ fn spawn_shells(config: &Config, display: &str) -> Result<Vec<ManagedChild>, Ses
     if config.notifications.enabled {
         check_notification_service(&config.session.shell_binary, CAPABILITY_WAIT)?;
     }
+    let inherited_display = ["DISPLAY", "WAYLAND_DISPLAY"]
+        .iter()
+        .any(|key| env::var_os(key).is_some_and(|value| !value.is_empty()));
+    let start_polkit = polkit_session(&config.session.backend, inherited_display);
+    if start_polkit
+        && !check_capability(
+            &config.session.shell_binary,
+            "--supports-polkit-agent",
+            CAPABILITY_WAIT,
+        )?
+    {
+        return Err(SessionError::UnsupportedPolkitAgent(
+            config.session.shell_binary.clone(),
+        ));
+    }
     let mut shells = Vec::new();
+    if start_polkit {
+        match spawn_shell(config, "polkit-agent", display) {
+            Ok(shell) => shells.push(shell),
+            Err(error) => return Err(cleanup_shell_startup(shells, error)),
+        }
+    }
     if config.shell.start_bar || config.shell.start_overview_service {
         for role in ["quick-settings-service", "quick-settings"] {
             match spawn_shell(config, role, display) {
@@ -307,6 +330,15 @@ fn spawn_shells(config: &Config, display: &str) -> Result<Vec<ManagedChild>, Ses
     // The wallpaper child lives in the assignment slot; the assignment
     // thread and reload events manage it after startup.
     Ok(shells)
+}
+
+// Nested desktops must not register an agent for their enclosing login session.
+fn polkit_session(backend: &SessionBackend, inherited_display: bool) -> bool {
+    match backend {
+        SessionBackend::Tty => true,
+        SessionBackend::Winit => false,
+        SessionBackend::Auto => !inherited_display,
+    }
 }
 
 fn check_overview_service(binary: &str, timeout: Duration) -> Result<(), SessionError> {
@@ -527,6 +559,16 @@ mod tests {
     use std::os::unix::net::UnixListener;
 
     #[test]
+    fn nested_sessions_cannot_claim_the_host_polkit_agent() {
+        assert!(!polkit_session(&SessionBackend::Winit, false));
+        assert!(!polkit_session(&SessionBackend::Winit, true));
+        assert!(!polkit_session(&SessionBackend::Auto, true));
+        assert!(polkit_session(&SessionBackend::Auto, false));
+        assert!(polkit_session(&SessionBackend::Tty, true));
+        assert!(polkit_session(&SessionBackend::Tty, false));
+    }
+
+    #[test]
     fn overview_capability_rejects_old_and_hung_shells_before_starting_roles() {
         let directory = tempfile::tempdir().unwrap();
         let binary = directory.path().join("shell");
@@ -554,6 +596,13 @@ mod tests {
         assert!(matches!(
             spawn_shells(&config, "unused"),
             Err(SessionError::UnsupportedOverviewService(_))
+        ));
+        config.session.backend = SessionBackend::Tty;
+        config.shell.start_overview_service = false;
+        config.notifications.enabled = false;
+        assert!(matches!(
+            spawn_shells(&config, "unused"),
+            Err(SessionError::UnsupportedPolkitAgent(_))
         ));
     }
 

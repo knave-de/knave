@@ -29,3 +29,5 @@ commands belong to Knave's `knavectl` contract.
 - [ADR 0012: notifications and retained history](decisions/0012-notifications.md)
 
 - [ADR 0013: window dragging](decisions/0013-window-dragging.md)
+
+- [ADR 0015: native Polkit agent](decisions/0015-native-polkit-agent.md)
