@@ -61,10 +61,10 @@ def main():
             time.sleep(0.1)
         assert proof.read_text().strip() == 'KNAVE_INPUT_OK', 'application input failed'
         call('screenshot', 'application-input')
-        call('click', '192', '18')
+        call('click', '82', '18')
         wait_snapshot(lambda s: any(w['workspace'] == 2 and w['active'] for w in s['workspaces']))
         call('screenshot', 'workspace-2')
-        call('click', '153', '18')
+        call('click', '57', '18')
         wait_snapshot(lambda s: any(w['workspace'] == 1 and w['active'] for w in s['workspaces']))
         time.sleep(1)
         video = call('record-stop')
