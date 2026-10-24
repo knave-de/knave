@@ -108,7 +108,7 @@ def main():
         call('key', *keys)
 
     def open_center():
-        call('click', width - 28, 18, 1)
+        call('click', width - 76, 18, 1)
         wait(lambda: state(bus)['center_open'], 'bar bell opens center')
         time.sleep(0.25)
 

@@ -103,7 +103,15 @@ def main():
         bus=Gio.DBusConnection.new_for_address_sync(session_env['DBUS_SESSION_BUS_ADDRESS'],Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT|Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,None,None)
         def invoke(method,args=()):return bus.call_sync(CONTROL,'/org/knave/QuickSettings',CONTROL,method,GLib.Variant('(s)',args) if args else None,None,Gio.DBusCallFlags.NO_AUTO_START,15000,None).unpack()
         def state():return json.loads(invoke('Snapshot')[0])
-        def command(action,**values):invoke('Command',(json.dumps(dict(action=action,**values)),))
+        def command(action,**values):
+            deadline=time.monotonic()+15
+            while True:
+                try:
+                    return invoke('Command',(json.dumps(dict(action=action,**values)),))
+                except GLib.Error as error:
+                    if 'A system action is still in progress' not in str(error) or time.monotonic()>=deadline:
+                        raise
+                    time.sleep(.1)
         wait(lambda:state(),'service is available')
         children=[int(p) for p in Path(f'/proc/{session}/task/{session}/children').read_text().split()]
         def samples():return {str(pid):sample(pid) for pid in [session]+children if Path(f'/proc/{pid}').exists()}
@@ -111,7 +119,7 @@ def main():
         time.sleep(3)
         resources['idle_after']=samples()
         call('record-start','quick-settings-demo')
-        call('click',1180,18,1)
+        call('click',1248,18,1)
         wait(lambda:state()['open'] and state()['output'],'bar opens populated quick settings')
         check(state()['network']['ethernet']=='enpTest','Network prefers connected Ethernet')
         check(state()['output']['percent']==65 and state()['input']['percent']==40,'independent output and microphone state')
@@ -157,7 +165,7 @@ def main():
         wait(lambda:call('snapshot')['payload']['overview_visible'],'Overview opens')
         time.sleep(.8)
         call('screenshot','overview-before-settings')
-        call('click',1180,18,1)
+        call('click',1248,18,1)
         wait(lambda:state()['open'] and not call('snapshot')['payload']['overview_visible'],'Overview hides before quick settings opens')
         check(True,'Overview quick-settings handoff')
         command('open-audio')
