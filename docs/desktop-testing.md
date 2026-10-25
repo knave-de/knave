@@ -169,3 +169,19 @@ validation, target destruction and the single/all-empty cases. It records
 `workspace-skip-empty-demo.mp4` and restores two occupied slots for idle, normal
 and cancellation-stress resource samples. Run the ordinary mode as well to
 check that the default sequential behavior stays intact.
+
+## Configurable charge-limit controls
+
+After the standard bundle test, run the frozen charge-limit smoke runner:
+
+```sh
+python3 BUNDLE/tools/desktop-charge-limit-smoke.py --bundle BUNDLE --run /tmp/charge-limit-demo
+```
+
+It exercises the native slider and transport against a private Quick Settings
+service, including several custom percentages, delayed replies, cancellation and
+mismatched driver readback. The fixture never writes host battery settings.
+Backend tests separately use a private UPower bus and temporary threshold files to
+verify preset-disable ordering and custom writes. Screenshots, an MP4, assertions
+and process resource samples are retained in the run directory. Firmware
+enforcement and real Polkit authentication require physical-device review.

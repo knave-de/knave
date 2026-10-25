@@ -3,9 +3,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(default)]
 pub struct QuickSettingsConfig {
-    pub night_light: NightLightConfig,
-    /// None leaves the firmware's existing limit alone.
     pub charge_limit: Option<u8>,
+    pub night_light: NightLightConfig,
 }
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(default)]
@@ -29,13 +28,15 @@ impl Default for NightLightConfig {
 impl QuickSettingsConfig {
     pub fn validate(&self) -> Result<(), ConfigError> {
         let n = &self.night_light;
-        if !(2500..=6500).contains(&n.temperature)
-            || self.charge_limit.is_some_and(|v| !(50..=100).contains(&v))
+        if self
+            .charge_limit
+            .is_some_and(|limit| !(50..=100).contains(&limit))
+            || !(2500..=6500).contains(&n.temperature)
             || !matches!((n.start, n.end), (None, None))
                 && !matches!((n.start,n.end),(Some(a),Some(b)) if a<1440 && b<1440 && a!=b)
         {
             return Err(ConfigError::Invalid(
-                "invalid quick-settings temperature, schedule or charge limit".into(),
+                "invalid quick-settings charge limit, temperature or schedule".into(),
             ));
         }
         Ok(())
@@ -53,6 +54,18 @@ impl QuickSettingsConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn custom_charge_limits_validate() {
+        let mut config = QuickSettingsConfig::default();
+        for percent in [50, 73, 85, 95, 100] {
+            config.charge_limit = Some(percent);
+            assert!(config.validate().is_ok());
+        }
+        for percent in [0, 49, 101, 255] {
+            config.charge_limit = Some(percent);
+            assert!(config.validate().is_err());
+        }
+    }
     #[test]
     fn schedules_cross_midnight_and_validate() {
         let mut c = QuickSettingsConfig::default();
@@ -85,5 +98,35 @@ mod document_tests {
         assert!(reloaded.config().quick_settings.night_light.start.is_none());
         assert!(reloaded.config().quick_settings.night_light.end.is_none());
         assert!(reloaded.source().contains("future_setting='preserved'"));
+    }
+}
+
+#[cfg(test)]
+mod charge_setting_tests {
+    use crate::ConfigDocument;
+    #[test]
+    fn custom_percentage_round_trips_without_losing_unknown_settings() {
+        for input in [
+            "[quick_settings]\ncharge_limit=95\nfuture_setting='keep'\n",
+            "quick_settings = { charge_limit=95, future_setting='keep' }\n",
+        ] {
+            let d = tempfile::tempdir().unwrap();
+            let p = d.path().join("config.toml");
+            std::fs::write(&p, input).unwrap();
+            let mut doc = ConfigDocument::load(&p).unwrap();
+            let config = doc.config().clone();
+            assert_eq!(config.quick_settings.charge_limit, Some(95));
+            doc.write(config).unwrap();
+            let source = std::fs::read_to_string(p).unwrap();
+            let values: toml::Value = toml::from_str(&source).unwrap();
+            assert_eq!(
+                values["quick_settings"]["charge_limit"].as_integer(),
+                Some(95)
+            );
+            assert_eq!(
+                values["quick_settings"]["future_setting"].as_str(),
+                Some("keep")
+            );
+        }
     }
 }

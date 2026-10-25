@@ -20,18 +20,36 @@ children. While the panel is open it samples external state every three seconds;
 when hidden it has no hardware polling. Scheduled Night Light wakes once per
 minute. Shell never launches hardware commands on a frame/input thread.
 
-Night Light settings and the chosen charge limit are validated and atomically
-written to `[quick_settings]` in the canonical Knave configuration (or its explicit
-KNAVE_CONFIG override). Unknown source data survives writes. The default leaves
-the firmware charge limit unchanged. Only explicit Apply requests authentication
-through pkexec; the helper accepts a battery name and a 50–100% limit and writes
-only its kernel charge threshold, then verifies the requested value by reading
-the attribute back. The unprivileged write path performs the same verification.
-No root daemon or permission relaxation is installed. For a root-owned threshold
-or a power authorization request, the session-owned native Polkit agent handles
-authentication (ADR 0015). Quick
-settings unmaps while authentication is pending so its exclusive input cannot
-block the authentication surface. pkexec failures remain explicit.
+Night Light settings and the selected custom charge percentage are validated and
+atomically written to `[quick_settings]` in the canonical Knave configuration
+(or its explicit KNAVE_CONFIG override). Unknown source data survives writes.
+The charge slider covers 50–100% in one-percent steps and sends the selected
+value only after Apply. Opening the panel or moving the slider writes no hardware.
+The last applied selection is restored in the UI; startup does not authenticate
+or replay a hardware write.
+
+UPower's installed API exposes a preset toggle, not an arbitrary percentage setter.
+Knave discovers the matching native battery and reads its policy. Before applying
+a custom percentage it disables an active UPower preset, then writes only the
+existing battery end-threshold attribute through the validated Knave helper when
+privilege is needed. A failed preset disable prevents the custom write. This keeps
+a stale preset from overwriting the custom choice. Threshold readback must match
+before persistence/success; it can be a driver cache and does not establish physical
+firmware enforcement. There is no forced 80% selection.
+
+The session-owned Polkit agent handles UPower, the charge helper and logind
+(ADR 0015). Quick settings unmaps while authentication is pending and returns to
+the same charging page with success or failure feedback. Individual authenticated
+operations are bounded to ninety seconds, and the Shell command budget covers
+both preset-disable and custom-write authentication. Ordinary UPower queries are
+bounded to three seconds. No new worker, timer or subscription is introduced.
+
+The coordinated Knave/Shell contract exposes `driver_limit`, `configured_limit`
+and optional UPower `charge_limit` metadata; `SetChargeLimit` takes `percent`.
+`[quick_settings].charge_limit` remains a validated optional custom percentage.
+Deploy matching consumers together; roll back the coordinated bundle together.
+Neither software rollback nor restoring a UI selection restores a hardware policy
+that another tool has changed.
 
 Villain consumes the additive `SetNightLight` desktop command, validates 2500–6500 K,
 and applies an output-wide GLES RGB transform on both backends. The disabled path

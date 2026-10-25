@@ -581,6 +581,13 @@ impl ConfigDocument {
 }
 
 fn apply_config(document: &mut DocumentMut, config: &Config) {
+    if let Some(table) = document
+        .get("quick_settings")
+        .and_then(Item::as_inline_table)
+        .cloned()
+    {
+        document["quick_settings"] = Item::Table(table.into_table());
+    }
     let quick = toml::to_string(&config.quick_settings)
         .expect("validated settings serialize")
         .parse::<DocumentMut>()

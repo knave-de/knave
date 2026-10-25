@@ -6,7 +6,8 @@ fn usage() -> &'static str {
     "usage:
   knave-session start
   knave-session check
-  knave-session notifications"
+  knave-session notifications
+  knave-session charge-limit BATTERY PERCENT"
 }
 
 fn run() -> Result<(), String> {
