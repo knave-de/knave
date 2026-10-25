@@ -280,10 +280,10 @@ impl Service {
                     .ok_or("UPower battery charge limits are unavailable")?;
                 let connection = upower::system_connection_for_action().await?;
                 let charge_limit = upower::set_enabled(&connection, &battery, enabled).await?;
-                if let Some(current) = self.model.lock().await.snapshot.battery.as_mut() {
-                    if current.name == battery.name {
-                        current.charge_limit = Some(charge_limit);
-                    }
+                if let Some(current) = self.model.lock().await.snapshot.battery.as_mut()
+                    && current.name == battery.name
+                {
+                    current.charge_limit = Some(charge_limit);
                 }
             }
             SetNightLight {

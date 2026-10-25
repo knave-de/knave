@@ -156,6 +156,7 @@ class WorkspaceTests(unittest.TestCase):
                     'desktop-gesture-smoke.py',
                     'desktop-notification-smoke.py',
                     'desktop-quick-settings-smoke.py',
+                    'desktop-charge-limit-smoke.py',
                     'knave_dev.py',
                     'knave-dev.py',
                     'knave_dev_tty.py',
