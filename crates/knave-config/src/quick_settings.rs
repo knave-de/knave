@@ -102,7 +102,11 @@ mod retired_charge_setting_tests {
             doc.write(config).unwrap();
             let source = std::fs::read_to_string(p).unwrap();
             assert!(!source.contains("charge_limit"));
-            assert!(source.contains("future_setting='keep'"));
+            let values: toml::Value = toml::from_str(&source).unwrap();
+            assert_eq!(
+                values["quick_settings"]["future_setting"].as_str(),
+                Some("keep")
+            );
         }
     }
 }
