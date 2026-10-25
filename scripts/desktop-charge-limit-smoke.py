@@ -2,6 +2,7 @@
 """Exercise native charge-limit UI with a fake UPower service on a private bus."""
 
 import argparse
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -191,6 +192,20 @@ def main():
     args = parser.parse_args()
     bundle, directory = args.bundle.resolve(), args.run.resolve()
     battery = read_battery()
+    fixture = directory.with_name(directory.name + '-adapters')
+    fixture.mkdir(parents=True)
+    spec = importlib.util.spec_from_file_location(
+        'charge_adapters', Path(__file__).with_name('desktop-quick-settings-smoke.py'))
+    adapters = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(adapters)
+    (fixture / 'state.json').write_text(json.dumps(dict(
+        ethernet=True, wifi=True, output=65, input=40, output_mute=False,
+        input_mute=False, brightness=80, bluetooth=False, profile='balanced')))
+    for name in ('nmcli', 'wpctl', 'brightnessctl', 'bluetoothctl',
+                 'powerprofilesctl', 'pavucontrol', 'nm-connection-editor'):
+        path = fixture / name
+        path.write_text(adapters.ADAPTER)
+        path.chmod(0o755)
     checks = []
     def check(value, label):
         if not value:
@@ -208,12 +223,12 @@ def main():
             raise RuntimeError('private system-bus daemon did not publish an address')
         fake = FakeUPower(address, battery['name'])
         harness_script = Path(__file__).with_name('desktop-harness.py')
-        env = dict(os.environ, DBUS_SYSTEM_BUS_ADDRESS=address)
+        env = dict(os.environ, DBUS_SYSTEM_BUS_ADDRESS=address,
+                   PATH=str(fixture) + ":" + os.environ.get("PATH", "/usr/bin"))
         subprocess.run(['python3', str(harness_script), '--run', str(directory), 'start',
                         '--bundle', str(bundle), '--display', args.display, '--no-vnc'],
                        env=env, check=True, capture_output=True, text=True, timeout=90)
         started = True
-        import importlib.util
         spec = importlib.util.spec_from_file_location('charge_harness', harness_script)
         harness = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(harness)
@@ -228,6 +243,18 @@ def main():
             session_env['DBUS_SESSION_BUS_ADDRESS'],
             Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT |
             Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION, None, None)
+
+        def service_idle():
+            try:
+                session_bus.call_sync(
+                    CONTROL, '/org/knave/QuickSettings', CONTROL, 'Command',
+                    GLib.Variant('(s)', (json.dumps({'action': 'refresh'}),)), None,
+                    Gio.DBusCallFlags.NO_AUTO_START, 20000, None)
+                return True
+            except GLib.Error as error:
+                if 'A system action is still in progress' in str(error):
+                    return False
+                raise
 
         def snapshot():
             value = session_bus.call_sync(
@@ -274,6 +301,8 @@ def main():
             wait(lambda: fake.calls[before]['done'], 'UPower reply completed', timeout)
             wait(lambda: snapshot()['battery']['charge_limit']['enabled'] == expected,
                  f'UPower reports enabled={expected}', timeout)
+            wait(service_idle, 'session action completion', 30)
+            check(snapshot()['open'], 'panel stays open after ' + target)
             time.sleep(.5)
             call('screenshot', f'charge-limit-{target}-result')
 
@@ -294,7 +323,9 @@ def main():
             time.sleep(.3)
             call('click', 1080, 170, 1)
             wait(lambda: len(fake.calls) > before, label + ' request')
-            time.sleep(1.5)
+            wait(service_idle, 'failed session action completion', 30)
+            check(snapshot()['open'], label + ' keeps the panel open')
+            time.sleep(.5)
             wait(lambda: snapshot()['battery']['charge_limit']['enabled'] is False,
                  label + ' service readback remains disabled')
             call('screenshot', filename)
@@ -315,6 +346,30 @@ def main():
                                   GLib.Variant('(s)', (json.dumps({'action': 'refresh'}),)), None,
                                   Gio.DBusCallFlags.NO_AUTO_START, 10000, None)
         resources['stress'] = samples()
+        check(read_battery()['driver_limit'] == battery['driver_limit'],
+              'host driver report is unchanged by private-bus actions')
+        with fake.lock:
+            fake.supported = False
+        wait(service_idle, 'unsupported capability refresh', 30)
+        check(snapshot()['battery']['charge_limit']['supported'] is False,
+              'unsupported charge capability is explicit')
+        call('click', 1080, 600, 1)
+        time.sleep(.5)
+        call('screenshot', 'charge-limit-unsupported')
+        fake.connection.call_sync(
+            'org.freedesktop.DBus', '/org/freedesktop/DBus',
+            'org.freedesktop.DBus', 'ReleaseName', GLib.Variant('(s)', (UP_NAME,)),
+            None, Gio.DBusCallFlags.NONE, 5000, None)
+        wait(service_idle, 'unavailable UPower refresh', 30)
+        check(snapshot()['battery']['charge_limit'] is None,
+              'UPower loss preserves battery with unavailable charge state')
+        time.sleep(.5)
+        call('screenshot', 'charge-limit-unavailable')
+        call('key', 'Escape', 'Escape')
+        wait(lambda: not snapshot()['open'], 'panel closes')
+        resources['idle_final_before'] = samples()
+        time.sleep(3)
+        resources['idle_final_after'] = samples()
         video = call('record-stop')
         check(Path(directory / 'charge-limit-demo.mp4').exists(), 'MP4 demonstration captured')
         report = dict(passed=True, battery=battery, fake_upower_calls=fake.calls,

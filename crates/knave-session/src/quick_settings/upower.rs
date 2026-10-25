@@ -143,7 +143,10 @@ pub async fn set_enabled(
     )
     .await
     .map_err(|_| "UPower charge limit request timed out".to_owned())?
-    .map_err(|e| e.to_string())?;
+    .map_err(|error| match error {
+        zbus::Error::MethodError(_, Some(detail), _) => detail,
+        error => error.to_string(),
+    })?;
     tokio::time::timeout(QUERY_TIMEOUT, async {
         let after = settings(connection, &path).await?;
         if after.enabled != enabled {
