@@ -371,6 +371,9 @@ def main():
         (directory / 'charge-limit-result.json').write_text(json.dumps(report, indent=2) + '\n')
         print(json.dumps(report, indent=2))
     finally:
+        if fake:
+            (directory / 'fixture-final.json').write_text(json.dumps(dict(
+                state=fake.snapshot(), commands=fake.commands, completed=fake.completed), indent=2) + '\n')
         if panel:
             terminate_group(panel)
         if fake:
