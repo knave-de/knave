@@ -1,12 +1,12 @@
 //! One session process owns controls. Queries run off the compositor/shell frame threads.
 mod system;
+mod upower;
 use knave_config::{
     ConfigDocument,
     quick_settings::{NightLightConfig, QuickSettingsConfig},
 };
 use knave_desktop_api::{DesktopCommand, DesktopRequest, DesktopResponse, quick_settings::*};
 use std::{sync::Arc, time::Duration};
-pub use system::charge_helper;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     sync::{Mutex, Notify, Semaphore},
@@ -80,6 +80,20 @@ impl Service {
         })
         .await
         .map_err(|e| e.to_string())?;
+        let (battery_charge, battery_error) = match battery {
+            Ok(Some(mut battery)) => match upower::system_connection().await {
+                Ok(connection) => match upower::query(&connection, &battery).await {
+                    Ok(limit) => {
+                        battery.charge_limit = Some(limit);
+                        (Some(Some(battery)), None)
+                    }
+                    Err(error) => (Some(Some(battery)), Some(error)),
+                },
+                Err(error) => (Some(Some(battery)), Some(error)),
+            },
+            Ok(None) => (Some(None), None),
+            Err(error) => (None, Some(error)),
+        };
         let mut m = self.model.lock().await;
         m.snapshot.errors.clear();
         macro_rules! apply {
@@ -99,12 +113,12 @@ impl Service {
         apply!(brightness, brightness);
         apply!(bluetooth, bluetooth);
         apply!(power, power);
-        match battery {
-            Ok(v) => m.snapshot.battery = v,
-            Err(e) => {
-                m.snapshot.battery = None;
-                m.snapshot.errors.push(e)
-            }
+        match battery_charge {
+            Some(v) => m.snapshot.battery = v,
+            None => m.snapshot.battery = None,
+        }
+        if let Some(error) = battery_error {
+            m.snapshot.errors.push(format!("battery: {error}"));
         }
         Ok(())
     }
@@ -254,10 +268,7 @@ impl Service {
                 }
                 system::run("powerprofilesctl", &["set", &profile]).await?;
             }
-            SetChargeLimit { percent } => {
-                if !(50..=100).contains(&percent) {
-                    return Err("charge limit must be 50–100%".into());
-                }
+            SetChargeLimit { enabled } => {
                 let battery = self
                     .model
                     .lock()
@@ -265,12 +276,15 @@ impl Service {
                     .snapshot
                     .battery
                     .clone()
-                    .filter(|b| b.limit.is_some())
-                    .ok_or("Battery charge thresholds are not supported")?;
-                system::set_charge(&battery.name, percent).await?;
-                let mut settings = self.model.lock().await.settings.clone();
-                settings.charge_limit = Some(percent);
-                self.save(settings).await?;
+                    .filter(|b| b.charge_limit.as_ref().is_some_and(|l| l.supported))
+                    .ok_or("UPower battery charge limits are unavailable")?;
+                let connection = upower::system_connection_for_action().await?;
+                let charge_limit = upower::set_enabled(&connection, &battery, enabled).await?;
+                if let Some(current) = self.model.lock().await.snapshot.battery.as_mut() {
+                    if current.name == battery.name {
+                        current.charge_limit = Some(charge_limit);
+                    }
+                }
             }
             SetNightLight {
                 enabled,

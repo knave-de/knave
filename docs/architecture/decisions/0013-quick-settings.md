@@ -20,18 +20,29 @@ children. While the panel is open it samples external state every three seconds;
 when hidden it has no hardware polling. Scheduled Night Light wakes once per
 minute. Shell never launches hardware commands on a frame/input thread.
 
-Night Light settings and the chosen charge limit are validated and atomically
-written to `[quick_settings]` in the canonical Knave configuration (or its explicit
-KNAVE_CONFIG override). Unknown source data survives writes. The default leaves
-the firmware charge limit unchanged. Only explicit Apply requests authentication
-through pkexec; the helper accepts a battery name and a 50–100% limit and writes
-only its kernel charge threshold, then verifies the requested value by reading
-the attribute back. The unprivileged write path performs the same verification.
-No root daemon or permission relaxation is installed. For a root-owned threshold
-or a power authorization request, the session-owned native Polkit agent handles
-authentication (ADR 0015). Quick
-settings unmaps while authentication is pending so its exclusive input cannot
-block the authentication surface. pkexec failures remain explicit.
+Night Light settings are validated and atomically written to `[quick_settings]`
+in the canonical Knave configuration (or its explicit KNAVE_CONFIG override).
+Unknown source data survives writes. UPower owns battery charge-limit persistence
+and its supported preset. Knave discovers the matching native power-supply battery,
+reads its capabilities and calls `EnableChargeThreshold(bool)` on the system bus.
+Reapply sends the same enabled value again, letting UPower restore its preset after
+another tool changes the driver threshold. Unsupported and unavailable states are
+explicit; there is no percentage slider, privileged Knave helper or sysfs write
+fallback. The driver's read-only threshold is reported separately because some
+drivers expose a cached request rather than the physical firmware cutoff.
+
+The session-owned Polkit agent handles UPower and logind authentication (ADR 0015).
+Quick settings unmaps while authentication is pending so its exclusive input cannot
+block the authentication surface. Completion verifies UPower's reported enabled
+state and reports errors; it does not establish physical charge enforcement.
+Queries are bounded to three seconds and authenticated requests to ninety seconds.
+
+The coordinated Knave/Shell contract replaces `Battery.limit` with `driver_limit`
+and optional UPower `charge_limit` metadata; `SetChargeLimit` takes `enabled`.
+The retired `[quick_settings].charge_limit` percentage is ignored and removed on
+the next normal configuration write. No local charge setting is replayed at startup.
+Deploy both consumers together; rolling back requires the previous coordinated
+bundle and does not restore a retired percentage or change UPower's persisted state.
 
 Villain consumes the additive `SetNightLight` desktop command, validates 2500–6500 K,
 and applies an output-wide GLES RGB transform on both backends. The disabled path
