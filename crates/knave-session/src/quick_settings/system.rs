@@ -294,6 +294,7 @@ pub fn charge_helper(name: &str, percent: u8) -> Result<(), String> {
     charge_helper_at(Path::new("/sys/class/power_supply"), name, percent)
 }
 
+#[cfg(test)]
 pub(super) fn set_charge_at(root: &Path, name: &str, percent: u8) -> Result<u8, String> {
     validate_charge_target(name, percent)?;
     let battery = charge_battery_path(root, name);
