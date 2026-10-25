@@ -25,9 +25,11 @@ written to `[quick_settings]` in the canonical Knave configuration (or its expli
 KNAVE_CONFIG override). Unknown source data survives writes. The default leaves
 the firmware charge limit unchanged. Only explicit Apply requests authentication
 through pkexec; the helper accepts a battery name and a 50–100% limit and writes
-only its kernel charge threshold. No root daemon or permission relaxation is
-installed. For a root-owned threshold or a power authorization request,
-the session-owned native Polkit agent handles authentication (ADR 0015). Quick
+only its kernel charge threshold, then verifies the requested value by reading
+the attribute back. The unprivileged write path performs the same verification.
+No root daemon or permission relaxation is installed. For a root-owned threshold
+or a power authorization request, the session-owned native Polkit agent handles
+authentication (ADR 0015). Quick
 settings unmaps while authentication is pending so its exclusive input cannot
 block the authentication surface. pkexec failures remain explicit.
 
