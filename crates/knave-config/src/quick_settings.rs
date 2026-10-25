@@ -90,18 +90,19 @@ mod retired_charge_setting_tests {
     use crate::ConfigDocument;
     #[test]
     fn old_percentage_is_retired_without_losing_unknown_settings() {
-        let d = tempfile::tempdir().unwrap();
-        let p = d.path().join("config.toml");
-        std::fs::write(
-            &p,
+        for input in [
             "[quick_settings]\ncharge_limit=95\nfuture_setting='keep'\n",
-        )
-        .unwrap();
-        let mut doc = ConfigDocument::load(&p).unwrap();
-        let config = doc.config().clone();
-        doc.write(config).unwrap();
-        let source = std::fs::read_to_string(p).unwrap();
-        assert!(!source.contains("charge_limit"));
-        assert!(source.contains("future_setting='keep'"));
+            "quick_settings = { charge_limit=95, future_setting='keep' }\n",
+        ] {
+            let d = tempfile::tempdir().unwrap();
+            let p = d.path().join("config.toml");
+            std::fs::write(&p, input).unwrap();
+            let mut doc = ConfigDocument::load(&p).unwrap();
+            let config = doc.config().clone();
+            doc.write(config).unwrap();
+            let source = std::fs::read_to_string(p).unwrap();
+            assert!(!source.contains("charge_limit"));
+            assert!(source.contains("future_setting='keep'"));
+        }
     }
 }
