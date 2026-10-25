@@ -195,6 +195,9 @@ pub fn battery_at(root: &Path) -> Result<Option<Battery>, String> {
 }
 /// Only the kernel's battery threshold attribute is writable through this privileged entry point.
 pub fn charge_helper(name: &str, limit: u8) -> Result<(), String> {
+    charge_helper_at(Path::new("/sys/class/power_supply"), name, limit)
+}
+fn valid_charge_target(name: &str, limit: u8) -> Result<(), String> {
     if !(50..=100).contains(&limit)
         || name.is_empty()
         || name.len() > 64
@@ -204,7 +207,11 @@ pub fn charge_helper(name: &str, limit: u8) -> Result<(), String> {
     {
         return Err("invalid battery or charge limit".into());
     }
-    let path = Path::new("/sys/class/power_supply").join(name);
+    Ok(())
+}
+fn charge_helper_at(root: &Path, name: &str, limit: u8) -> Result<(), String> {
+    valid_charge_target(name, limit)?;
+    let path = root.join(name);
     if std::fs::read_to_string(path.join("type"))
         .map_err(|e| e.to_string())?
         .trim()
@@ -212,14 +219,61 @@ pub fn charge_helper(name: &str, limit: u8) -> Result<(), String> {
     {
         return Err("not a battery".into());
     }
-    std::fs::write(path.join("charge_control_end_threshold"), limit.to_string())
-        .map_err(|e| e.to_string())
+    write_charge_limit(&path.join("charge_control_end_threshold"), limit)
+        .map_err(|e| charge_error(&e))
+}
+fn write_charge_limit(attribute: &Path, limit: u8) -> std::io::Result<()> {
+    write_charge_limit_with(
+        attribute,
+        limit,
+        |path, value| {
+            use std::io::Write;
+            std::fs::OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .open(path)?
+                .write_all(value.as_bytes())
+        },
+        |path| std::fs::read_to_string(path),
+    )
+}
+fn write_charge_limit_with(
+    attribute: &Path,
+    limit: u8,
+    write: impl FnOnce(&Path, &str) -> std::io::Result<()>,
+    read: impl FnOnce(&Path) -> std::io::Result<String>,
+) -> std::io::Result<()> {
+    write(attribute, &limit.to_string())?;
+    let actual = read(attribute)?;
+    if actual.trim().parse::<u8>().ok() != Some(limit) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "charge threshold readback mismatch (requested {limit}%, got {})",
+                actual.trim()
+            ),
+        ));
+    }
+    Ok(())
+}
+fn charge_error(error: &std::io::Error) -> String {
+    match error.kind() {
+        std::io::ErrorKind::NotFound => {
+            "Battery charge thresholds are not supported by this device".into()
+        }
+        std::io::ErrorKind::PermissionDenied => {
+            "Permission denied while applying the charge limit".into()
+        }
+        std::io::ErrorKind::InvalidData => error.to_string(),
+        _ => format!("Could not apply charge limit: {error}"),
+    }
 }
 pub async fn set_charge(name: &str, limit: u8) -> Result<(), String> {
+    valid_charge_target(name, limit)?;
     let path = Path::new("/sys/class/power_supply")
         .join(name)
         .join("charge_control_end_threshold");
-    match std::fs::write(path, limit.to_string()) {
+    match write_charge_limit(&path, limit) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
             let exe = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -228,20 +282,43 @@ pub async fn set_charge(name: &str, limit: u8) -> Result<(), String> {
                 .arg(exe)
                 .args(["charge-limit", name, &limit.to_string()])
                 .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::piped())
                 .kill_on_drop(true)
                 .spawn()
                 .map_err(|e| e.to_string())?;
-            let result = tokio::time::timeout(Duration::from_secs(90), child.wait())
+            let mut stderr = child
+                .stderr
+                .take()
+                .ok_or("missing helper stderr")?
+                .take(8193);
+            let work = async {
+                let mut output = Vec::new();
+                stderr
+                    .read_to_end(&mut output)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                if output.len() > 8192 {
+                    return Err("charge-limit helper output exceeds budget".to_owned());
+                }
+                let result = child.wait().await.map_err(|e| e.to_string())?;
+                if result.success() {
+                    // The helper verifies the kernel readback before exiting successfully.
+                    Ok(())
+                } else {
+                    let detail = String::from_utf8_lossy(&output).trim().to_owned();
+                    Err(if detail.is_empty() {
+                        "Charge limit was not applied; authentication may have been cancelled or denied".into()
+                    } else {
+                        format!("Charge limit was not applied: {detail}")
+                    })
+                }
+            };
+            tokio::time::timeout(Duration::from_secs(90), work)
                 .await
                 .map_err(|_| "charge-limit authentication timed out")?
-                .map_err(|e| e.to_string())?;
-            if result.success() {
-                Ok(())
-            } else {
-                Err("Charge limit was not changed; authentication failed or no authentication agent is running".into())
-            }
         }
-        Err(e) => Err(e.to_string()),
+        Err(e) => Err(charge_error(&e)),
     }
 }
 #[cfg(test)]
@@ -270,5 +347,34 @@ mod tests {
         assert!(battery_at(&d.path().join("absent")).is_err());
         assert!(charge_helper("../BAT1", 80).is_err());
         assert!(charge_helper("BAT1", 101).is_err());
+    }
+    #[test]
+    fn charge_helper_verifies_threshold_readback() {
+        let d = tempfile::tempdir().unwrap();
+        let battery = d.path().join("BAT0");
+        std::fs::create_dir(&battery).unwrap();
+        std::fs::write(battery.join("type"), "Battery\n").unwrap();
+        let attribute = battery.join("charge_control_end_threshold");
+        std::fs::write(&attribute, "100\n").unwrap();
+
+        charge_helper_at(d.path(), "BAT0", 80).unwrap();
+        assert_eq!(std::fs::read_to_string(&attribute).unwrap().trim(), "80");
+
+        let mismatch = write_charge_limit_with(
+            &attribute,
+            75,
+            |path, value| std::fs::write(path, format!("{}\n", value.parse::<u8>().unwrap() + 1)),
+            |path| std::fs::read_to_string(path),
+        );
+        let error = mismatch.unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        assert!(error.to_string().contains("readback mismatch"));
+        std::fs::remove_file(&attribute).unwrap();
+        assert!(
+            charge_helper_at(d.path(), "BAT0", 80)
+                .unwrap_err()
+                .contains("not supported")
+        );
+        assert!(!attribute.exists());
     }
 }
