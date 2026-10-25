@@ -62,6 +62,8 @@ pub struct Battery {
     pub status: String,
     /// Read-only driver report; some drivers return a cached request.
     pub driver_limit: Option<u8>,
+    /// Last explicitly applied custom percentage from Knave configuration.
+    pub configured_limit: Option<u8>,
     /// None means UPower could not be queried; unsupported is explicit below.
     pub charge_limit: Option<ChargeLimit>,
 }
@@ -125,7 +127,7 @@ pub enum QuickSettingsCommand {
         profile: String,
     },
     SetChargeLimit {
-        enabled: bool,
+        percent: u8,
     },
     SetNightLight {
         enabled: bool,

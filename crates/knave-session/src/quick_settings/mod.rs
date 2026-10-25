@@ -7,6 +7,7 @@ use knave_config::{
 };
 use knave_desktop_api::{DesktopCommand, DesktopRequest, DesktopResponse, quick_settings::*};
 use std::{sync::Arc, time::Duration};
+pub use system::charge_helper;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     sync::{Mutex, Notify, Semaphore},
@@ -114,7 +115,11 @@ impl Service {
         apply!(bluetooth, bluetooth);
         apply!(power, power);
         match battery_charge {
-            Some(v) => m.snapshot.battery = v,
+            Some(Some(mut battery)) => {
+                battery.configured_limit = m.settings.charge_limit;
+                m.snapshot.battery = Some(battery);
+            }
+            Some(None) => m.snapshot.battery = None,
             None => m.snapshot.battery = None,
         }
         if let Some(error) = battery_error {
@@ -268,7 +273,10 @@ impl Service {
                 }
                 system::run("powerprofilesctl", &["set", &profile]).await?;
             }
-            SetChargeLimit { enabled } => {
+            SetChargeLimit { percent } => {
+                if !(50..=100).contains(&percent) {
+                    return Err("charge limit must be 50–100%".into());
+                }
                 let battery = self
                     .model
                     .lock()
@@ -276,15 +284,32 @@ impl Service {
                     .snapshot
                     .battery
                     .clone()
-                    .filter(|b| b.charge_limit.as_ref().is_some_and(|l| l.supported))
-                    .ok_or("UPower battery charge limits are unavailable")?;
-                let connection = upower::system_connection_for_action().await?;
-                let charge_limit = upower::set_enabled(&connection, &battery, enabled).await?;
+                    .ok_or("Battery is unavailable")?;
+                let known_active = battery
+                    .charge_limit
+                    .as_ref()
+                    .is_some_and(|limit| limit.supported && limit.enabled);
+                let connection = upower::system_connection_for_action().await.ok();
+                let actual =
+                    upower::apply_custom_limit(connection.as_ref(), &battery, known_active, || {
+                        system::set_charge(&battery.name, percent)
+                    })
+                    .await?;
+                let mut settings = self.model.lock().await.settings.clone();
+                settings.charge_limit = Some(percent);
+                let save_result = self.save(settings).await;
                 if let Some(current) = self.model.lock().await.snapshot.battery.as_mut()
                     && current.name == battery.name
                 {
-                    current.charge_limit = Some(charge_limit);
+                    current.driver_limit = Some(actual);
+                    if let Some(policy) = &mut current.charge_limit {
+                        policy.enabled = false;
+                    }
+                    if save_result.is_ok() {
+                        current.configured_limit = Some(percent);
+                    }
                 }
+                save_result?;
             }
             SetNightLight {
                 enabled,

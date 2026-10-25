@@ -20,29 +20,36 @@ children. While the panel is open it samples external state every three seconds;
 when hidden it has no hardware polling. Scheduled Night Light wakes once per
 minute. Shell never launches hardware commands on a frame/input thread.
 
-Night Light settings are validated and atomically written to `[quick_settings]`
-in the canonical Knave configuration (or its explicit KNAVE_CONFIG override).
-Unknown source data survives writes. UPower owns battery charge-limit persistence
-and its supported preset. Knave discovers the matching native power-supply battery,
-reads its capabilities and calls `EnableChargeThreshold(bool)` on the system bus.
-Reapply sends the same enabled value again, letting UPower restore its preset after
-another tool changes the driver threshold. Unsupported and unavailable states are
-explicit; there is no percentage slider, privileged Knave helper or sysfs write
-fallback. The driver's read-only threshold is reported separately because some
-drivers expose a cached request rather than the physical firmware cutoff.
+Night Light settings and the selected custom charge percentage are validated and
+atomically written to `[quick_settings]` in the canonical Knave configuration
+(or its explicit KNAVE_CONFIG override). Unknown source data survives writes.
+The charge slider covers 50–100% in one-percent steps and sends the selected
+value only after Apply. Opening the panel or moving the slider writes no hardware.
+The last applied selection is restored in the UI; startup does not authenticate
+or replay a hardware write.
 
-The session-owned Polkit agent handles UPower and logind authentication (ADR 0015).
-Quick settings unmaps while authentication is pending so its exclusive input cannot
-block the authentication surface. Completion verifies UPower's reported enabled
-state and reports errors; it does not establish physical charge enforcement.
-Queries are bounded to three seconds and authenticated requests to ninety seconds.
+UPower's installed API exposes a preset toggle, not an arbitrary percentage setter.
+Knave discovers the matching native battery and reads its policy. Before applying
+a custom percentage it disables an active UPower preset, then writes only the
+existing battery end-threshold attribute through the validated Knave helper when
+privilege is needed. A failed preset disable prevents the custom write. This keeps
+a stale preset from overwriting the custom choice. Threshold readback must match
+before persistence/success; it can be a driver cache and does not establish physical
+firmware enforcement. There is no forced 80% selection.
 
-The coordinated Knave/Shell contract replaces `Battery.limit` with `driver_limit`
-and optional UPower `charge_limit` metadata; `SetChargeLimit` takes `enabled`.
-The retired `[quick_settings].charge_limit` percentage is ignored and removed on
-the next normal configuration write. No local charge setting is replayed at startup.
-Deploy both consumers together; rolling back requires the previous coordinated
-bundle and does not restore a retired percentage or change UPower's persisted state.
+The session-owned Polkit agent handles UPower, the charge helper and logind
+(ADR 0015). Quick settings unmaps while authentication is pending and returns to
+the same charging page with success or failure feedback. Individual authenticated
+operations are bounded to ninety seconds, and the Shell command budget covers
+both preset-disable and custom-write authentication. Ordinary UPower queries are
+bounded to three seconds. No new worker, timer or subscription is introduced.
+
+The coordinated Knave/Shell contract exposes `driver_limit`, `configured_limit`
+and optional UPower `charge_limit` metadata; `SetChargeLimit` takes `percent`.
+`[quick_settings].charge_limit` remains a validated optional custom percentage.
+Deploy matching consumers together; roll back the coordinated bundle together.
+Neither software rollback nor restoring a UI selection restores a hardware policy
+that another tool has changed.
 
 Villain consumes the additive `SetNightLight` desktop command, validates 2500–6500 K,
 and applies an output-wide GLES RGB transform on both backends. The disabled path

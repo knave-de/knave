@@ -1,5 +1,5 @@
 use knave_desktop_api::quick_settings::{Battery, ChargeLimit};
-use std::time::Duration;
+use std::{future::Future, time::Duration};
 use zbus::{Connection, zvariant::OwnedObjectPath};
 
 const NAME: &str = "org.freedesktop.UPower";
@@ -160,6 +160,34 @@ pub async fn set_enabled(
     })
     .await
     .map_err(|_| "UPower charge limit readback timed out".to_owned())?
+}
+
+pub async fn apply_custom_limit<T, F, Fut>(
+    connection: Option<&Connection>,
+    battery: &Battery,
+    previously_active: bool,
+    write: F,
+) -> Result<T, String>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<T, String>>,
+{
+    match connection {
+        Some(connection) => match query(connection, battery).await {
+            Ok(policy) if policy.supported && policy.enabled => {
+                // UPower reapplies its preset on every enable call; disable it before writing.
+                set_enabled(connection, battery, false).await?;
+            }
+            Ok(_) => {}
+            Err(error) if previously_active => return Err(error),
+            Err(_) => {}
+        },
+        None if previously_active => {
+            return Err("Could not verify the active UPower charge preset".into());
+        }
+        None => {}
+    }
+    write().await
 }
 
 async fn system_connection_with_method_timeout(
@@ -351,6 +379,7 @@ mod tests {
             percent: 50,
             status: "Discharging".into(),
             driver_limit: Some(95),
+            configured_limit: None,
             charge_limit: None,
         }
     }
@@ -443,6 +472,60 @@ mod tests {
                     .unwrap_err()
                     .contains("did not apply")
             );
+        });
+    }
+
+    #[test]
+    fn custom_limit_disables_upower_before_writing_and_keeps_custom_percent() {
+        runtime().block_on(async {
+            let (_bus, _server, client, actual, _composite) = fixture().await;
+            let root = tempfile::tempdir().unwrap();
+            let battery_dir = root.path().join("BAT0");
+            std::fs::create_dir(&battery_dir).unwrap();
+            std::fs::write(battery_dir.join("type"), "Battery\n").unwrap();
+            std::fs::write(battery_dir.join("charge_control_end_threshold"), "80\n").unwrap();
+            let battery = battery("BAT0");
+            for percent in [85, 95, 100] {
+                let result = apply_custom_limit(Some(&client), &battery, true, || async {
+                    assert!(!actual.enabled.load(Ordering::SeqCst));
+                    crate::quick_settings::system::set_charge_at(root.path(), "BAT0", percent)
+                })
+                .await
+                .unwrap();
+                assert_eq!(result, percent);
+                assert_eq!(
+                    std::fs::read_to_string(battery_dir.join("charge_control_end_threshold"))
+                        .unwrap()
+                        .trim(),
+                    percent.to_string()
+                );
+            }
+            assert_eq!(actual.calls.load(Ordering::SeqCst), 1);
+        });
+    }
+
+    #[test]
+    fn failed_upower_disable_prevents_custom_write() {
+        runtime().block_on(async {
+            let (_bus, _server, client, actual, _composite) = fixture().await;
+            let root = tempfile::tempdir().unwrap();
+            let battery_dir = root.path().join("BAT0");
+            std::fs::create_dir(&battery_dir).unwrap();
+            std::fs::write(battery_dir.join("type"), "Battery\n").unwrap();
+            let threshold = battery_dir.join("charge_control_end_threshold");
+            std::fs::write(&threshold, "80\n").unwrap();
+            actual.reject.store(true, Ordering::SeqCst);
+            let writes = AtomicUsize::new(0);
+            assert!(
+                apply_custom_limit(Some(&client), &battery("BAT0"), true, || async {
+                    writes.fetch_add(1, Ordering::SeqCst);
+                    crate::quick_settings::system::set_charge_at(root.path(), "BAT0", 95)
+                })
+                .await
+                .is_err()
+            );
+            assert_eq!(writes.load(Ordering::SeqCst), 0);
+            assert_eq!(std::fs::read_to_string(threshold).unwrap(), "80\n");
         });
     }
 }
