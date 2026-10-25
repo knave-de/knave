@@ -226,8 +226,15 @@ fn write_charge_limit(attribute: &Path, limit: u8) -> std::io::Result<()> {
     write_charge_limit_with(
         attribute,
         limit,
-        |path, value| std::fs::write(path, value),
-        std::fs::read_to_string,
+        |path, value| {
+            use std::io::Write;
+            std::fs::OpenOptions::new()
+                .write(true)
+                .truncate(true)
+                .open(path)?
+                .write_all(value.as_bytes())
+        },
+        |path| std::fs::read_to_string(path),
     )
 }
 fn write_charge_limit_with(
@@ -357,10 +364,17 @@ mod tests {
             &attribute,
             75,
             |path, value| std::fs::write(path, format!("{}\n", value.parse::<u8>().unwrap() + 1)),
-            std::fs::read_to_string,
+            |path| std::fs::read_to_string(path),
         );
         let error = mismatch.unwrap_err();
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
         assert!(error.to_string().contains("readback mismatch"));
+        std::fs::remove_file(&attribute).unwrap();
+        assert!(
+            charge_helper_at(d.path(), "BAT0", 80)
+                .unwrap_err()
+                .contains("not supported")
+        );
+        assert!(!attribute.exists());
     }
 }
