@@ -169,3 +169,19 @@ validation, target destruction and the single/all-empty cases. It records
 `workspace-skip-empty-demo.mp4` and restores two occupied slots for idle, normal
 and cancellation-stress resource samples. Run the ordinary mode as well to
 check that the default sequential behavior stays intact.
+
+## UPower charge-limit controls
+
+After the standard bundle test, run the frozen charge-limit smoke runner:
+
+```sh
+python3 BUNDLE/tools/desktop-charge-limit-smoke.py --bundle BUNDLE --run /tmp/charge-limit-demo
+```
+
+It starts a private UPower D-Bus fixture and exercises the real session service
+and native panel, including preset reapplication, delayed authorization replies,
+denial and mismatched readback. It reads the host battery identity and driver
+threshold but never writes them or sends charging commands to the host system bus.
+Screenshots, an MP4, assertions and process resource samples are retained in the
+run directory. Firmware enforcement and real Polkit authentication still require
+separate physical-device review.

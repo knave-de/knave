@@ -98,7 +98,8 @@ class FakeUPower:
             enabled, = params.unpack()
             with self.lock:
                 mode = self.mode
-                self.calls.append(dict(enabled=enabled, mode=mode, at=time.monotonic()))
+                record = dict(enabled=enabled, mode=mode, at=time.monotonic(), done=False)
+                self.calls.append(record)
 
             def finish():
                 if mode == 'reject':
@@ -110,6 +111,7 @@ class FakeUPower:
                             self.enabled = enabled
                     self.emit_enabled()
                     invocation.return_value(None)
+                record['done'] = True
                 return GLib.SOURCE_REMOVE
 
             if mode == 'delay':
@@ -188,7 +190,6 @@ def main():
     parser.add_argument('--display', default='97')
     args = parser.parse_args()
     bundle, directory = args.bundle.resolve(), args.run.resolve()
-    directory.mkdir(parents=True, exist_ok=False)
     battery = read_battery()
     checks = []
     def check(value, label):
@@ -235,14 +236,6 @@ def main():
             return json.loads(value.unpack()[0])
 
         wait(lambda: snapshot(), 'native quick-settings service')
-        state = snapshot()
-        check(state['battery']['name'] == battery['name'], 'Snapshot identifies actual read-only sysfs battery')
-        check(state['battery'].get('driver_limit') == battery['driver_limit'],
-              'Snapshot reports driver threshold separately from UPower preset')
-        limit = state['battery']['charge_limit']
-        check(limit == dict(supported=True, enabled=False, start_threshold=75, end_threshold=80),
-              'UPower reports supported 75%/80% preset independently of driver threshold')
-
         children = [int(p) for p in Path(f'/proc/{session}/task/{session}/children').read_text().split()]
         monitored = [pid for pid in [session] + children if Path(f'/proc/{pid}').exists()]
         def samples():
@@ -253,14 +246,17 @@ def main():
 
         call('record-start', 'charge-limit-demo')
         call('click', 1248, 18, 1)
-        wait(lambda: snapshot()['open'], 'quick settings opens')
+        wait(lambda: snapshot()['open'] and snapshot().get('battery'), 'quick settings opens with battery state')
+        state = snapshot()
+        check(state['battery']['name'] == battery['name'], 'Snapshot identifies actual read-only sysfs battery')
+        check(state['battery'].get('driver_limit') == battery['driver_limit'],
+              'Snapshot reports driver threshold separately from UPower preset')
+        limit = state['battery']['charge_limit']
+        check(limit == dict(supported=True, enabled=False, start_threshold=None, end_threshold=80),
+              'UPower reports supported end-only 80% preset independently of driver threshold')
         time.sleep(.4)
         call('screenshot', 'charge-limit-main')
-        # The charge row is below the fold at 1280×800; scroll it into view.
-        call('click', 1080, 710, 5)
-        time.sleep(.3)
-        call('screenshot', 'charge-limit-main-scrolled')
-        call('click', 1080, 740, 1)
+        call('click', 1080, 600, 1)
         time.sleep(.5)
         call('screenshot', 'charge-limit-page')
         check(Path(directory / 'charge-limit-page.png').exists(), 'native Battery charging page screenshot captured')
@@ -269,11 +265,13 @@ def main():
             with fake.lock:
                 fake.mode = mode
                 before = len(fake.calls)
-            call('click', 1080, 300, 1)
+            button_y = 223 if target == 'disabled' else 170
+            call('click', 1080, button_y, 1)
             wait(lambda: len(fake.calls) > before, f'UPower EnableChargeThreshold({target}) request')
             if mode == 'delay':
                 time.sleep(1)
                 call('screenshot', f'charge-limit-{target}-pending')
+            wait(lambda: fake.calls[before]['done'], 'UPower reply completed', timeout)
             wait(lambda: snapshot()['battery']['charge_limit']['enabled'] == expected,
                  f'UPower reports enabled={expected}', timeout)
             time.sleep(.5)
@@ -281,10 +279,10 @@ def main():
 
         apply_and_wait('enabled', True, mode='delay', timeout=20)
         check(fake.calls[-1]['enabled'] is True, 'delayed native enable reaches UPower')
+        apply_and_wait('reapply', True)
+        check(fake.calls[-1]['enabled'] is True and fake.calls[-2]['enabled'] is True, 'native reapply sends the same enabled state again')
         apply_and_wait('disabled', False)
         check(fake.calls[-1]['enabled'] is False, 'native disable reaches UPower')
-        apply_and_wait('reapply', True)
-        check(fake.calls[-1]['enabled'] is True, 'native reapply reaches UPower')
 
         # Drive failure states from the same native control. Service readback stays false.
         def failure(mode, filename, label):
@@ -294,9 +292,11 @@ def main():
                 before = len(fake.calls)
             fake.emit_enabled()
             time.sleep(.3)
-            call('click', 1080, 300, 1)
+            call('click', 1080, 170, 1)
             wait(lambda: len(fake.calls) > before, label + ' request')
             time.sleep(1.5)
+            wait(lambda: snapshot()['battery']['charge_limit']['enabled'] is False,
+                 label + ' service readback remains disabled')
             call('screenshot', filename)
             check(fake.enabled is False, label + ' does not claim UPower changed state')
             check(Path(directory / (filename + '.png')).exists(), label + ' UI error screenshot captured')
