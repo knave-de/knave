@@ -284,7 +284,8 @@ impl Service {
                     .snapshot
                     .battery
                     .clone()
-                    .ok_or("Battery is unavailable")?;
+                    .filter(|battery| battery.driver_limit.is_some())
+                    .ok_or("Custom battery charge limits are unavailable")?;
                 let known_active = battery
                     .charge_limit
                     .as_ref()
