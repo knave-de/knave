@@ -1,7 +1,7 @@
 # Isolated development workflow
 
 `scripts/knave-dev.py` owns coordinated development across Knave, Villain,
-Knave Shell and the portal backend. It uses ordinary Git worktrees and Cargo;
+Knave UI, Knave Shell and the portal backend. It uses ordinary Git worktrees and Cargo;
 there is no parent repository or agent-service dependency. Python 3.12+, Git,
 Rust with rustfmt/Clippy, and each component's native build dependencies are
 required. Nested tests also need the tools in [desktop testing](desktop-testing.md),
@@ -56,6 +56,7 @@ Each feature owns editable files outside its Git worktrees:
     │   └── environment       # Optional application environment
     ├── knave/
     ├── villain/
+    ├── knave-ui/
     ├── knaveshell/
     └── xdg-desktop-portal-knave/
 ```
@@ -97,7 +98,8 @@ source and runtime paths. Avoid editing generated copies.
 
 ## Create and develop
 
-Keep the four source repositories as siblings. From Knave:
+Keep the five source repositories as siblings. Knave UI owns the renderer-independent
+UI and the wgpu renderer crates; it produces libraries rather than session executables. From Knave:
 
 ```sh
 dev=(python3 scripts/knave-dev.py)
@@ -134,7 +136,7 @@ bundle=$("${dev[@]}" bundle overview-animations)
 
 Build requires clean component worktrees, including no untracked source files.
 It archives their commits into a build snapshot and generates Cargo patches
-pointing every shared Knave crate to that snapshot. It resolves locks there,
+pointing every shared Knave and Knave UI crate to that snapshot. It resolves locks there,
 checks dependency provenance, then runs formatting, all-target tests, strict
 Clippy, and binary builds in each repository. Original Cargo manifests and
 lockfiles remain unchanged. Failed builds retain their logs but cannot be
