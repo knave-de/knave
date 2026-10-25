@@ -170,7 +170,7 @@ validation, target destruction and the single/all-empty cases. It records
 and cancellation-stress resource samples. Run the ordinary mode as well to
 check that the default sequential behavior stays intact.
 
-## UPower charge-limit controls
+## Configurable charge-limit controls
 
 After the standard bundle test, run the frozen charge-limit smoke runner:
 
@@ -178,10 +178,10 @@ After the standard bundle test, run the frozen charge-limit smoke runner:
 python3 BUNDLE/tools/desktop-charge-limit-smoke.py --bundle BUNDLE --run /tmp/charge-limit-demo
 ```
 
-It starts a private UPower D-Bus fixture and exercises the real session service
-and native panel, including preset reapplication, delayed authorization replies,
-denial and mismatched readback. It reads the host battery identity and driver
-threshold but never writes them or sends charging commands to the host system bus.
-Screenshots, an MP4, assertions and process resource samples are retained in the
-run directory. Firmware enforcement and real Polkit authentication still require
-separate physical-device review.
+It exercises the native slider and transport against a private Quick Settings
+service, including several custom percentages, delayed replies, cancellation and
+mismatched driver readback. The fixture never writes host battery settings.
+Backend tests separately use a private UPower bus and temporary threshold files to
+verify preset-disable ordering and custom writes. Screenshots, an MP4, assertions
+and process resource samples are retained in the run directory. Firmware
+enforcement and real Polkit authentication require physical-device review.
