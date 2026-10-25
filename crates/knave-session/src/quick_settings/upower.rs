@@ -151,8 +151,9 @@ pub async fn set_enabled(
         let after = settings(connection, &path).await?;
         if after.enabled != enabled {
             return Err(format!(
-                "UPower did not apply charge limit enabled={enabled} (reported {})",
-                after.enabled
+                "UPower did not apply the charge-limit request: requested {}, reports {}",
+                if enabled { "on" } else { "off" },
+                if after.enabled { "on" } else { "off" }
             ));
         }
         Ok(after)
