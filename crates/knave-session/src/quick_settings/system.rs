@@ -1,6 +1,6 @@
 use knave_desktop_api::quick_settings::*;
 use std::{path::Path, process::Stdio, time::Duration};
-use tokio::io::AsyncReadExt;
+use tokio::{io::AsyncReadExt, process::Command};
 
 pub async fn run(program: &str, args: &[&str]) -> Result<String, String> {
     let task = async {
