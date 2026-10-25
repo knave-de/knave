@@ -3,7 +3,8 @@
 ## Decision
 
 Knave owns a Python development CLI alongside the existing desktop harness.
-The four repositories remain independent. Each feature has matching Git
+The five repositories remain independent, including the standalone Knave UI
+library repository. Each feature has matching Git
 worktrees, explicit changed components and detached fixed dependencies.
 
 Builds archive clean commits, patch shared Cargo dependencies to one coordinated
@@ -35,7 +36,7 @@ configuration and reload protocol are unchanged.
 
 Ownership is limited to build/test tooling and harness integration. Runtime
 contracts, package versions and configuration schema are unchanged. Villain,
-Shell and the portal backend consume the same shared Knave snapshot during
+Knave UI, Shell and the portal backend consume the same shared Knave snapshot during
 verification; published dependency revisions still require explicit coordinated
 updates before integration. No compatibility negotiation is added.
 
@@ -50,7 +51,7 @@ have explicit filesystem lifetimes; there is no daemon or polling scheduler.
 The CLI is opt-in; existing Cargo/install/harness commands continue to work.
 Regression tests exercise real worktrees and small debug/release coordinated
 builds, including local dependency selection and untouched source lockfiles.
-Actual four-component bundles are tested through nested Winit and private D-Bus.
+Actual coordinated bundles are tested through nested Winit and private D-Bus.
 TTY guards, activation paths and recovery are tested without changing host units;
 physical-seat behavior must be reviewed in the dedicated account.
 

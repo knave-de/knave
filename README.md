@@ -4,13 +4,15 @@ Knave is the umbrella project for an independent Linux desktop environment.
 This repository owns the desktop-wide contracts, configuration, session
 lifecycle, and the long-term Rust/Cargo-first environment.
 
-The compositor and shell remain separate processes and repositories:
+The environment is developed across five repositories:
 
 | Repository | Responsibility |
 | --- | --- |
 | Knave | Settings, session supervisor, public desktop API, protocol, CLI |
-| Knave Shell | Rust UI library, wgpu renderer, Wayland client, shell |
+| [Knave UI](https://github.com/knave-de/knave-ui) | Renderer-independent UI toolkit, assets, wgpu renderer |
+| Knave Shell | Desktop surfaces, application integration, Wayland client |
 | Villain | Wayland compositor and window manager |
+| xdg-desktop-portal-knave | Desktop portal backend |
 
 ## Workspace
 
@@ -124,7 +126,7 @@ Installation is explicit and never writes to /usr/local without --system.
 - [Change impact](docs/architecture/change-impact.md)
 - [Agent instructions](AGENTS.md)
 
-Before changing a shared contract, inspect every consumer in all three
+Before changing a shared contract, inspect every consumer in the affected
 repositories. Keep protocol, configuration, session, UI, compositor, and
 installation changes in defined PRs with compatibility and rollback evidence.
 
