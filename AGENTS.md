@@ -3,8 +3,9 @@
 Knave is the umbrella repository for the Knave Desktop Environment.
 
 Knave owns the user-facing configuration, settings, session lifecycle, build
-orchestration, public desktop contracts, compatibility policy, and the Rust
-Knave Shell/UI stack. Villain owns compositor and window-manager behavior.
+orchestration, public desktop contracts, compatibility policy, and coordinated builds of the Rust
+Knave Shell/UI stack. The standalone Knave UI repository owns UI primitives and
+wgpu rendering; Knave Shell owns desktop surfaces and Wayland hosting. Villain owns compositor and window-manager behavior.
 Keep those responsibilities separate unless an explicit architecture decision
 changes the boundary.
 

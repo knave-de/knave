@@ -176,10 +176,11 @@ is never treated as proof.
 ## Publish coordinated changes
 
 ```sh
-"${dev[@]}" pr overview-animations --bundle "$bundle" --base master
+"${dev[@]}" pr overview-animations --bundle "$bundle"
 ```
 
-This explicit command pushes affected branches and creates draft PRs in their
+Each repository uses its origin default branch as the PR base; `--base` explicitly
+overrides it for every affected repository. This explicit command pushes affected branches and creates draft PRs in their
 original repositories, using authenticated `gh`. It requires the worktrees to
 match the tested bundle's commits. It does not commit, rebase or merge anything.
 PRs list all component revisions and the verification identity. Returned PR URLs

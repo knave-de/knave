@@ -748,7 +748,7 @@ def import_bundle(state, archive_path):
         shutil.rmtree(staging)
 
 
-def pull_requests(state, name, bundle_path, base='master'):
+def pull_requests(state, name, bundle_path, base=None):
     root, data = workspace(state, name)
     manifest = tested_bundle(state, bundle_path)
     with lock(root / 'operation.lock'):
@@ -765,14 +765,18 @@ def pull_requests(state, name, bundle_path, base='master'):
                 changed.append(repo)
         if not changed:
             raise ValueError('no committed feature changes to publish')
+        bases = {}
         for repo in changed:
             directory = root / repo
+            bases[repo] = base or git(
+                directory, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'
+            ).removeprefix('origin/')
             author = git(directory, 'var', 'GIT_AUTHOR_IDENT').split('>')[0]
             committer = git(directory, 'var', 'GIT_COMMITTER_IDENT').split('>')[0]
             if author != committer:
                 raise ValueError(f'{repo}: author and committer identities differ')
             publication_base = git(
-                directory, 'rev-parse', '--verify', 'origin/' + base + '^{commit}'
+                directory, 'rev-parse', '--verify', 'origin/' + bases[repo] + '^{commit}'
             )
             outgoing = git(
                 directory, 'log', '--format=fuller', publication_base + '..HEAD'
@@ -804,7 +808,7 @@ def pull_requests(state, name, bundle_path, base='master'):
             git(directory, 'push', '--set-upstream', 'origin', entry['branch'])
             # Check GitHub's published attribution, not only local Git config.
             for revision in git(
-                directory, 'rev-list', 'origin/' + base + '..HEAD'
+                directory, 'rev-list', 'origin/' + bases[repo] + '..HEAD'
             ).splitlines():
                 local = git(
                     directory,
@@ -841,7 +845,7 @@ def pull_requests(state, name, bundle_path, base='master'):
                         '--head',
                         entry['branch'],
                         '--base',
-                        base,
+                        bases[repo],
                         '--state',
                         'open',
                         '--json',
@@ -880,7 +884,7 @@ def pull_requests(state, name, bundle_path, base='master'):
                         '--head',
                         entry['branch'],
                         '--base',
-                        base,
+                        bases[repo],
                         '--draft',
                         '--title',
                         f'feat: {name.replace("-", " ")}',
