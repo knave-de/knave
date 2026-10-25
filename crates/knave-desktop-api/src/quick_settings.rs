@@ -60,7 +60,18 @@ pub struct Battery {
     pub name: String,
     pub percent: u8,
     pub status: String,
-    pub limit: Option<u8>,
+    /// Read-only driver report; some drivers return a cached request.
+    pub driver_limit: Option<u8>,
+    /// None means UPower could not be queried; unsupported is explicit below.
+    pub charge_limit: Option<ChargeLimit>,
+}
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct ChargeLimit {
+    pub supported: bool,
+    pub enabled: bool,
+    /// UPower's supported preset thresholds, not measured charging cutoffs.
+    pub start_threshold: Option<u8>,
+    pub end_threshold: Option<u8>,
 }
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct NightLight {
@@ -114,7 +125,7 @@ pub enum QuickSettingsCommand {
         profile: String,
     },
     SetChargeLimit {
-        percent: u8,
+        enabled: bool,
     },
     SetNightLight {
         enabled: bool,

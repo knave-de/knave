@@ -4,8 +4,6 @@ use serde::{Deserialize, Serialize};
 #[serde(default)]
 pub struct QuickSettingsConfig {
     pub night_light: NightLightConfig,
-    /// None leaves the firmware's existing limit alone.
-    pub charge_limit: Option<u8>,
 }
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(default)]
@@ -30,12 +28,11 @@ impl QuickSettingsConfig {
     pub fn validate(&self) -> Result<(), ConfigError> {
         let n = &self.night_light;
         if !(2500..=6500).contains(&n.temperature)
-            || self.charge_limit.is_some_and(|v| !(50..=100).contains(&v))
             || !matches!((n.start, n.end), (None, None))
                 && !matches!((n.start,n.end),(Some(a),Some(b)) if a<1440 && b<1440 && a!=b)
         {
             return Err(ConfigError::Invalid(
-                "invalid quick-settings temperature, schedule or charge limit".into(),
+                "invalid quick-settings temperature or schedule".into(),
             ));
         }
         Ok(())
@@ -85,5 +82,26 @@ mod document_tests {
         assert!(reloaded.config().quick_settings.night_light.start.is_none());
         assert!(reloaded.config().quick_settings.night_light.end.is_none());
         assert!(reloaded.source().contains("future_setting='preserved'"));
+    }
+}
+
+#[cfg(test)]
+mod retired_charge_setting_tests {
+    use crate::ConfigDocument;
+    #[test]
+    fn old_percentage_is_retired_without_losing_unknown_settings() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("config.toml");
+        std::fs::write(
+            &p,
+            "[quick_settings]\ncharge_limit=95\nfuture_setting='keep'\n",
+        )
+        .unwrap();
+        let mut doc = ConfigDocument::load(&p).unwrap();
+        let config = doc.config().clone();
+        doc.write(config).unwrap();
+        let source = std::fs::read_to_string(p).unwrap();
+        assert!(!source.contains("charge_limit"));
+        assert!(source.contains("future_setting='keep'"));
     }
 }

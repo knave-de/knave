@@ -589,9 +589,8 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
         .get_mut("quick_settings")
         .and_then(Item::as_table_mut)
     {
-        if config.quick_settings.charge_limit.is_none() {
-            table.remove("charge_limit");
-        }
+        // UPower persists charge policy; the obsolete local percentage is not replayed.
+        table.remove("charge_limit");
         if let Some(night) = table.get_mut("night_light").and_then(Item::as_table_mut) {
             if config.quick_settings.night_light.start.is_none() {
                 night.remove("start");
