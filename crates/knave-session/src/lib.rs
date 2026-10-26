@@ -226,6 +226,22 @@ fn start_components(
     Ok((compositor, display, shells))
 }
 
+/// A just-replaced binary can still be pinned briefly (ETXTBSY) by the
+/// previous instance's dying descriptors; wait that out before failing.
+fn spawn_with_brief_retry(mut command: Command) -> io::Result<Child> {
+    let mut attempt = 0;
+    loop {
+        match command.spawn() {
+            Ok(child) => return Ok(child),
+            Err(error) if error.kind() == io::ErrorKind::ExecutableFileBusy && attempt < 10 => {
+                attempt += 1;
+                thread::sleep(Duration::from_millis(25));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
 fn spawn_compositor(config: &Config) -> Result<Child, SessionError> {
     let mut command = Command::new(&config.session.compositor_binary);
     match config.session.backend {
@@ -248,12 +264,11 @@ fn spawn_compositor(config: &Config) -> Result<Child, SessionError> {
         .env(
             "XDP_KNAVE_SHELL_BINARY",
             resolved_binary(&config.session.shell_binary),
-        )
-        .spawn()
-        .map_err(|source| SessionError::Spawn {
-            component: "villain".into(),
-            source,
-        })
+        );
+    spawn_with_brief_retry(command).map_err(|source| SessionError::Spawn {
+        component: "villain".into(),
+        source,
+    })
 }
 
 fn resolved_binary(binary: &str) -> String {
@@ -356,16 +371,16 @@ fn check_notification_service(binary: &str, timeout: Duration) -> Result<(), Ses
     }
 }
 fn check_capability(binary: &str, flag: &str, timeout: Duration) -> Result<bool, SessionError> {
-    let mut child = Command::new(binary)
+    let mut command = Command::new(binary);
+    command
         .arg(flag)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|source| SessionError::Spawn {
-            component: "knave-shell capability check".into(),
-            source,
-        })?;
+        .stderr(Stdio::null());
+    let mut child = spawn_with_brief_retry(command).map_err(|source| SessionError::Spawn {
+        component: "knave-shell capability check".into(),
+        source,
+    })?;
     let deadline = Instant::now() + timeout;
     loop {
         match child.try_wait() {
@@ -437,7 +452,7 @@ pub(crate) fn spawn_shell(
     if role == "overview" {
         command.env("KNAVE_OVERVIEW_SERVICE", "1");
     }
-    let child = command.spawn().map_err(|source| SessionError::Spawn {
+    let child = spawn_with_brief_retry(command).map_err(|source| SessionError::Spawn {
         component: format!("knave-shell {role}"),
         source,
     })?;
