@@ -40,7 +40,7 @@ impl Store {
             .create(true)
             .truncate(false)
             .mode(0o600)
-            .custom_flags(libc::O_NOFOLLOW)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
             .open(path)
             .map_err(|e| e.to_string())?;
         use std::os::fd::AsRawFd;
