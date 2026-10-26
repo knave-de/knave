@@ -80,7 +80,7 @@ def parser():
     )
     pr.add_argument('name')
     pr.add_argument('--bundle', type=Path, required=True)
-    pr.add_argument('--base', default='master')
+    pr.add_argument('--base', help='override the base branch for every affected repository')
     tty = commands.add_parser(
         'tty',
         help='dedicated test-account operations; never installs production binaries',

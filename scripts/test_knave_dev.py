@@ -59,6 +59,14 @@ class WorkspaceTests(unittest.TestCase):
             dev.git(workspace / 'villain', 'rev-parse', 'HEAD'),
         )
 
+    def test_existing_four_repository_workspace_remains_supported(self):
+        with patch.object(dev, 'REPOSITORIES', dev.LEGACY_REPOSITORIES):
+            root = self.create()
+        loaded, manifest = dev.workspace(self.state, 'feature')
+        self.assertEqual(loaded, root)
+        self.assertEqual(set(manifest['repositories']), set(dev.LEGACY_REPOSITORIES))
+        dev.remove(self.state, 'feature')
+
     def test_partial_create_rolls_back_only_new_worktrees(self):
         dev.git(self.sources / 'knaveshell', 'branch', 'dev/collision')
         with self.assertRaises(subprocess.CalledProcessError):
@@ -136,6 +144,19 @@ class WorkspaceTests(unittest.TestCase):
                 text += '[workspace]\nmembers = ["crates/knave-desktop-api"]\n'
             else:
                 text += f'[dependencies]\nknave-desktop-api = {{ git = {json.dumps(knave.as_uri())} }}\n'
+            if repo == 'knave-ui':
+                text = '[workspace]\nmembers = ["crates/knave-ui"]\nresolver = "3"\n'
+                library = path / 'crates/knave-ui'
+                (library / 'src').mkdir(parents=True)
+                (library / 'Cargo.toml').write_text(
+                    '[package]\nname = "knave-ui"\nversion = "0.1.0"\nedition = "2024"\n'
+                    f'[dependencies]\nknave-desktop-api = {{ git = {json.dumps(knave.as_uri())} }}\n'
+                )
+                (library / 'src/lib.rs').write_text(
+                    'pub fn value() -> u32 {\n    knave_desktop_api::value()\n}\n'
+                )
+            elif repo == 'knaveshell':
+                text += f'knave-ui = {{ git = {json.dumps((self.sources / "knave-ui").as_uri())} }}\n'
             (path / 'Cargo.toml').write_text(text)
             (path / 'src/bin').mkdir(parents=True)
             for binary, (owner, _) in dev.BINARIES.items():
@@ -145,6 +166,8 @@ class WorkspaceTests(unittest.TestCase):
                         if repo != 'knave'
                         else 'println!("fixture");'
                     )
+                    if repo == 'knaveshell':
+                        body = 'println!("{}", knave_ui::value());'
                     (path / 'src/bin' / f'{binary}.rs').write_text(
                         f'fn main() {{\n    {body}\n}}\n'
                     )
@@ -186,7 +209,9 @@ class WorkspaceTests(unittest.TestCase):
         revisions = {}
         for repo in dev.REPOSITORIES:
             path = root / repo
-            dev.git(path, 'update-ref', 'refs/remotes/origin/master', 'HEAD')
+            branch = 'main' if repo == 'knave' else 'master'
+            dev.git(path, 'update-ref', f'refs/remotes/origin/{branch}', 'HEAD')
+            dev.git(path, 'symbolic-ref', 'refs/remotes/origin/HEAD', f'refs/remotes/origin/{branch}')
             if repo in ('knave', 'villain'):
                 (path / 'feature').write_text('feature')
                 self.commit(path)
@@ -226,6 +251,8 @@ class WorkspaceTests(unittest.TestCase):
                         }
                     }
                 )
+            if argv[1:3] in (['pr', 'list'], ['pr', 'create']):
+                self.assertEqual(argv[argv.index('--base') + 1], 'main' if repo == 'knave' else 'master')
             if argv[1:3] == ['pr', 'list']:
                 return json.dumps([{'url': created[repo]}] if repo in created else [])
             if argv[1:3] == ['pr', 'create']:
@@ -270,7 +297,7 @@ class WorkspaceTests(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()):
                 output = dev.build(self.state, 'feature', profile)
             manifest = json.loads((output / 'build.json').read_text())
-            self.assertEqual(len(manifest['checks']), 16)
+            self.assertEqual(len(manifest['checks']), 4 * len(dev.REPOSITORIES))
             self.assertEqual(dev.capture([output / 'artifacts/bin/villain']), '7')
             bundle = dev.bundle(self.state, 'feature')
             self.assertEqual(dev.verify_bundle(bundle)['profile'], profile)

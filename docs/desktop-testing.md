@@ -1,6 +1,6 @@
 # Desktop test harness
 
-For coordinated worktrees and testing frozen binaries from all four repositories,
+For coordinated worktrees and testing frozen binaries from all five repositories,
 use the [development workflow](dev-workflow.md). `start --bundle /absolute/bundle`
 selects those artifacts instead of mutable workspace targets and adds a private
 portal activation/Settings check. `portal-check` repeats that assertion. This

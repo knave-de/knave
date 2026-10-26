@@ -16,7 +16,8 @@ import tomllib
 import uuid
 from pathlib import Path
 
-REPOSITORIES = ('knave', 'villain', 'knaveshell', 'xdg-desktop-portal-knave')
+REPOSITORIES = ('knave', 'knave-ui', 'villain', 'knaveshell', 'xdg-desktop-portal-knave')
+LEGACY_REPOSITORIES = tuple(repo for repo in REPOSITORIES if repo != 'knave-ui')
 BINARIES = {
     'knave': ('knave', 'bin/knave'),
     'knave-session': ('knave', 'bin/knave-session'),
@@ -98,7 +99,9 @@ def clean_revision(repo):
 def workspace(state, name):
     root = state / 'workspaces' / identifier(name)
     data = json.loads((root / 'workspace.json').read_text())
-    if data['schema'] != 1 or set(data['repositories']) != set(REPOSITORIES):
+    if data['schema'] != 1 or set(data['repositories']) not in (
+        set(REPOSITORIES), set(LEGACY_REPOSITORIES)
+    ):
         raise ValueError('unsupported workspace manifest')
     return root, data
 
@@ -227,9 +230,10 @@ def snapshot(repo, revision, target):
 def patch_config(sources):
     patches = {}
     shared = {}
-    for manifest in sorted((sources / 'knave' / 'crates').glob('*/Cargo.toml')):
-        name = tomllib.loads(manifest.read_text())['package']['name']
-        shared[name] = manifest.parent
+    for owner in ('knave', 'knave-ui'):
+        for manifest in sorted((sources / owner / 'crates').glob('*/Cargo.toml')):
+            name = tomllib.loads(manifest.read_text())['package']['name']
+            shared[name] = manifest.parent
     for repo in REPOSITORIES:
         for manifest in (sources / repo).rglob('Cargo.toml'):
             data = tomllib.loads(manifest.read_text())
@@ -261,7 +265,8 @@ def build(state, name, profile='debug', jobs=1):
         raise ValueError('--jobs must be between 1 and 8 (default: 1)')
     root, data = workspace(state, name)
     with lock(state / 'build.lock'), lock(root / 'operation.lock'):
-        revisions = {repo: clean_revision(root / repo) for repo in REPOSITORIES}
+        repositories = tuple(data['repositories'])
+        revisions = {repo: clean_revision(root / repo) for repo in repositories}
         for repo, entry in data['repositories'].items():
             if not entry['branch'] and revisions[repo] != entry['base']:
                 raise ValueError(
@@ -322,7 +327,7 @@ def build(state, name, profile='debug', jobs=1):
                 'CARGO_PROFILE_TEST_DEBUG',
             )
         }
-        for repo in REPOSITORIES:
+        for repo in repositories:
             directory = sources / repo
             env['CARGO_TARGET_DIR'] = str(state / 'targets' / repo)
             cargo = ['cargo']
@@ -374,7 +379,7 @@ def build(state, name, profile='debug', jobs=1):
                     '-D',
                     'warnings',
                 ],
-                ['build', '--workspace', '--bins', '--locked']
+                ['build', '--workspace', '--locked']
                 + (['--release'] if profile == 'release' else []),
             ):
                 # External Cargo subcommands (notably Clippy) must receive the
@@ -398,7 +403,7 @@ def build(state, name, profile='debug', jobs=1):
                 'path': destination,
                 'sha256': digest(target),
             }
-        for repo in REPOSITORIES:
+        for repo in repositories:
             shutil.copyfile(
                 sources / repo / 'Cargo.lock', output / f'{repo}.Cargo.lock'
             )
@@ -447,7 +452,7 @@ def bundle(state, name):
                     shutil.copyfile(source, path)
             provenance = staging / 'provenance'
             provenance.mkdir()
-            for repo in REPOSITORIES:
+            for repo in manifest['repositories']:
                 shutil.copyfile(
                     output / f'{repo}.Cargo.lock', provenance / f'{repo}.Cargo.lock'
                 )
@@ -743,7 +748,7 @@ def import_bundle(state, archive_path):
         shutil.rmtree(staging)
 
 
-def pull_requests(state, name, bundle_path, base='master'):
+def pull_requests(state, name, bundle_path, base=None):
     root, data = workspace(state, name)
     manifest = tested_bundle(state, bundle_path)
     with lock(root / 'operation.lock'):
@@ -760,14 +765,18 @@ def pull_requests(state, name, bundle_path, base='master'):
                 changed.append(repo)
         if not changed:
             raise ValueError('no committed feature changes to publish')
+        bases = {}
         for repo in changed:
             directory = root / repo
+            bases[repo] = base or git(
+                directory, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'
+            ).removeprefix('origin/')
             author = git(directory, 'var', 'GIT_AUTHOR_IDENT').split('>')[0]
             committer = git(directory, 'var', 'GIT_COMMITTER_IDENT').split('>')[0]
             if author != committer:
                 raise ValueError(f'{repo}: author and committer identities differ')
             publication_base = git(
-                directory, 'rev-parse', '--verify', 'origin/' + base + '^{commit}'
+                directory, 'rev-parse', '--verify', 'origin/' + bases[repo] + '^{commit}'
             )
             outgoing = git(
                 directory, 'log', '--format=fuller', publication_base + '..HEAD'
@@ -799,7 +808,7 @@ def pull_requests(state, name, bundle_path, base='master'):
             git(directory, 'push', '--set-upstream', 'origin', entry['branch'])
             # Check GitHub's published attribution, not only local Git config.
             for revision in git(
-                directory, 'rev-list', 'origin/' + base + '..HEAD'
+                directory, 'rev-list', 'origin/' + bases[repo] + '..HEAD'
             ).splitlines():
                 local = git(
                     directory,
@@ -836,7 +845,7 @@ def pull_requests(state, name, bundle_path, base='master'):
                         '--head',
                         entry['branch'],
                         '--base',
-                        base,
+                        bases[repo],
                         '--state',
                         'open',
                         '--json',
@@ -849,7 +858,7 @@ def pull_requests(state, name, bundle_path, base='master'):
                 f'Coordinated feature: {name}.\n\n'
                 f'Tested bundle: `{manifest["id"]}`\n'
                 f'Bundle manifest SHA-256: `{digest(bundle_path / "bundle.json")}`\n\n'
-                'All four repositories passed formatting, tests, strict Clippy and builds. '
+                'All selected repositories passed formatting, tests, strict Clippy and builds. '
                 'Nested Winit verification covers launcher/input/workspaces and private portal activation. '
                 'Direct TTY/hardware verification remains a human review step.\n\n'
                 'Component revisions:\n'
@@ -875,7 +884,7 @@ def pull_requests(state, name, bundle_path, base='master'):
                         '--head',
                         entry['branch'],
                         '--base',
-                        base,
+                        bases[repo],
                         '--draft',
                         '--title',
                         f'feat: {name.replace("-", " ")}',
