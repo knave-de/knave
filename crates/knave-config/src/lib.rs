@@ -727,7 +727,13 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
             })
         }),
     );
-    if !document.get("appearance").is_some_and(Item::is_table) {
+    if let Some(inline) = document
+        .get("appearance")
+        .and_then(Item::as_inline_table)
+        .cloned()
+    {
+        document["appearance"] = Item::Table(inline.into_table());
+    } else if !document.get("appearance").is_some_and(Item::is_table) {
         document["appearance"] = Item::Table(Table::new());
     }
     if !document["appearance"]
@@ -1166,6 +1172,24 @@ mod tests {
                 .appearance
                 .theme,
             Theme::Light
+        );
+    }
+
+    #[test]
+    fn inline_appearance_preserves_unknown_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, "appearance = { theme = 'dark', custom = 7 }\n").unwrap();
+        let mut doc = ConfigDocument::load(&path).unwrap();
+        doc.write(doc.config().clone()).unwrap();
+        assert!(doc.source().contains("custom = 7"));
+        assert_eq!(
+            ConfigDocument::load(&path)
+                .unwrap()
+                .config()
+                .appearance
+                .theme,
+            Theme::Dark
         );
     }
 
