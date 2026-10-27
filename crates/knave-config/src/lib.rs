@@ -350,10 +350,75 @@ impl Theme {
 }
 
 /// Desktop appearance preference.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AppearanceConfig {
-    #[serde(default)]
     pub theme: Theme,
+    pub theme_name: String,
+}
+
+impl Default for AppearanceConfig {
+    fn default() -> Self {
+        Self {
+            theme: Theme::System,
+            theme_name: "knave".into(),
+        }
+    }
+}
+
+impl Serialize for AppearanceConfig {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        #[derive(Serialize)]
+        struct Selection<'a> {
+            theme: &'a str,
+            mode: Theme,
+        }
+        #[derive(Serialize)]
+        struct Output<'a> {
+            theme: Selection<'a>,
+        }
+        Output {
+            theme: Selection {
+                theme: &self.theme_name,
+                mode: self.theme,
+            },
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for AppearanceConfig {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Selection {
+            Legacy(Theme),
+            Named {
+                #[serde(default = "default_theme_name")]
+                theme: String,
+                #[serde(default)]
+                mode: Theme,
+            },
+        }
+        #[derive(Deserialize, Default)]
+        struct Input {
+            theme: Option<Selection>,
+        }
+        let input = Input::deserialize(deserializer)?;
+        Ok(match input.theme {
+            Some(Selection::Legacy(theme)) => Self {
+                theme,
+                ..Self::default()
+            },
+            Some(Selection::Named { theme, mode }) => Self {
+                theme: mode,
+                theme_name: theme,
+            },
+            None => Self::default(),
+        })
+    }
+}
+fn default_theme_name() -> String {
+    "knave".into()
 }
 
 /// Appearance projection for the portal backend.
@@ -405,6 +470,17 @@ pub struct Config {
 
 impl Config {
     pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.appearance.theme_name.is_empty()
+            || !self
+                .appearance
+                .theme_name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        {
+            return Err(ConfigError::Invalid(
+                "appearance.theme.theme must be a simple theme name".into(),
+            ));
+        }
         self.notifications.validate()?;
         self.quick_settings.validate()?;
         let accent: Vec<_> = self
@@ -651,12 +727,17 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
             })
         }),
     );
-    set_table_value(
-        document,
-        "appearance",
-        "theme",
-        value(config.appearance.theme.as_str()),
-    );
+    if !document.get("appearance").is_some_and(Item::is_table) {
+        document["appearance"] = Item::Table(Table::new());
+    }
+    if !document["appearance"]
+        .get("theme")
+        .is_some_and(Item::is_table_like)
+    {
+        document["appearance"]["theme"] = Item::Table(Table::new());
+    }
+    document["appearance"]["theme"]["theme"] = value(config.appearance.theme_name.clone());
+    document["appearance"]["theme"]["mode"] = value(config.appearance.theme.as_str());
     set_table_value(document, "portal", "enabled", value(config.portal.enabled));
     set_table_value(
         document,
@@ -1042,6 +1123,26 @@ mod tests {
                 .theme,
             Theme::Light
         );
+    }
+
+    #[test]
+    fn named_theme_round_trips_and_preserves_unknown_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(
+            &path,
+            "[appearance.theme]\ntheme = 'dracula'\nmode = 'light'\nextra = 42\n",
+        )
+        .unwrap();
+        let mut doc = ConfigDocument::load(&path).unwrap();
+        assert_eq!(doc.config().appearance.theme_name, "dracula");
+        assert_eq!(doc.config().appearance.theme, Theme::Light);
+        doc.write(doc.config().clone()).unwrap();
+        assert!(doc.source().contains("extra = 42"));
+        assert_eq!(ConfigDocument::load(&path).unwrap().config(), doc.config());
+        let mut invalid = doc.config().clone();
+        invalid.appearance.theme_name = "../outside".into();
+        assert!(invalid.validate().is_err());
     }
 
     #[test]
