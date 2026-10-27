@@ -1,37 +1,22 @@
 # ADR 0009: Desktop theme preference
 
-Applications follow the Settings portal for dark mode. The portal reported
-`org.freedesktop.appearance` `color-scheme = 0` (no preference) because nothing
-set it, so portal-aware applications defaulted to light. Knave needs one
-user-facing preference that applications and, later, the shell and compositor
-can share.
+Knave owns the desktop appearance selection in `[appearance.theme]`: a named
+`theme` and a `mode` of `system`, `dark`, or `light`. The portal projects the
+mode to `org.freedesktop.appearance` and uses its existing `color_scheme`
+fallback for `system`. Knave UI resolves `system` to dark until a system color
+preference source exists. Legacy string preferences remain readable and are
+rewritten as a table by settings writes; unknown fields are preserved.
 
-Knave owns the optional `[appearance] theme` setting with values
-`system` (default), `dark` and `light`. `system` reports no preference; `dark`
-and `light` force `color-scheme` 1 and 2. This change persists the preference
-and its portal projection only; shell and compositor theme palettes are
-follow-ups that consume the same typed projection.
+The Linux standalone app host opts into named CSS from
+`$XDG_DATA_HOME/knave/themes/<theme>/{dark,light}.css`. Its event-driven watcher
+tracks the config and selected file, including atomic replacement. The toolkit
+validates and applies the bundled palette, desktop CSS and app CSS together;
+invalid edits preserve the last valid appearance. Missing CSS uses the bundled
+palette. Shell surfaces continue to select their bundled palette at startup;
+they do not yet consume named CSS. No desktop IPC change is needed.
 
-The shell and widget gallery read `theme` from the canonical configuration at
-startup and select the matching bundled toolkit stylesheet. `system` selects
-dark CSS deterministically until Knave has an authoritative system color
-preference source. The portal backend continues to report `system` as no
-preference and reads the separate `[portal] color_scheme` fallback. The
-pre-existing `[portal] color_scheme` key stays
-readable and is still honored while `theme = "system"`, preserving existing
-files; `dark`/`light` take precedence. The portal watches the configuration
-directory and re-publishes `SettingChanged` when the file is saved, so editing
-the file is the apply step and no portal restart is needed. `knavectl reload`
-remains the compositor/wallpaper reload and is unrelated to this projection.
-
-Adding the table is additive: a missing `[appearance]` defaults to `system`,
-unknown keys are preserved, and no public desktop IPC change is required.
-Shell surfaces and the standalone gallery use the same typed preference and
-apply it to rebuilt toolkit scenes. Rollback removes the table; unknown source
-keys remain. The portal consumes the new field from `knave-config`, so the
-consuming repositories are built together at matching revisions.
-
-Verification: `knave-config` unit tests cover the `system` default, write/load
-round trips, unknown-key preservation and rejection of unsupported values; the
-portal Settings tests cover the `theme` to `color-scheme` mapping. Live portal
-and application behavior still needs a running-session check.
+The Knave configuration, app host, shell and portal must ship with compatible
+configuration revisions. To roll back, revert them together and restore the old
+string configuration form. Tests cover parsing, legacy and named round trips,
+validation, CSS layering, and failed style replacement; live verification must
+exercise reload and recovery in a running app.

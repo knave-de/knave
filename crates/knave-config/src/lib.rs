@@ -1146,6 +1146,30 @@ mod tests {
     }
 
     #[test]
+    fn inline_named_theme_keeps_unknown_fields_when_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(
+            &path,
+            "[appearance]\ntheme = { theme = 'test', mode = 'dark', custom = 7 }\n",
+        )
+        .unwrap();
+        let mut doc = ConfigDocument::load(&path).unwrap();
+        let mut config = doc.config().clone();
+        config.appearance.theme = Theme::Light;
+        doc.write(config).unwrap();
+        assert!(doc.source().contains("custom = 7"));
+        assert_eq!(
+            ConfigDocument::load(&path)
+                .unwrap()
+                .config()
+                .appearance
+                .theme,
+            Theme::Light
+        );
+    }
+
+    #[test]
     fn theme_color_scheme_matches_portal_values() {
         assert_eq!(Theme::System.color_scheme(), 0);
         assert_eq!(Theme::Dark.color_scheme(), 1);
