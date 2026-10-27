@@ -389,15 +389,11 @@ impl Serialize for AppearanceConfig {
 impl<'de> Deserialize<'de> for AppearanceConfig {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum Selection {
-            Legacy(Theme),
-            Named {
-                #[serde(default = "default_theme_name")]
-                theme: String,
-                #[serde(default)]
-                mode: Theme,
-            },
+        struct Selection {
+            #[serde(default = "default_theme_name")]
+            theme: String,
+            #[serde(default)]
+            mode: Theme,
         }
         #[derive(Deserialize, Default)]
         struct Input {
@@ -405,11 +401,7 @@ impl<'de> Deserialize<'de> for AppearanceConfig {
         }
         let input = Input::deserialize(deserializer)?;
         Ok(match input.theme {
-            Some(Selection::Legacy(theme)) => Self {
-                theme,
-                ..Self::default()
-            },
-            Some(Selection::Named { theme, mode }) => Self {
+            Some(Selection { theme, mode }) => Self {
                 theme: mode,
                 theme_name: theme,
             },
@@ -1179,7 +1171,11 @@ mod tests {
     fn inline_appearance_preserves_unknown_fields() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
-        fs::write(&path, "appearance = { theme = 'dark', custom = 7 }\n").unwrap();
+        fs::write(
+            &path,
+            "appearance = { theme = { theme = 'knave', mode = 'dark' }, custom = 7 }\n",
+        )
+        .unwrap();
         let mut doc = ConfigDocument::load(&path).unwrap();
         doc.write(doc.config().clone()).unwrap();
         assert!(doc.source().contains("custom = 7"));
@@ -1205,6 +1201,14 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("config.toml");
         fs::write(&path, "[appearance]\ntheme = \"midnight\"\n").unwrap();
+        assert!(ConfigDocument::load(&path).is_err());
+    }
+
+    #[test]
+    fn legacy_scalar_theme_is_rejected() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(&path, "[appearance]\ntheme = \"dark\"\n").unwrap();
         assert!(ConfigDocument::load(&path).is_err());
     }
 

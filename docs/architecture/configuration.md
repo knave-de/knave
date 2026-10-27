@@ -181,8 +181,8 @@ Missing CSS uses the bundled palette. Invalid configuration or CSS keeps the
 last valid appearance and reports an error. Saving the selected CSS or config
 updates running themed apps, including atomic file replacements.
 
-The old `[appearance] theme = "dark"` form remains readable and is rewritten
-to the table on the next settings write. The shell continues to select its
+Only the `[appearance.theme]` table form is supported. A scalar theme value
+under `[appearance]` is invalid. The shell continues to select its
 bundled palette at startup; named CSS and live updates for shell surfaces are
 future work. The portal publishes `mode` as `color-scheme` (0/1/2) and still
 uses `[portal] color_scheme` when `mode` is `system`.
