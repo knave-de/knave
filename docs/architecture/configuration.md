@@ -166,25 +166,26 @@ the wallpaper process as part of the assignment. See
 ## Desktop theme
 
 ```toml
-[appearance]
-theme = "system"
+[appearance.theme]
+theme = "knave"
+mode = "system" # system, dark, or light
 ```
 
-`theme` is the desktop dark/light preference: `system` (default) reports no
-preference to portal-aware applications, `dark` prefers a dark appearance and
-`light` prefers a light one. The shell and widget gallery select their bundled
-CSS when they start; `system` deterministically uses the dark CSS because Knave
-does not currently have an authoritative system color preference source.
-Changing the setting takes effect after restarting the shell or gallery.
-Today the Settings portal projects it into
-`org.freedesktop.appearance` `color-scheme` (0/1/2) for applications, so
-`theme = "dark"` flips portal-aware apps such as GTK4/Qt6 Flatpaks to dark.
+Knave UI applications using the standard host load CSS from
+`$XDG_DATA_HOME/knave/themes/<theme>/<mode>.css`; when `XDG_DATA_HOME` is
+unset or relative it defaults to `~/.local/share`. Theme names contain only
+ASCII letters, digits, `_` and `-`. `system` currently selects `dark.css`;
+there is no authoritative system color preference yet. The bundled Knave
+palette remains the base, desktop CSS overrides it, and app CSS follows it.
+Missing CSS uses the bundled palette. Invalid configuration or CSS keeps the
+last valid appearance and reports an error. Saving the selected CSS or config
+updates running themed apps, including atomic file replacements.
 
-The lower-level `[portal] color_scheme` remains readable and is still honored
-while `theme = "system"`, so existing files keep their behavior; `dark` and
-`light` take precedence. Unknown keys are preserved during settings writes. Edit `~/.config/knave/config.toml`
-and save; the portal backend watches the file and re-publishes the preference
-without a restart. See [ownership and limits](decisions/0009-theme-preference.md).
+Only the `[appearance.theme]` table form is supported. A scalar theme value
+under `[appearance]` is invalid. The shell continues to select its
+bundled palette at startup; named CSS and live updates for shell surfaces are
+future work. The portal publishes `mode` as `color-scheme` (0/1/2) and still
+uses `[portal] color_scheme` when `mode` is `system`.
 
 ## Workspace gestures
 

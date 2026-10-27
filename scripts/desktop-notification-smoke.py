@@ -88,7 +88,7 @@ def main():
     width, height = map(int, args.size.split('x'))
     config = directory.with_suffix('.toml')
     with config.open('x') as output:
-        output.write(f'[appearance]\ntheme = "{"light" if args.light else "dark"}"\n[portal]\nhigh_contrast = {str(args.high_contrast).lower()}\n[notifications]\nbanner_timeout_ms = 1500\n')
+        output.write(f'[appearance.theme]\ntheme = "knave"\nmode = "{"light" if args.light else "dark"}"\n[portal]\nhigh_contrast = {str(args.high_contrast).lower()}\n[notifications]\nbanner_timeout_ms = 1500\n')
 
     def call(operation, *values):
         return harness.request(directory, operation, list(values))

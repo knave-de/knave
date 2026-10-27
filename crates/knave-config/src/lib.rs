@@ -350,10 +350,67 @@ impl Theme {
 }
 
 /// Desktop appearance preference.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AppearanceConfig {
-    #[serde(default)]
     pub theme: Theme,
+    pub theme_name: String,
+}
+
+impl Default for AppearanceConfig {
+    fn default() -> Self {
+        Self {
+            theme: Theme::System,
+            theme_name: "knave".into(),
+        }
+    }
+}
+
+impl Serialize for AppearanceConfig {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        #[derive(Serialize)]
+        struct Selection<'a> {
+            theme: &'a str,
+            mode: Theme,
+        }
+        #[derive(Serialize)]
+        struct Output<'a> {
+            theme: Selection<'a>,
+        }
+        Output {
+            theme: Selection {
+                theme: &self.theme_name,
+                mode: self.theme,
+            },
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for AppearanceConfig {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Selection {
+            #[serde(default = "default_theme_name")]
+            theme: String,
+            #[serde(default)]
+            mode: Theme,
+        }
+        #[derive(Deserialize, Default)]
+        struct Input {
+            theme: Option<Selection>,
+        }
+        let input = Input::deserialize(deserializer)?;
+        Ok(match input.theme {
+            Some(Selection { theme, mode }) => Self {
+                theme: mode,
+                theme_name: theme,
+            },
+            None => Self::default(),
+        })
+    }
+}
+fn default_theme_name() -> String {
+    "knave".into()
 }
 
 /// Appearance projection for the portal backend.
@@ -405,6 +462,17 @@ pub struct Config {
 
 impl Config {
     pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.appearance.theme_name.is_empty()
+            || !self
+                .appearance
+                .theme_name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        {
+            return Err(ConfigError::Invalid(
+                "appearance.theme.theme must be a simple theme name".into(),
+            ));
+        }
         self.notifications.validate()?;
         self.quick_settings.validate()?;
         let accent: Vec<_> = self
@@ -651,12 +719,23 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
             })
         }),
     );
-    set_table_value(
-        document,
-        "appearance",
-        "theme",
-        value(config.appearance.theme.as_str()),
-    );
+    if let Some(inline) = document
+        .get("appearance")
+        .and_then(Item::as_inline_table)
+        .cloned()
+    {
+        document["appearance"] = Item::Table(inline.into_table());
+    } else if !document.get("appearance").is_some_and(Item::is_table) {
+        document["appearance"] = Item::Table(Table::new());
+    }
+    if !document["appearance"]
+        .get("theme")
+        .is_some_and(Item::is_table_like)
+    {
+        document["appearance"]["theme"] = Item::Table(Table::new());
+    }
+    document["appearance"]["theme"]["theme"] = value(config.appearance.theme_name.clone());
+    document["appearance"]["theme"]["mode"] = value(config.appearance.theme.as_str());
     set_table_value(document, "portal", "enabled", value(config.portal.enabled));
     set_table_value(
         document,
@@ -1045,6 +1124,72 @@ mod tests {
     }
 
     #[test]
+    fn named_theme_round_trips_and_preserves_unknown_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(
+            &path,
+            "[appearance.theme]\ntheme = 'dracula'\nmode = 'light'\nextra = 42\n",
+        )
+        .unwrap();
+        let mut doc = ConfigDocument::load(&path).unwrap();
+        assert_eq!(doc.config().appearance.theme_name, "dracula");
+        assert_eq!(doc.config().appearance.theme, Theme::Light);
+        doc.write(doc.config().clone()).unwrap();
+        assert!(doc.source().contains("extra = 42"));
+        assert_eq!(ConfigDocument::load(&path).unwrap().config(), doc.config());
+        let mut invalid = doc.config().clone();
+        invalid.appearance.theme_name = "../outside".into();
+        assert!(invalid.validate().is_err());
+    }
+
+    #[test]
+    fn inline_named_theme_keeps_unknown_fields_when_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(
+            &path,
+            "[appearance]\ntheme = { theme = 'test', mode = 'dark', custom = 7 }\n",
+        )
+        .unwrap();
+        let mut doc = ConfigDocument::load(&path).unwrap();
+        let mut config = doc.config().clone();
+        config.appearance.theme = Theme::Light;
+        doc.write(config).unwrap();
+        assert!(doc.source().contains("custom = 7"));
+        assert_eq!(
+            ConfigDocument::load(&path)
+                .unwrap()
+                .config()
+                .appearance
+                .theme,
+            Theme::Light
+        );
+    }
+
+    #[test]
+    fn inline_appearance_preserves_unknown_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(
+            &path,
+            "appearance = { theme = { theme = 'knave', mode = 'dark' }, custom = 7 }\n",
+        )
+        .unwrap();
+        let mut doc = ConfigDocument::load(&path).unwrap();
+        doc.write(doc.config().clone()).unwrap();
+        assert!(doc.source().contains("custom = 7"));
+        assert_eq!(
+            ConfigDocument::load(&path)
+                .unwrap()
+                .config()
+                .appearance
+                .theme,
+            Theme::Dark
+        );
+    }
+
+    #[test]
     fn theme_color_scheme_matches_portal_values() {
         assert_eq!(Theme::System.color_scheme(), 0);
         assert_eq!(Theme::Dark.color_scheme(), 1);
@@ -1056,6 +1201,14 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("config.toml");
         fs::write(&path, "[appearance]\ntheme = \"midnight\"\n").unwrap();
+        assert!(ConfigDocument::load(&path).is_err());
+    }
+
+    #[test]
+    fn legacy_scalar_theme_is_rejected() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(&path, "[appearance]\ntheme = \"dark\"\n").unwrap();
         assert!(ConfigDocument::load(&path).is_err());
     }
 

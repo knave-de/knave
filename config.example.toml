@@ -202,13 +202,11 @@ shadows = false
 opacity = false
 blur = false
 
-[appearance]
-# Set to "dark" to prefer dark mode, "light" to prefer light mode, or
-# "system" to report no preference. This is passed to apps through the
-# Shell and widget gallery select their bundled CSS at startup. "system"
-# deterministically uses dark CSS until Knave has a system color preference;
-# the Settings portal still reports no preference for "system".
-theme = "system"
+[appearance.theme]
+# CSS files live under $XDG_DATA_HOME/knave/themes/<theme>/{light,dark}.css.
+# System currently resolves to dark for Knave UI; the portal reports no preference.
+theme = "knave"
+mode = "system" # system, dark, or light
 
 [portal]
 enabled = true
