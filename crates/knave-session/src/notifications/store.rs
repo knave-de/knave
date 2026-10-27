@@ -40,11 +40,21 @@ impl Store {
             .create(true)
             .truncate(false)
             .mode(0o600)
-            .custom_flags(libc::O_NOFOLLOW)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
             .open(path)
             .map_err(|e| e.to_string())?;
         use std::os::fd::AsRawFd;
-        if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        // Brief contention (a restarting session's dying file descriptors) is not a
+        // second owner; wait it out briefly before reporting the history as owned.
+        let mut owned = true;
+        for _ in 0..10 {
+            if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+                owned = false;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        if owned {
             return Err("notification history is already owned by another session".into());
         }
         lock.set_permissions(fs::Permissions::from_mode(0o600))

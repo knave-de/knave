@@ -171,9 +171,12 @@ theme = "system"
 ```
 
 `theme` is the desktop dark/light preference: `system` (default) reports no
-preference, `dark` prefers a dark appearance and `light` prefers a light one.
-It is the Knave-owned preference; the shell and compositor adopt it as their
-theme layers land. Today the Settings portal projects it into
+preference to portal-aware applications, `dark` prefers a dark appearance and
+`light` prefers a light one. The shell and widget gallery select their bundled
+CSS when they start; `system` deterministically uses the dark CSS because Knave
+does not currently have an authoritative system color preference source.
+Changing the setting takes effect after restarting the shell or gallery.
+Today the Settings portal projects it into
 `org.freedesktop.appearance` `color-scheme` (0/1/2) for applications, so
 `theme = "dark"` flips portal-aware apps such as GTK4/Qt6 Flatpaks to dark.
 
