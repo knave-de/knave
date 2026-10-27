@@ -171,7 +171,7 @@ theme = "knave"
 mode = "system" # system, dark, or light
 ```
 
-Knave UI applications using the themed host load CSS from
+Knave UI applications using the standard host load CSS from
 `$XDG_DATA_HOME/knave/themes/<theme>/<mode>.css`; when `XDG_DATA_HOME` is
 unset or relative it defaults to `~/.local/share`. Theme names contain only
 ASCII letters, digits, `_` and `-`. `system` currently selects `dark.css`;

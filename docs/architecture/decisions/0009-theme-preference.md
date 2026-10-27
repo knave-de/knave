@@ -7,7 +7,7 @@ fallback for `system`. Knave UI resolves `system` to dark until a system color
 preference source exists. Legacy string preferences remain readable and are
 rewritten as a table by settings writes; unknown fields are preserved.
 
-The Linux standalone app host opts into named CSS from
+The Linux standalone app host loads named CSS from
 `$XDG_DATA_HOME/knave/themes/<theme>/{dark,light}.css`. Its event-driven watcher
 tracks the config and selected file, including atomic replacement. The toolkit
 validates and applies the bundled palette, desktop CSS and app CSS together;
