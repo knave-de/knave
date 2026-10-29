@@ -155,7 +155,7 @@ python3 BUNDLE/tools/desktop-gesture-smoke.py --bundle BUNDLE --run /tmp/swipe-d
 ```
 
 It asserts pre-release displacement, both rendered workspace colors, stationary
-panels, commit/snap-back/cancellation, reversal/wrapping, device isolation,
+panels, commit/snap-back/cancellation, reversal and dynamic-tail navigation, device isolation,
 screenshot interruption, reload/disable/error handling, and bounded resource
 counts. It saves screenshots, JSON assertions and an MP4 and stops its session.
 Protocol tests additionally assert complete client streams and reserved stream
@@ -163,8 +163,8 @@ suppression. Synthetic delivery does not verify touchpad/libinput routing.
 
 Pass `--skip-empty` to the frozen `desktop-gesture-smoke.py` runner to test the
 optional `[compositor.workspace] skip_empty` policy. It populates workspaces
-1, 4 and 7 and asserts shortcut/swipe skipping, wraparound and translated pixels
-in both directions, minimized-only occupancy, direct empty selection, reload
+1, 4 and 7 and asserts shortcut/swipe skipping, forward tail growth, no wrapping,
+translated pixels in both directions, minimized-only occupancy, direct empty selection, reload
 validation, target destruction and the single/all-empty cases. It records
 `workspace-skip-empty-demo.mp4` and restores two occupied slots for idle, normal
 and cancellation-stress resource samples. Run the ordinary mode as well to

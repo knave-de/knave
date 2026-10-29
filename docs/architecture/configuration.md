@@ -234,17 +234,21 @@ These are Villain actions, not knavectl commands. See the
 
 ```toml
 [compositor.workspace]
+predefined = 1
 skip_empty = true
 ```
 
-The optional boolean defaults to false. When enabled, next/previous shortcuts
-and workspace swipes visit only workspaces with managed windows, including
-minimized windows, and wrap by workspace number. From an empty workspace they
-select the next occupied workspace in the requested direction. With no other
-occupied workspace they do nothing. Explicit number shortcuts, bar clicks and
-workspace commands still select empty slots. Closing the last window does not
-automatically leave its workspace. Reload changes the policy and cancels an
-active swipe; invalid values retain the running configuration.
+`predefined` defaults to 1 and must be positive. Those numbered workspaces are
+permanent. Villain keeps at least one dynamic slot after the predefined prefix
+and one empty slot after the highest occupied workspace. Dynamic slots grow
+when selected and are trimmed only from the end; gaps stay in place. Forward
+navigation grows at the end and does not wrap, while backward navigation stops
+at workspace 1. The optional `skip_empty` boolean defaults to false. When
+enabled, next/previous shortcuts and workspace swipes scan for occupied
+workspaces first, including minimized windows. If forward navigation finds no
+occupied workspace ahead, it selects the next blank slot. Explicit workspace
+selection still reaches empty slots. Reload changes both settings atomically;
+invalid values retain the running configuration.
 
 Swipe previews keep their target for the current travel direction. New windows
 in an intervening slot do not change an in-progress preview. Reversal selects a

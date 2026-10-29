@@ -253,8 +253,11 @@ pub struct CompositorBinding {
 }
 
 /// Policy for next/previous navigation; explicit workspace selection is unaffected.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CompositorWorkspaceConfig {
+    /// Number of fixed workspaces at the start of the workspace list.
+    #[serde(default = "default_predefined_workspaces")]
+    pub predefined: u32,
     #[serde(default)]
     pub skip_empty: bool,
 }
@@ -321,6 +324,21 @@ pub struct WindowRulesConfig {
     pub application: Vec<WindowApplicationRule>,
     #[serde(default)]
     pub rule: Vec<WindowRule>,
+}
+
+pub const MAX_PREDEFINED_WORKSPACES: u32 = 4095;
+
+fn default_predefined_workspaces() -> u32 {
+    1
+}
+
+impl Default for CompositorWorkspaceConfig {
+    fn default() -> Self {
+        Self {
+            predefined: default_predefined_workspaces(),
+            skip_empty: false,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -635,6 +653,11 @@ impl Config {
         if !self.compositor.scale.is_finite() || !(1.0..=4.0).contains(&self.compositor.scale) {
             return Err(ConfigError::Invalid(
                 "compositor.scale must be finite and between 1 and 4".into(),
+            ));
+        }
+        if !(1..=MAX_PREDEFINED_WORKSPACES).contains(&self.compositor.workspace.predefined) {
+            return Err(ConfigError::Invalid(
+                "compositor.workspace.predefined must be between 1 and 4095".into(),
             ));
         }
         self.compositor.appearance.validate()?;
@@ -1061,6 +1084,7 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
     );
     let mut workspace = Table::new();
     workspace["skip_empty"] = value(config.compositor.workspace.skip_empty);
+    workspace["predefined"] = value(i64::from(config.compositor.workspace.predefined));
     merge_known_table(&mut document["compositor"], "workspace", &workspace);
     let window_rules = toml::to_string(&config.compositor.window_rules)
         .expect("validated window rules are serializable")
@@ -1548,6 +1572,7 @@ mod tests {
 
     #[test]
     fn workspace_navigation_defaults_and_round_trip_preserve_source() {
+        assert_eq!(Config::default().compositor.workspace.predefined, 1);
         assert!(!Config::default().compositor.workspace.skip_empty);
         for (name, source) in [
             (
@@ -1578,6 +1603,9 @@ mod tests {
             );
         }
         assert!(toml::from_str::<Config>("[compositor.workspace]\nskip_empty = 'true'\n").is_err());
+        let mut config = Config::default();
+        config.compositor.workspace.predefined = 0;
+        assert!(config.validate().is_err());
     }
 
     #[test]

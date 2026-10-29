@@ -1,5 +1,9 @@
 # Optional empty-workspace skipping
 
+The original wrapping behavior in this decision is superseded by
+[ADR 0016](0016-dynamic-workspaces.md), which keeps navigation linear and grows
+the workspace list at the forward edge.
+
 Status: accepted for the coordinated workspace-skip-empty change.
 
 Knave owns the additive typed `[compositor.workspace] skip_empty` boolean and
