@@ -21,8 +21,9 @@ stream; other devices cannot update or end it.
 After 8 input units, horizontal movement must exceed vertical movement by 1.25x
 to lock horizontal; vertical dominance rejects the reserved gesture. Each input
 unit moves the workspace 4 logical pixels, clamped to one output width. Direction
-can reverse. Left selects NextWorkspace, right PreviousWorkspace, with the same
-wraparound as dispatch. Release at 25% of output width commits immediately via
+can reverse. Left selects NextWorkspace, right PreviousWorkspace. Forward
+navigation creates a workspace at the dynamic tail; backward navigation stops
+at workspace 1. Release at 25% of output width commits immediately via
 the existing dispatch; otherwise it snaps back. Both settle for 160 ms with cubic
 ease-out. Backend cancellation never commits. Wallpaper travels with windows;
 other layer surfaces and cursor stay stationary. Overview blocks recognition.

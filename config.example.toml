@@ -40,10 +40,12 @@ apply = "on_open"
 # center = true
 # stay_on_top = true
 
+# Keep this many numbered workspaces permanently; the dynamic tail keeps one
+# empty workspace available after the highest occupied workspace.
+[compositor.workspace]
+predefined = 1
 # Opt in to skipping empty slots for next/previous shortcuts and workspace swipes.
-# Number shortcuts and bar clicks can still select any workspace.
-# [compositor.workspace]
-# skip_empty = true
+skip_empty = false
 
 [compositor.input]
 tap_to_click = true
