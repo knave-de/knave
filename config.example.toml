@@ -6,6 +6,8 @@
 [compositor]
 # Villain consumes this typed projection; it does not own a second config file.
 modkey = "Super"
+# Logical-to-buffer output scale, rounded by the Wayland protocol to 1/120ths (1..4).
+scale = 1.0
 # Master width in percent; stack receives the remainder (10..90).
 master_percent = 50
 # Order focus-switching shortcuts cycle a workspace's windows in:
@@ -207,6 +209,8 @@ blur = false
 # System currently resolves to dark for Knave UI; the portal reports no preference.
 theme = "knave"
 mode = "system" # system, dark, or light
+contrast = "standard" # standard or high
+chroma = "full-color" # full-color or monochrome for UI chrome
 
 [portal]
 enabled = true

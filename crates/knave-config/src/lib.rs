@@ -261,6 +261,9 @@ pub struct CompositorWorkspaceConfig {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CompositorConfig {
+    /// Logical-to-buffer output scale. Villain rounds to the nearest 1/120.
+    #[serde(default = "default_output_scale")]
+    pub scale: f64,
     #[serde(default)]
     pub workspace: CompositorWorkspaceConfig,
     #[serde(default)]
@@ -290,6 +293,10 @@ fn default_master_percent() -> u8 {
     50
 }
 
+fn default_output_scale() -> f64 {
+    1.0
+}
+
 fn default_modkey() -> String {
     "Super".into()
 }
@@ -301,6 +308,7 @@ fn default_focus_cycle_order() -> FocusCycleOrder {
 impl Default for CompositorConfig {
     fn default() -> Self {
         Self {
+            scale: default_output_scale(),
             workspace: CompositorWorkspaceConfig::default(),
             gesture: gesture::GestureConfig::default(),
             appearance: WindowAppearance::default(),
@@ -349,11 +357,47 @@ impl Theme {
     }
 }
 
+/// Requested contrast strength for desktop UI chrome.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ContrastPreference {
+    #[default]
+    Standard,
+    High,
+}
+impl ContrastPreference {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Standard => "standard",
+            Self::High => "high",
+        }
+    }
+}
+
+/// Whether desktop UI chrome uses a color accent or a neutral palette.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ChromaPreference {
+    #[default]
+    FullColor,
+    Monochrome,
+}
+impl ChromaPreference {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::FullColor => "full-color",
+            Self::Monochrome => "monochrome",
+        }
+    }
+}
+
 /// Desktop appearance preference.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AppearanceConfig {
     pub theme: Theme,
     pub theme_name: String,
+    pub contrast: ContrastPreference,
+    pub chroma: ChromaPreference,
 }
 
 impl Default for AppearanceConfig {
@@ -361,6 +405,8 @@ impl Default for AppearanceConfig {
         Self {
             theme: Theme::System,
             theme_name: "knave".into(),
+            contrast: ContrastPreference::Standard,
+            chroma: ChromaPreference::FullColor,
         }
     }
 }
@@ -371,6 +417,8 @@ impl Serialize for AppearanceConfig {
         struct Selection<'a> {
             theme: &'a str,
             mode: Theme,
+            contrast: ContrastPreference,
+            chroma: ChromaPreference,
         }
         #[derive(Serialize)]
         struct Output<'a> {
@@ -380,6 +428,8 @@ impl Serialize for AppearanceConfig {
             theme: Selection {
                 theme: &self.theme_name,
                 mode: self.theme,
+                contrast: self.contrast,
+                chroma: self.chroma,
             },
         }
         .serialize(serializer)
@@ -394,6 +444,10 @@ impl<'de> Deserialize<'de> for AppearanceConfig {
             theme: String,
             #[serde(default)]
             mode: Theme,
+            #[serde(default)]
+            contrast: ContrastPreference,
+            #[serde(default)]
+            chroma: ChromaPreference,
         }
         #[derive(Deserialize, Default)]
         struct Input {
@@ -401,9 +455,16 @@ impl<'de> Deserialize<'de> for AppearanceConfig {
         }
         let input = Input::deserialize(deserializer)?;
         Ok(match input.theme {
-            Some(Selection { theme, mode }) => Self {
+            Some(Selection {
+                theme,
+                mode,
+                contrast,
+                chroma,
+            }) => Self {
                 theme: mode,
                 theme_name: theme,
+                contrast,
+                chroma,
             },
             None => Self::default(),
         })
@@ -502,6 +563,11 @@ impl Config {
         if !(10..=90).contains(&self.compositor.master_percent) {
             return Err(ConfigError::Invalid(
                 "compositor.master_percent must be between 10 and 90".into(),
+            ));
+        }
+        if !self.compositor.scale.is_finite() || !(1.0..=4.0).contains(&self.compositor.scale) {
+            return Err(ConfigError::Invalid(
+                "compositor.scale must be finite and between 1 and 4".into(),
             ));
         }
         self.compositor.appearance.validate()?;
@@ -736,6 +802,8 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
     }
     document["appearance"]["theme"]["theme"] = value(config.appearance.theme_name.clone());
     document["appearance"]["theme"]["mode"] = value(config.appearance.theme.as_str());
+    document["appearance"]["theme"]["contrast"] = value(config.appearance.contrast.as_str());
+    document["appearance"]["theme"]["chroma"] = value(config.appearance.chroma.as_str());
     set_table_value(document, "portal", "enabled", value(config.portal.enabled));
     set_table_value(
         document,
@@ -760,6 +828,12 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
         "portal",
         "reduced_motion",
         value(config.portal.reduced_motion),
+    );
+    set_table_value(
+        document,
+        "compositor",
+        "scale",
+        value(config.compositor.scale),
     );
     set_table_value(
         document,
@@ -1066,6 +1140,33 @@ mod tests {
     }
 
     #[test]
+    fn compositor_scale_defaults_validates_and_round_trips() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(&path, "[compositor]\ncustom_output_option = 42\n").unwrap();
+        let mut document = ConfigDocument::load(&path).unwrap();
+        assert_eq!(document.config().compositor.scale, 1.0);
+        let mut config = document.config().clone();
+        for invalid in [f64::NAN, f64::INFINITY, 0.99, 4.01] {
+            config.compositor.scale = invalid;
+            assert!(document.write(config.clone()).is_err());
+        }
+        for valid in [1.0, 1.25, 1.5, 4.0] {
+            config.compositor.scale = valid;
+            document.write(config.clone()).unwrap();
+            assert_eq!(
+                ConfigDocument::load(&path)
+                    .unwrap()
+                    .config()
+                    .compositor
+                    .scale,
+                valid
+            );
+            assert!(document.source().contains("custom_output_option = 42"));
+        }
+    }
+
+    #[test]
     fn portal_defaults_validate_and_preserve_unknown_preferences() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("config.toml");
@@ -1097,6 +1198,14 @@ mod tests {
         fs::write(&path, "[appearance]\ncustom_option = 42\n").unwrap();
         let mut document = ConfigDocument::load(&path).unwrap();
         assert_eq!(document.config().appearance.theme, Theme::System);
+        assert_eq!(
+            document.config().appearance.contrast,
+            ContrastPreference::Standard
+        );
+        assert_eq!(
+            document.config().appearance.chroma,
+            ChromaPreference::FullColor
+        );
 
         let mut config = document.config().clone();
         config.appearance.theme = Theme::Dark;
@@ -1129,12 +1238,14 @@ mod tests {
         let path = dir.path().join("config.toml");
         fs::write(
             &path,
-            "[appearance.theme]\ntheme = 'dracula'\nmode = 'light'\nextra = 42\n",
+            "[appearance.theme]\ntheme = 'dracula'\nmode = 'light'\ncontrast = 'high'\nchroma = 'monochrome'\nextra = 42\n",
         )
         .unwrap();
         let mut doc = ConfigDocument::load(&path).unwrap();
         assert_eq!(doc.config().appearance.theme_name, "dracula");
         assert_eq!(doc.config().appearance.theme, Theme::Light);
+        assert_eq!(doc.config().appearance.contrast, ContrastPreference::High);
+        assert_eq!(doc.config().appearance.chroma, ChromaPreference::Monochrome);
         doc.write(doc.config().clone()).unwrap();
         assert!(doc.source().contains("extra = 42"));
         assert_eq!(ConfigDocument::load(&path).unwrap().config(), doc.config());
