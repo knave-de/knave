@@ -173,6 +173,10 @@ backend = "auto"
 compositor_binary = "villain"
 shell_binary = "knave-shell"
 restart_on_failure = true
+# Launch commands after the shell is ready. Each is executable plus arguments;
+# use ["sh", "-lc", "..."] only when shell syntax is needed.
+# [[session.startup]]
+# command = ["nm-applet"]
 
 [shell]
 start_bar = true

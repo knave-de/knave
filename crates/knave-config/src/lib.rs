@@ -38,6 +38,15 @@ pub struct SessionConfig {
     pub shell_binary: String,
     #[serde(default = "default_true")]
     pub restart_on_failure: bool,
+    #[serde(default)]
+    pub startup: Vec<StartupCommand>,
+}
+
+/// A process launched once the compositor and shell are ready.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct StartupCommand {
+    /// Executable followed by its arguments; no shell interpretation is applied.
+    pub command: Vec<String>,
 }
 
 fn default_compositor_binary() -> String {
@@ -59,6 +68,7 @@ impl Default for SessionConfig {
             compositor_binary: default_compositor_binary(),
             shell_binary: default_shell_binary(),
             restart_on_failure: true,
+            startup: Vec::new(),
         }
     }
 }
@@ -645,6 +655,21 @@ impl Config {
         if self.session.shell_binary.trim().is_empty() {
             return Err(ConfigError::Invalid("session.shell_binary is empty".into()));
         }
+        if self.session.startup.len() > 64 {
+            return Err(ConfigError::Invalid(
+                "session.startup must contain at most 64 commands".into(),
+            ));
+        }
+        for (index, startup) in self.session.startup.iter().enumerate() {
+            if startup.command.is_empty()
+                || startup.command[0].trim().is_empty()
+                || startup.command.iter().any(|part| part.contains('\0'))
+            {
+                return Err(ConfigError::Invalid(format!(
+                    "session.startup[{index}].command must have a non-empty executable and contain no NUL characters"
+                )));
+            }
+        }
         if !(10..=90).contains(&self.compositor.master_percent) {
             return Err(ConfigError::Invalid(
                 "compositor.master_percent must be between 10 and 90".into(),
@@ -1133,6 +1158,17 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
         "restart_on_failure",
         value(config.session.restart_on_failure),
     );
+    let mut startup = ArrayOfTables::new();
+    for entry in &config.session.startup {
+        let mut table = Table::new();
+        let mut command = Array::new();
+        for part in &entry.command {
+            command.push(part.as_str());
+        }
+        table["command"] = Item::Value(command.into());
+        startup.push(table);
+    }
+    document["session"]["startup"] = Item::ArrayOfTables(startup);
     set_table_value(
         document,
         "shell",

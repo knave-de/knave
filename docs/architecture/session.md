@@ -13,7 +13,8 @@ rendering, or shell composition.
 4. Wait for a new compositor-owned wayland-* socket, while checking that the
    compositor has not exited.
 5. Start each configured shell role with WAYLAND_DISPLAY set to that socket.
-6. Supervise all children until shutdown or a bounded failure policy is reached.
+6. Start each configured `session.startup` command with that same display.
+7. Supervise session components until shutdown or a bounded failure policy is reached.
 
 The supervisor does not attach to GNOME, KDE, Qt, or another host desktop.
 Winit is a nested development and test backend; direct TTY/DRM is the
@@ -42,6 +43,17 @@ session; a missing system service or logind session is logged without ending
 the desktop. Winit sessions skip this role; Auto with an inherited display also
 skips it to protect the enclosing desktop. Select `backend = "tty"` explicitly
 when launching directly with inherited display variables. See [ADR 0015](decisions/0015-native-polkit-agent.md).
+
+Each `[[session.startup]]` entry supplies a direct executable and argument
+array. Entries start after the shell roles have been started, inherit the
+session environment, receive the session's `WAYLAND_DISPLAY`, and do not inherit
+`DISPLAY` or `WAYLAND_SOCKET` from a host session. A spawn failure is logged
+and startup continues; an entry that exits is reaped without affecting the session.
+These processes are stopped on logout and relaunched after a compositor
+restart. They are not restarted when they exit on their own, and they do not
+participate in the shell restart policy. Like the other session children, only
+the direct child is tracked. Configuration changes apply on the next session
+start.
 
 Before starting shell roles, the supervisor probes the configured binary with
 `--supports-overview-service`. A supported Shell returns exit status 0 without
