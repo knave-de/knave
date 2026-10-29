@@ -21,6 +21,25 @@ environment_file = "environment"
 # the transition before input is delivered. Duration, easing and style are fixed;
 # there are currently no compositor animation settings. Overview browsing is separate.
 
+# Window rules run once when a window first opens. Application preferences apply
+# first; matching specific rules then override only the properties they set.
+[compositor.window_rules]
+apply = "on_open"
+
+# [[compositor.window_rules.application]]
+# app_id = "firefox"
+# workspace = 3
+
+# [[compositor.window_rules.rule]]
+# name = "Firefox picture-in-picture"
+# [compositor.window_rules.rule.match]
+# app_id = "firefox"
+# title_regex = '(?i)picture[\s-]*in[\s-]*picture'
+# [compositor.window_rules.rule.set]
+# placement = "floating"
+# center = true
+# stay_on_top = true
+
 # Opt in to skipping empty slots for next/previous shortcuts and workspace swipes.
 # Number shortcuts and bar clicks can still select any workspace.
 # [compositor.workspace]

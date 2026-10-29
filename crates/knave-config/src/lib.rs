@@ -259,6 +259,70 @@ pub struct CompositorWorkspaceConfig {
     pub skip_empty: bool,
 }
 
+/// Initial window behavior. Rules run once when a window first opens.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WindowRuleApply {
+    #[default]
+    OnOpen,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WindowPlacement {
+    Tiled,
+    Floating,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WindowRuleActions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placement: Option<WindowPlacement>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub center: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stay_on_top: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<u8>,
+}
+
+/// Preferences applied to every window with this exact app_id.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WindowApplicationRule {
+    pub app_id: String,
+    #[serde(flatten)]
+    pub set: WindowRuleActions,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WindowRuleMatch {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_contains: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_regex: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WindowRule {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(rename = "match")]
+    pub matcher: WindowRuleMatch,
+    pub set: WindowRuleActions,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WindowRulesConfig {
+    #[serde(default)]
+    pub apply: WindowRuleApply,
+    #[serde(default)]
+    pub application: Vec<WindowApplicationRule>,
+    #[serde(default)]
+    pub rule: Vec<WindowRule>,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CompositorConfig {
     /// Logical-to-buffer output scale. Villain rounds to the nearest 1/120.
@@ -266,6 +330,8 @@ pub struct CompositorConfig {
     pub scale: f64,
     #[serde(default)]
     pub workspace: CompositorWorkspaceConfig,
+    #[serde(default)]
+    pub window_rules: WindowRulesConfig,
     #[serde(default)]
     pub gesture: gesture::GestureConfig,
     #[serde(default)]
@@ -310,6 +376,7 @@ impl Default for CompositorConfig {
         Self {
             scale: default_output_scale(),
             workspace: CompositorWorkspaceConfig::default(),
+            window_rules: WindowRulesConfig::default(),
             gesture: gesture::GestureConfig::default(),
             appearance: WindowAppearance::default(),
             master_percent: default_master_percent(),
@@ -572,6 +639,53 @@ impl Config {
         }
         self.compositor.appearance.validate()?;
         self.compositor.gesture.validate()?;
+        for (index, rule) in self.compositor.window_rules.rule.iter().enumerate() {
+            let matcher = &rule.matcher;
+            if matcher
+                .app_id
+                .as_deref()
+                .unwrap_or_default()
+                .trim()
+                .is_empty()
+                && matcher
+                    .title_contains
+                    .as_deref()
+                    .unwrap_or_default()
+                    .is_empty()
+                && matcher
+                    .title_regex
+                    .as_deref()
+                    .unwrap_or_default()
+                    .is_empty()
+            {
+                return Err(ConfigError::Invalid(format!(
+                    "compositor.window_rules.rule[{index}].match needs at least one condition"
+                )));
+            }
+            if let Some(pattern) = &matcher.title_regex {
+                if pattern.len() > 1024 {
+                    return Err(ConfigError::Invalid(format!(
+                        "compositor.window_rules.rule[{index}].match.title_regex exceeds 1024 bytes"
+                    )));
+                }
+                regex::RegexBuilder::new(pattern)
+                    .size_limit(1 << 20)
+                    .dfa_size_limit(1 << 20)
+                    .build()
+                    .map_err(|error| ConfigError::Invalid(format!(
+                        "compositor.window_rules.rule[{index}].match.title_regex is invalid: {error}"
+                    )))?;
+            }
+            validate_window_rule_actions(&rule.set, &format!("rule[{index}].set"))?;
+        }
+        for (index, rule) in self.compositor.window_rules.application.iter().enumerate() {
+            if rule.app_id.trim().is_empty() {
+                return Err(ConfigError::Invalid(format!(
+                    "compositor.window_rules.application[{index}].app_id must not be empty"
+                )));
+            }
+            validate_window_rule_actions(&rule.set, &format!("application[{index}]"))?;
+        }
         if let Some(image) = &self.shell.wallpaper.image
             && (!Path::new(image).is_absolute() || image.contains('\0'))
         {
@@ -598,6 +712,21 @@ impl Config {
         }
         Ok(())
     }
+}
+
+fn validate_window_rule_actions(
+    actions: &WindowRuleActions,
+    path: &str,
+) -> Result<(), ConfigError> {
+    if actions
+        .workspace
+        .is_some_and(|workspace| !(1..=10).contains(&workspace))
+    {
+        return Err(ConfigError::Invalid(format!(
+            "compositor.window_rules.{path}.workspace must be between 1 and 10"
+        )));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Error)]
@@ -933,6 +1062,15 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
     let mut workspace = Table::new();
     workspace["skip_empty"] = value(config.compositor.workspace.skip_empty);
     merge_known_table(&mut document["compositor"], "workspace", &workspace);
+    let window_rules = toml::to_string(&config.compositor.window_rules)
+        .expect("validated window rules are serializable")
+        .parse::<DocumentMut>()
+        .expect("serialized window rules are TOML");
+    merge_known_table(
+        &mut document["compositor"],
+        "window_rules",
+        window_rules.as_table(),
+    );
     gesture::write(&mut document["compositor"], &config.compositor.gesture);
     let mut bindings = ArrayOfTables::new();
     for binding in &config.compositor.bind {
@@ -1515,6 +1653,84 @@ enabled = false
         assert_eq!(reloaded.config().compositor.device.len(), 2);
         // Unknown keys outside a rewritten device rule survive.
         assert!(reloaded.source().contains("future_option = 7"));
+    }
+
+    #[test]
+    fn window_rules_parse_validate_and_round_trip() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(
+            &path,
+            r#"
+[compositor.window_rules]
+apply = "on_open"
+[[compositor.window_rules.application]]
+app_id = "firefox"
+workspace = 3
+[[compositor.window_rules.rule]]
+name = "Firefox picture-in-picture"
+[compositor.window_rules.rule.match]
+app_id = "firefox"
+title_regex = '(?i)picture[\s-]*in[\s-]*picture'
+[compositor.window_rules.rule.set]
+placement = "floating"
+center = true
+stay_on_top = true
+"#,
+        )
+        .unwrap();
+
+        let mut document = ConfigDocument::load(&path).unwrap();
+        assert_eq!(
+            document.config().compositor.window_rules.application[0].app_id,
+            "firefox"
+        );
+        assert_eq!(
+            document.config().compositor.window_rules.application[0]
+                .set
+                .workspace,
+            Some(3)
+        );
+        assert_eq!(
+            document.config().compositor.window_rules.rule[0]
+                .matcher
+                .title_regex
+                .as_deref(),
+            Some(r"(?i)picture[\s-]*in[\s-]*picture")
+        );
+        document.write(document.config().clone()).unwrap();
+        let reloaded = ConfigDocument::load(&path).unwrap();
+        assert_eq!(
+            reloaded.config().compositor.window_rules,
+            document.config().compositor.window_rules
+        );
+
+        let mut invalid = reloaded.config().clone();
+        invalid.compositor.window_rules.rule[0].matcher.title_regex = Some("(".into());
+        assert!(
+            invalid
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("title_regex is invalid")
+        );
+        invalid.compositor.window_rules.rule[0].matcher.title_regex = Some("x".repeat(1025));
+        assert!(
+            invalid
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("exceeds 1024 bytes")
+        );
+        invalid.compositor.window_rules.rule[0].matcher.title_regex = Some("valid".into());
+        invalid.compositor.window_rules.application[0].set.workspace = Some(11);
+        assert!(
+            invalid
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("workspace must be between 1 and 10")
+        );
     }
 
     #[test]

@@ -92,6 +92,25 @@ window focus changes on click only. Both keys are consumed by Villain's
 literals need the new fields, and the Knave configuration library must deploy
 before the matching Villain dependency pin.
 
+## Window rules
+
+`[compositor.window_rules]` configures initial placement for new windows. The
+optional `apply = "on_open"` is the default. `[[compositor.window_rules.application]]`
+entries match an exact Wayland `app_id`; `[[compositor.window_rules.rule]]`
+entries match specific windows by any combination of exact `app_id`,
+`title_contains`, and Rust-regex `title_regex`. Conditions within one rule are
+ANDed. Application preferences apply first, then matching specific rules in
+file order; later values override only fields they set. Supported actions are
+`placement = "tiled" | "floating"`, `center`, `stay_on_top`, and
+`workspace = 1..10`. Centering implies floating when requested. Rules run once
+when a window first opens, so later manual moves are respected. Invalid regexes,
+empty matchers, and out-of-range workspaces reject the full config and leave the
+active configuration unchanged. The compositor compiles regexes on config load.
+
+The configuration is typed by `knave-config` and consumed directly by Villain;
+Settings can read and write these same fields without a second persistence
+format. The first release supports numbered workspace slots only.
+
 ## Input devices
 
 The additive `[compositor.input]` table sets the global touchpad policy:
