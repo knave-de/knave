@@ -349,11 +349,47 @@ impl Theme {
     }
 }
 
+/// Requested contrast strength for desktop UI chrome.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ContrastPreference {
+    #[default]
+    Standard,
+    High,
+}
+impl ContrastPreference {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Standard => "standard",
+            Self::High => "high",
+        }
+    }
+}
+
+/// Whether desktop UI chrome uses a color accent or a neutral palette.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ChromaPreference {
+    #[default]
+    FullColor,
+    Monochrome,
+}
+impl ChromaPreference {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::FullColor => "full-color",
+            Self::Monochrome => "monochrome",
+        }
+    }
+}
+
 /// Desktop appearance preference.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AppearanceConfig {
     pub theme: Theme,
     pub theme_name: String,
+    pub contrast: ContrastPreference,
+    pub chroma: ChromaPreference,
 }
 
 impl Default for AppearanceConfig {
@@ -361,6 +397,8 @@ impl Default for AppearanceConfig {
         Self {
             theme: Theme::System,
             theme_name: "knave".into(),
+            contrast: ContrastPreference::Standard,
+            chroma: ChromaPreference::FullColor,
         }
     }
 }
@@ -371,6 +409,8 @@ impl Serialize for AppearanceConfig {
         struct Selection<'a> {
             theme: &'a str,
             mode: Theme,
+            contrast: ContrastPreference,
+            chroma: ChromaPreference,
         }
         #[derive(Serialize)]
         struct Output<'a> {
@@ -380,6 +420,8 @@ impl Serialize for AppearanceConfig {
             theme: Selection {
                 theme: &self.theme_name,
                 mode: self.theme,
+                contrast: self.contrast,
+                chroma: self.chroma,
             },
         }
         .serialize(serializer)
@@ -394,6 +436,10 @@ impl<'de> Deserialize<'de> for AppearanceConfig {
             theme: String,
             #[serde(default)]
             mode: Theme,
+            #[serde(default)]
+            contrast: ContrastPreference,
+            #[serde(default)]
+            chroma: ChromaPreference,
         }
         #[derive(Deserialize, Default)]
         struct Input {
@@ -401,9 +447,16 @@ impl<'de> Deserialize<'de> for AppearanceConfig {
         }
         let input = Input::deserialize(deserializer)?;
         Ok(match input.theme {
-            Some(Selection { theme, mode }) => Self {
+            Some(Selection {
+                theme,
+                mode,
+                contrast,
+                chroma,
+            }) => Self {
                 theme: mode,
                 theme_name: theme,
+                contrast,
+                chroma,
             },
             None => Self::default(),
         })
@@ -736,6 +789,8 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
     }
     document["appearance"]["theme"]["theme"] = value(config.appearance.theme_name.clone());
     document["appearance"]["theme"]["mode"] = value(config.appearance.theme.as_str());
+    document["appearance"]["theme"]["contrast"] = value(config.appearance.contrast.as_str());
+    document["appearance"]["theme"]["chroma"] = value(config.appearance.chroma.as_str());
     set_table_value(document, "portal", "enabled", value(config.portal.enabled));
     set_table_value(
         document,
@@ -1097,6 +1152,14 @@ mod tests {
         fs::write(&path, "[appearance]\ncustom_option = 42\n").unwrap();
         let mut document = ConfigDocument::load(&path).unwrap();
         assert_eq!(document.config().appearance.theme, Theme::System);
+        assert_eq!(
+            document.config().appearance.contrast,
+            ContrastPreference::Standard
+        );
+        assert_eq!(
+            document.config().appearance.chroma,
+            ChromaPreference::FullColor
+        );
 
         let mut config = document.config().clone();
         config.appearance.theme = Theme::Dark;
@@ -1129,12 +1192,14 @@ mod tests {
         let path = dir.path().join("config.toml");
         fs::write(
             &path,
-            "[appearance.theme]\ntheme = 'dracula'\nmode = 'light'\nextra = 42\n",
+            "[appearance.theme]\ntheme = 'dracula'\nmode = 'light'\ncontrast = 'high'\nchroma = 'monochrome'\nextra = 42\n",
         )
         .unwrap();
         let mut doc = ConfigDocument::load(&path).unwrap();
         assert_eq!(doc.config().appearance.theme_name, "dracula");
         assert_eq!(doc.config().appearance.theme, Theme::Light);
+        assert_eq!(doc.config().appearance.contrast, ContrastPreference::High);
+        assert_eq!(doc.config().appearance.chroma, ChromaPreference::Monochrome);
         doc.write(doc.config().clone()).unwrap();
         assert!(doc.source().contains("extra = 42"));
         assert_eq!(ConfigDocument::load(&path).unwrap().config(), doc.config());
