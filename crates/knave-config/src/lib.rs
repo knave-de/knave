@@ -261,6 +261,9 @@ pub struct CompositorWorkspaceConfig {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CompositorConfig {
+    /// Logical-to-buffer output scale. Villain rounds to the nearest 1/120.
+    #[serde(default = "default_output_scale")]
+    pub scale: f64,
     #[serde(default)]
     pub workspace: CompositorWorkspaceConfig,
     #[serde(default)]
@@ -290,6 +293,10 @@ fn default_master_percent() -> u8 {
     50
 }
 
+fn default_output_scale() -> f64 {
+    1.0
+}
+
 fn default_modkey() -> String {
     "Super".into()
 }
@@ -301,6 +308,7 @@ fn default_focus_cycle_order() -> FocusCycleOrder {
 impl Default for CompositorConfig {
     fn default() -> Self {
         Self {
+            scale: default_output_scale(),
             workspace: CompositorWorkspaceConfig::default(),
             gesture: gesture::GestureConfig::default(),
             appearance: WindowAppearance::default(),
@@ -555,6 +563,11 @@ impl Config {
         if !(10..=90).contains(&self.compositor.master_percent) {
             return Err(ConfigError::Invalid(
                 "compositor.master_percent must be between 10 and 90".into(),
+            ));
+        }
+        if !self.compositor.scale.is_finite() || !(1.0..=4.0).contains(&self.compositor.scale) {
+            return Err(ConfigError::Invalid(
+                "compositor.scale must be finite and between 1 and 4".into(),
             ));
         }
         self.compositor.appearance.validate()?;
@@ -815,6 +828,12 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
         "portal",
         "reduced_motion",
         value(config.portal.reduced_motion),
+    );
+    set_table_value(
+        document,
+        "compositor",
+        "scale",
+        value(config.compositor.scale),
     );
     set_table_value(
         document,
@@ -1117,6 +1136,33 @@ mod tests {
                 valid
             );
             assert!(document.source().contains("unknown_layout_option = 42"));
+        }
+    }
+
+    #[test]
+    fn compositor_scale_defaults_validates_and_round_trips() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(&path, "[compositor]\ncustom_output_option = 42\n").unwrap();
+        let mut document = ConfigDocument::load(&path).unwrap();
+        assert_eq!(document.config().compositor.scale, 1.0);
+        let mut config = document.config().clone();
+        for invalid in [f64::NAN, f64::INFINITY, 0.99, 4.01] {
+            config.compositor.scale = invalid;
+            assert!(document.write(config.clone()).is_err());
+        }
+        for valid in [1.0, 1.25, 1.5, 4.0] {
+            config.compositor.scale = valid;
+            document.write(config.clone()).unwrap();
+            assert_eq!(
+                ConfigDocument::load(&path)
+                    .unwrap()
+                    .config()
+                    .compositor
+                    .scale,
+                valid
+            );
+            assert!(document.source().contains("custom_output_option = 42"));
         }
     }
 

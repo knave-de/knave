@@ -34,6 +34,17 @@ are additions. Omitting the list uses Villain's defaults. Overriding
 `keys = "MOD"` replaces the default modifier-release Overview toggle. Settings
 writes preserve custom bindings.
 
+## Output scaling
+
+`[compositor] scale` sets the global logical-to-buffer scale from 1.0 through
+4.0, defaulting to 1.0. Villain rounds the value to the nearest 1/120th for
+Wayland fractional-scale negotiation. `knavectl reload` applies the new scale to
+the current output and sends updated preferred scales to connected clients. The
+shell renders scaled buffers while keeping layout and pointer coordinates in
+logical pixels. Clients without fractional-scale and viewporter support keep
+using the integer `wl_output.scale` fallback. Per-output scale selection is not
+part of this setting.
+
 Configuration changes must:
 
 1. parse and validate before writing;
