@@ -222,6 +222,7 @@ pub fn run(config: Config) -> Result<(), SessionError> {
             };
             if let Err(error) = slot.reset(&config, &display) {
                 terminate_children(&mut shells);
+                terminate_startup_commands(&mut startup_commands);
                 terminate_child(&mut compositor);
                 return Err(error);
             }
