@@ -135,8 +135,14 @@ def main():
         checks.append('overview preserves the active workspace successor')
         terminal(1, '28;65;100')
         first = screenshot('workspace-one')
+        for number in [2, 3]:
+            key(f'Super_L+{number}')
+            active(number)
         terminal(4, '110;45;65')
         fourth = screenshot('workspace-four')
+        for number in [5, 6]:
+            key(f'Super_L+{number}')
+            active(number)
         terminal(7, '35;100;65')
         seventh = screenshot('workspace-seven')
         # Only kill a process launched by this private harness when testing an
