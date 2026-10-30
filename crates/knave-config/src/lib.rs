@@ -724,7 +724,11 @@ impl Config {
                         "compositor.window_rules.rule[{index}].match.title_regex is invalid: {error}"
                     )))?;
             }
-            validate_window_rule_actions(&rule.set, &format!("rule[{index}].set"))?;
+            validate_window_rule_actions(
+                &rule.set,
+                &format!("rule[{index}].set"),
+                self.compositor.workspace.predefined,
+            )?;
         }
         for (index, rule) in self.compositor.window_rules.application.iter().enumerate() {
             if rule.app_id.trim().is_empty() {
@@ -732,7 +736,11 @@ impl Config {
                     "compositor.window_rules.application[{index}].app_id must not be empty"
                 )));
             }
-            validate_window_rule_actions(&rule.set, &format!("application[{index}]"))?;
+            validate_window_rule_actions(
+                &rule.set,
+                &format!("application[{index}]"),
+                self.compositor.workspace.predefined,
+            )?;
         }
         if let Some(image) = &self.shell.wallpaper.image
             && (!Path::new(image).is_absolute() || image.contains('\0'))
@@ -765,13 +773,15 @@ impl Config {
 fn validate_window_rule_actions(
     actions: &WindowRuleActions,
     path: &str,
+    predefined_workspaces: u32,
 ) -> Result<(), ConfigError> {
+    let max_workspace = predefined_workspaces.min(10);
     if actions
         .workspace
-        .is_some_and(|workspace| !(1..=10).contains(&workspace))
+        .is_some_and(|workspace| workspace == 0 || u32::from(workspace) > max_workspace)
     {
         return Err(ConfigError::Invalid(format!(
-            "compositor.window_rules.{path}.workspace must be between 1 and 10"
+            "compositor.window_rules.{path}.workspace must be between 1 and {max_workspace} (the configured retained workspace range)"
         )));
     }
     Ok(())
@@ -1812,6 +1822,8 @@ enabled = false
             r#"
 [compositor.window_rules]
 apply = "on_open"
+[compositor.workspace]
+predefined = 3
 [[compositor.window_rules.application]]
 app_id = "firefox"
 workspace = 3
@@ -1878,13 +1890,13 @@ stay_on_top = true
                 .contains("exceeds 1024 bytes")
         );
         invalid.compositor.window_rules.rule[0].matcher.title_regex = Some("valid".into());
-        invalid.compositor.window_rules.application[0].set.workspace = Some(11);
+        invalid.compositor.window_rules.application[0].set.workspace = Some(4);
         assert!(
             invalid
                 .validate()
                 .unwrap_err()
                 .to_string()
-                .contains("workspace must be between 1 and 10")
+                .contains("workspace must be between 1 and 3")
         );
     }
 

@@ -28,6 +28,7 @@ apply = "on_open"
 
 # [[compositor.window_rules.application]]
 # app_id = "firefox"
+# To use workspace 3, set compositor.workspace.predefined to at least 3 below.
 # workspace = 3
 
 # [[compositor.window_rules.rule]]

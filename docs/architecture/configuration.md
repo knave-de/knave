@@ -115,10 +115,13 @@ entries match specific windows by any combination of exact `app_id`,
 ANDed. Application preferences apply first, then matching specific rules in
 file order; later values override only fields they set. Supported actions are
 `placement = "tiled" | "floating"`, `center`, `stay_on_top`, and
-`workspace = 1..10`. Centering implies floating when requested. Rules run once
-when a window first opens, so later manual moves are respected. Invalid regexes,
-empty matchers, and out-of-range workspaces reject the full config and leave the
-active configuration unchanged. The compositor compiles regexes on config load.
+`workspace = 1..10`, limited to the configured `[compositor.workspace].predefined`
+range. A rule cannot target a dynamic workspace; increase `predefined` to retain
+the target slot. Centering implies floating when requested. Rules run once when
+a window first opens, so later manual moves are respected. Invalid regexes,
+empty matchers, and out-of-range or unretained workspace targets reject the full
+config and leave the active configuration unchanged. The compositor compiles
+regexes on config load.
 
 The configuration is typed by `knave-config` and consumed directly by Villain;
 Settings can read and write these same fields without a second persistence
