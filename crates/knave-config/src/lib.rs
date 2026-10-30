@@ -372,6 +372,9 @@ pub struct CompositorConfig {
     /// Order focus-switching cycle shortcuts walk a workspace's windows in.
     #[serde(default = "default_focus_cycle_order")]
     pub focus_cycle_order: FocusCycleOrder,
+    /// Switch to the workspace selected for each newly opened window.
+    #[serde(default = "default_switch_to_new_window_workspace")]
+    pub switch_to_new_window_workspace: bool,
     #[serde(default)]
     pub environment_file: Option<String>,
     #[serde(default)]
@@ -399,6 +402,10 @@ fn default_focus_cycle_order() -> FocusCycleOrder {
     FocusCycleOrder::Layout
 }
 
+fn default_switch_to_new_window_workspace() -> bool {
+    true
+}
+
 impl Default for CompositorConfig {
     fn default() -> Self {
         Self {
@@ -410,6 +417,7 @@ impl Default for CompositorConfig {
             master_percent: default_master_percent(),
             modkey: default_modkey(),
             focus_cycle_order: default_focus_cycle_order(),
+            switch_to_new_window_workspace: default_switch_to_new_window_workspace(),
             environment_file: None,
             input: CompositorInputConfig::default(),
             device: Vec::new(),
@@ -1029,6 +1037,12 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
         "compositor",
         "focus_cycle_order",
         value(config.compositor.focus_cycle_order.as_str()),
+    );
+    set_table_value(
+        document,
+        "compositor",
+        "switch_to_new_window_workspace",
+        value(config.compositor.switch_to_new_window_workspace),
     );
     if let Some(environment_file) = &config.compositor.environment_file {
         set_table_value(
