@@ -1145,6 +1145,9 @@ fn merge_known_table(parent: &mut Item, key: &str, source: &Table) {
 }
 
 fn merge_table_leaves(destination: &mut Item, source: &Table) {
+    if let Some(destination) = destination.as_table_mut() {
+        *destination.decor_mut() = source.decor().clone();
+    }
     let target = destination
         .as_table_like_mut()
         .expect("parsed settings table");
