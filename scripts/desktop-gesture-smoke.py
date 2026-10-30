@@ -271,6 +271,9 @@ def main():
         screenshot('skip-empty-all-empty')
         # Restore two occupied slots for normal/stress resource comparisons.
         terminal(1, '28;65;100')
+        for number in [2, 3]:
+            key(f'Super_L+{number}')
+            active(number)
         terminal(4, '110;45;65')
         key('Super_L+1')
         active(1)
