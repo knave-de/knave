@@ -184,6 +184,9 @@ restart_on_failure = true
 start_bar = true
 # Knave Session owns one hidden-until-requested Overview process.
 start_overview_service = true
+# Desktop-file IDs for applications kept in the Overview dock, in display order.
+# Example: pinned_apps = ["org.gnome.Nautilus.desktop", "firefox.desktop"]
+pinned_apps = []
 
 # Window appearance is optional; omitted values preserve the prior visuals.
 # Full fields and visible-effect example: docs/architecture/window-appearance.md

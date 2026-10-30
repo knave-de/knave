@@ -206,6 +206,19 @@ on `knavectl reload` without a session restart; the session spawns or stops
 the wallpaper process as part of the assignment. See
 [ownership and limits](decisions/0008-static-wallpaper.md).
 
+## Overview dock
+
+```toml
+[shell]
+pinned_apps = ["org.gnome.Nautilus.desktop", "firefox.desktop"]
+```
+
+`pinned_apps` is an ordered list of installed freedesktop desktop-file IDs. The
+Overview dock shows these first, followed by apps with windows on the active
+workspace. Clicking a running app focuses or restores one of its windows;
+clicking a pinned app without a window launches it. The setting is read when
+the Overview service starts, so restart the session after changing it.
+
 ## Desktop theme
 
 ```toml

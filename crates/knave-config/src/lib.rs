@@ -81,6 +81,9 @@ pub struct ShellConfig {
     pub start_bar: bool,
     #[serde(default = "default_true")]
     pub start_overview_service: bool,
+    /// Desktop-file IDs shown in the Overview dock, in user-selected order.
+    #[serde(default)]
+    pub pinned_apps: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -115,6 +118,7 @@ impl Default for ShellConfig {
             wallpaper: WallpaperConfig::default(),
             start_bar: true,
             start_overview_service: true,
+            pinned_apps: Vec::new(),
         }
     }
 }
@@ -741,6 +745,25 @@ impl Config {
                 "shell.wallpaper.image must be an absolute path".into(),
             ));
         }
+        if self.shell.pinned_apps.len() > 64 {
+            return Err(ConfigError::Invalid(
+                "shell.pinned_apps must contain at most 64 desktop-file IDs".into(),
+            ));
+        }
+        let mut pinned_apps = std::collections::HashSet::new();
+        for (index, app) in self.shell.pinned_apps.iter().enumerate() {
+            let app = app.trim();
+            if app.is_empty() || app != self.shell.pinned_apps[index] || app.contains('\0') {
+                return Err(ConfigError::Invalid(format!(
+                    "shell.pinned_apps[{index}] must be a desktop-file ID"
+                )));
+            }
+            if !pinned_apps.insert(app.to_lowercase()) {
+                return Err(ConfigError::Invalid(format!(
+                    "shell.pinned_apps contains duplicate desktop-file ID {app:?}"
+                )));
+            }
+        }
         if self.compositor.modkey.trim().is_empty() {
             return Err(ConfigError::Invalid("compositor.modkey is empty".into()));
         }
@@ -1180,6 +1203,16 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
         "shell",
         "start_overview_service",
         value(config.shell.start_overview_service),
+    );
+    let mut pinned_apps = Array::new();
+    for app in &config.shell.pinned_apps {
+        pinned_apps.push(app.as_str());
+    }
+    set_table_value(
+        document,
+        "shell",
+        "pinned_apps",
+        Item::Value(pinned_apps.into()),
     );
 }
 
