@@ -108,6 +108,7 @@ def main():
     def exercise_skip_empty():
         state = call('snapshot')['payload']
         check(len(state['workspaces']) == 2, 'default exposes one fixed workspace and one dynamic successor')
+        terminal(1, '28;65;100')
         key('Super_L+4')
         state = wait(lambda value: any(workspace['workspace'] == 1 and workspace['active'] for workspace in value['workspaces']), 'ignore direct selection beyond dynamic tail')
         check(len(state['workspaces']) == 2, 'Super+4 cannot create skipped empty workspaces')
@@ -133,7 +134,6 @@ def main():
         active(1)
         wait(lambda value: len(value['workspaces']) == 2, 'tail prunes after returning from overview')
         checks.append('overview preserves the active workspace successor')
-        terminal(1, '28;65;100')
         first = screenshot('workspace-one')
         for number in [2, 3]:
             key(f'Super_L+{number}')
