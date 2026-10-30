@@ -280,6 +280,7 @@ fn start_startup_commands(
             .args(&startup.command[1..])
             .env_remove("DISPLAY")
             .env_remove("WAYLAND_SOCKET")
+            .env_remove("KNAVE_SOCKET")
             .env("WAYLAND_DISPLAY", display)
             .env("KNAVE_SESSION", "1")
             .env("XDG_CURRENT_DESKTOP", "Knave:Villain")

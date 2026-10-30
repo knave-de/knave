@@ -21,8 +21,10 @@ The additive desktop query and response are implemented by Knave's API and
 Villain. Knave Session consumes them; no shell or portal consumer changes.
 The configuration format is unchanged. Old Villain builds do not understand
 the new query, so deploy the matching Knave and Villain revisions together.
-Reverting this decision restores Wayland-only startup commands and removes the
-query from both contract and compositor.
+Reverting the coordinated startup-command feature stops launching configured
+startup commands; it does not restore a prior Wayland-only startup mode. The
+XWayland query and its compositor status reporting are removed with this
+environment integration.
 
 ## Verification
 
