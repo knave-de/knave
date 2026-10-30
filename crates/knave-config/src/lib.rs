@@ -1155,11 +1155,7 @@ fn merge_table_leaves(destination: &mut Item, source: &Table) {
             }
             merge_table_leaves(target.get_mut(key).expect("table initialized"), table);
         } else if let Some(tables) = value.as_array_of_tables() {
-            if target
-                .get(key)
-                .and_then(Item::as_array_of_tables)
-                .is_none()
-            {
+            if target.get(key).and_then(Item::as_array_of_tables).is_none() {
                 target.insert(key, Item::ArrayOfTables(ArrayOfTables::new()));
             }
             merge_array_of_tables(
