@@ -1721,6 +1721,8 @@ apply = "on_open"
 [[compositor.window_rules.application]]
 app_id = "firefox"
 workspace = 3
+# Vendor metadata is not part of the typed schema and must survive writes.
+vendor_option = 7
 [[compositor.window_rules.rule]]
 name = "Firefox picture-in-picture"
 [compositor.window_rules.rule.match]
@@ -1758,6 +1760,12 @@ stay_on_top = true
             reloaded.config().compositor.window_rules,
             document.config().compositor.window_rules
         );
+        assert!(
+            reloaded
+                .source()
+                .contains("vendor metadata is not part of the typed schema")
+        );
+        assert!(reloaded.source().contains("vendor_option = 7"));
 
         let mut invalid = reloaded.config().clone();
         invalid.compositor.window_rules.rule[0].matcher.title_regex = Some("(".into());
