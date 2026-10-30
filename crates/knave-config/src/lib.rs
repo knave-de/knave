@@ -1145,9 +1145,6 @@ fn merge_known_table(parent: &mut Item, key: &str, source: &Table) {
 }
 
 fn merge_table_leaves(destination: &mut Item, source: &Table) {
-    if let Some(destination) = destination.as_table_mut() {
-        *destination.decor_mut() = source.decor().clone();
-    }
     let target = destination
         .as_table_like_mut()
         .expect("parsed settings table");
@@ -1720,8 +1717,7 @@ apply = "on_open"
 [[compositor.window_rules.application]]
 app_id = "firefox"
 workspace = 3
-# Vendor metadata is not part of the typed schema and must survive writes.
-vendor_option = 7
+vendor_option = 7 # Vendor metadata is not part of the typed schema and must survive writes.
 [[compositor.window_rules.rule]]
 name = "Firefox picture-in-picture"
 [compositor.window_rules.rule.match]
@@ -1762,7 +1758,7 @@ stay_on_top = true
         assert!(
             reloaded
                 .source()
-                .contains("vendor metadata is not part of the typed schema")
+                .contains("Vendor metadata is not part of the typed schema")
         );
         assert!(reloaded.source().contains("vendor_option = 7"));
 
