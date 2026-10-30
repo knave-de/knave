@@ -17,8 +17,21 @@ The top-level sections are owned by Knave:
 The session fields are:
 
 - backend: auto, tty, or winit;
-- compositor_binary and shell_binary: the supervised executables; and
-- restart_on_failure: whether bounded component restart is enabled.
+- compositor_binary and shell_binary: the supervised executables;
+- restart_on_failure: whether bounded component restart is enabled; and
+- `[[session.startup]]` entries: optional commands launched after the shell
+  roles have been started.
+
+Each startup entry has a `command` array whose first string is the executable
+and remaining strings are its arguments. Knave does not run a shell or expand
+variables and globs. To use shell syntax, configure an explicit shell such as
+`command = ["sh", "-lc", "command"]`. Up to 64 commands may be configured;
+an empty executable or NUL character is invalid. Startup commands inherit the
+session environment and receive its `WAYLAND_DISPLAY`; inherited `DISPLAY` and
+`WAYLAND_SOCKET` values are cleared so nested sessions cannot target the host
+desktop. Once Villain reports its XWayland display, Knave also sets `DISPLAY`
+for startup commands, so X11 applications such as `xterm` can use the session's
+XWayland server.
 
 `start_bar` starts the persistent bar role. `start_overview_service` starts one
 session-owned Overview process, hidden until toggled by Villain; it defaults to

@@ -6,7 +6,7 @@ pub mod quick_settings;
 use std::{
     collections::HashSet,
     env,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     fs, io,
     os::unix::fs::FileTypeExt,
     path::{Path, PathBuf},
@@ -19,7 +19,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use knave_config::{Config, ConfigDocument, SessionBackend};
+use knave_config::{Config, ConfigDocument, SessionBackend, StartupCommand};
+use knave_desktop_api::{
+    DesktopClient, DesktopQuery, DesktopRequest, DesktopResponse, XWaylandStatus,
+    socket_path_for_display,
+};
 use thiserror::Error;
 
 use crate::wallpaper_assignment::AssignmentSlot;
@@ -31,6 +35,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(50);
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 const MAX_RESTARTS: u32 = 3;
 const CAPABILITY_WAIT: Duration = Duration::from_secs(2);
+const XWAYLAND_WAIT: Duration = Duration::from_secs(5);
 
 static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 
@@ -99,10 +104,21 @@ pub fn run(config: Config) -> Result<(), SessionError> {
     }
     slot.retarget(&display);
     let _assignment = wallpaper_assignment::thread(config.clone(), runtime.clone(), slot.clone());
+    let xwayland_display = if config.session.startup.is_empty() {
+        None
+    } else {
+        wait_for_xwayland_display(&runtime, &display)
+    };
+    let mut startup_commands = start_startup_commands(
+        &config.session.startup,
+        &display,
+        xwayland_display.as_deref(),
+    );
 
     loop {
         if SHUTDOWN_REQUESTED.load(Ordering::SeqCst) {
             slot.shutdown();
+            terminate_startup_commands(&mut startup_commands);
             terminate_children(&mut shells);
             terminate_child(&mut compositor);
             return Ok(());
@@ -116,12 +132,14 @@ pub fn run(config: Config) -> Result<(), SessionError> {
             // `knavectl dispatch quit`; only failures consume the restart budget.
             if status.success() {
                 slot.shutdown();
+                terminate_startup_commands(&mut startup_commands);
                 terminate_children(&mut shells);
                 return Ok(());
             }
             // The wallpaper surface belongs to the dead compositor; hand it
             // back to the reaper before any restart attempt.
             slot.disown();
+            terminate_startup_commands(&mut startup_commands);
             terminate_children(&mut shells);
             if !config.session.restart_on_failure || restarts >= MAX_RESTARTS {
                 return Err(SessionError::EarlyExit {
@@ -140,11 +158,24 @@ pub fn run(config: Config) -> Result<(), SessionError> {
             // The assignment subscription follows the possibly new display.
             slot.retarget(&display);
             if let Err(error) = slot.reset(&config, &display) {
+                terminate_startup_commands(&mut startup_commands);
                 terminate_children(&mut shells);
                 terminate_child(&mut compositor);
                 return Err(error);
             }
+            let xwayland_display = if config.session.startup.is_empty() {
+                None
+            } else {
+                wait_for_xwayland_display(&runtime, &display)
+            };
+            startup_commands = start_startup_commands(
+                &config.session.startup,
+                &display,
+                xwayland_display.as_deref(),
+            );
         }
+
+        reap_startup_commands(&mut startup_commands);
 
         let mut shell_exit = None;
         for managed in &mut shells {
@@ -163,6 +194,7 @@ pub fn run(config: Config) -> Result<(), SessionError> {
         if let Some((role, status)) = shell_exit {
             terminate_children(&mut shells);
             if !config.session.restart_on_failure || restarts >= MAX_RESTARTS {
+                terminate_startup_commands(&mut startup_commands);
                 terminate_child(&mut compositor);
                 return Err(SessionError::EarlyExit {
                     component: format!("knave-shell {role}"),
@@ -183,12 +215,14 @@ pub fn run(config: Config) -> Result<(), SessionError> {
             shells = match spawn_shells(&config, &display) {
                 Ok(shells) => shells,
                 Err(error) => {
+                    terminate_startup_commands(&mut startup_commands);
                     terminate_child(&mut compositor);
                     return Err(error);
                 }
             };
             if let Err(error) = slot.reset(&config, &display) {
                 terminate_children(&mut shells);
+                terminate_startup_commands(&mut startup_commands);
                 terminate_child(&mut compositor);
                 return Err(error);
             }
@@ -201,6 +235,93 @@ pub fn run(config: Config) -> Result<(), SessionError> {
 pub(crate) struct ManagedChild {
     pub(crate) role: &'static str,
     pub(crate) child: Child,
+}
+
+fn wait_for_xwayland_display(runtime: &Path, wayland_display: &str) -> Option<String> {
+    let deadline = Instant::now() + XWAYLAND_WAIT;
+    let socket = socket_path_for_display(runtime.as_os_str(), OsStr::new(wayland_display));
+    loop {
+        if let Ok(mut client) = DesktopClient::connect_to_path(&socket) {
+            match client.request(&DesktopRequest::Query(DesktopQuery::XWaylandStatus)) {
+                Ok(DesktopResponse::XWaylandStatus(XWaylandStatus::Available { display })) => {
+                    return Some(display);
+                }
+                Ok(DesktopResponse::XWaylandStatus(XWaylandStatus::Unavailable)) => return None,
+                Ok(DesktopResponse::XWaylandStatus(XWaylandStatus::Starting)) => {}
+                Err(_) if Instant::now() < deadline => {}
+                Ok(response) => {
+                    eprintln!("knave-session: unexpected XWayland status response: {response:?}");
+                    return None;
+                }
+                Err(error) => {
+                    eprintln!("knave-session: XWayland status query failed: {error}");
+                    return None;
+                }
+            }
+        }
+        if Instant::now() >= deadline {
+            eprintln!(
+                "knave-session: timed out waiting for XWayland; startup commands will use Wayland only"
+            );
+            return None;
+        }
+        thread::sleep(POLL_INTERVAL);
+    }
+}
+
+fn start_startup_commands(
+    commands: &[StartupCommand],
+    display: &str,
+    xwayland_display: Option<&str>,
+) -> Vec<Child> {
+    let mut children = Vec::with_capacity(commands.len());
+    for (index, startup) in commands.iter().enumerate() {
+        let mut command = Command::new(&startup.command[0]);
+        command
+            .args(&startup.command[1..])
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_SOCKET")
+            .env_remove("KNAVE_SOCKET")
+            .env("WAYLAND_DISPLAY", display)
+            .env("KNAVE_SESSION", "1")
+            .env("XDG_CURRENT_DESKTOP", "Knave:Villain")
+            .env("XDG_SESSION_DESKTOP", "knave");
+        if let Some(xwayland_display) = xwayland_display {
+            command.env("DISPLAY", xwayland_display);
+        }
+        match spawn_with_brief_retry(command) {
+            Ok(child) => children.push(child),
+            Err(error) => {
+                eprintln!("knave-session: startup command {index} could not be started: {error}")
+            }
+        }
+    }
+    children
+}
+
+fn reap_startup_commands(children: &mut Vec<Child>) {
+    let mut index = 0;
+    while index < children.len() {
+        match children[index].try_wait() {
+            Ok(Some(_)) => {
+                let mut child = children.swap_remove(index);
+                let _ = child.wait();
+            }
+            Ok(None) => index += 1,
+            Err(error) => {
+                eprintln!("knave-session: startup process wait failed: {error}");
+                let mut child = children.swap_remove(index);
+                terminate_child(&mut child);
+            }
+        }
+    }
+}
+
+fn terminate_startup_commands(children: &mut Vec<Child>) {
+    for child in children.iter_mut() {
+        terminate_child(child);
+    }
+    children.clear();
 }
 
 fn start_components(
@@ -626,6 +747,25 @@ mod tests {
         assert_eq!(restart_delay(1), Duration::from_millis(100));
         assert_eq!(restart_delay(3), Duration::from_millis(400));
         assert_eq!(restart_delay(99), Duration::from_millis(1_600));
+    }
+
+    #[test]
+    fn startup_commands_receive_the_session_xwayland_display() {
+        let directory = tempfile::tempdir().unwrap();
+        let output = directory.path().join("display");
+        let command = StartupCommand {
+            command: vec![
+                "/bin/sh".into(),
+                "-c".into(),
+                "printf '%s\\n' \"$DISPLAY\" > \"$1\"".into(),
+                "sh".into(),
+                output.to_string_lossy().into_owned(),
+            ],
+        };
+        let mut children = start_startup_commands(&[command], "wayland-test", Some(":42"));
+        assert_eq!(children.len(), 1);
+        assert!(children[0].wait().unwrap().success());
+        assert_eq!(fs::read_to_string(output).unwrap().trim(), ":42");
     }
 
     #[test]

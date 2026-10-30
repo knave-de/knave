@@ -173,6 +173,7 @@ pub enum DesktopCommand {
 #[serde(tag = "query", rename_all = "kebab-case")]
 pub enum DesktopQuery {
     Snapshot,
+    XWaylandStatus,
     Windows,
     Workspaces,
     Devices,
@@ -206,6 +207,7 @@ pub enum DesktopRequest {
 pub enum DesktopResponse {
     Ok,
     Snapshot(DesktopSnapshot),
+    XWaylandStatus(XWaylandStatus),
     /// An interleaved `DesktopEvent` on a subscription connection.
     Event(DesktopEvent),
     Windows(Vec<WindowSummary>),
@@ -218,6 +220,15 @@ pub enum DesktopResponse {
         component: String,
     },
     Error(DesktopError),
+}
+
+/// XWayland readiness and display name for session-launched applications.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "status", rename_all = "kebab-case")]
+pub enum XWaylandStatus {
+    Starting,
+    Available { display: String },
+    Unavailable,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -298,7 +309,11 @@ pub struct DesktopClient {
 
 impl DesktopClient {
     pub fn connect() -> Result<Self, ClientError> {
-        let stream = UnixStream::connect(socket_path()?)?;
+        Self::connect_to_path(&socket_path()?)
+    }
+
+    pub fn connect_to_path(path: &Path) -> Result<Self, ClientError> {
+        let stream = UnixStream::connect(path)?;
         stream.set_read_timeout(Some(Duration::from_secs(2)))?;
         stream.set_write_timeout(Some(Duration::from_secs(2)))?;
         Ok(Self {
@@ -498,6 +513,29 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&DesktopRequest::Subscribe).unwrap(),
             r#"{"type":"subscribe"}"#
+        );
+    }
+
+    #[test]
+    fn xwayland_status_round_trips() {
+        let statuses = [
+            XWaylandStatus::Starting,
+            XWaylandStatus::Available {
+                display: ":3".into(),
+            },
+            XWaylandStatus::Unavailable,
+        ];
+        for status in statuses {
+            let response = DesktopResponse::XWaylandStatus(status);
+            let encoded = serde_json::to_string(&response).unwrap();
+            assert_eq!(
+                serde_json::from_str::<DesktopResponse>(&encoded).unwrap(),
+                response
+            );
+        }
+        assert_eq!(
+            serde_json::to_string(&DesktopRequest::Query(DesktopQuery::XWaylandStatus)).unwrap(),
+            r#"{"type":"query","payload":{"query":"x-wayland-status"}}"#
         );
     }
 

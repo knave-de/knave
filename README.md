@@ -72,7 +72,10 @@ After `knave session start`, query and control the running desktop with:
 
 session start loads ~/.config/knave/config.toml, starts the configured Villain
 binary, waits for a newly-created wayland-* socket, and starts the configured
-shell roles. SIGINT and SIGTERM stop the children with a bounded grace period.
+shell roles followed by any `[[session.startup]]` commands. Startup commands
+are argument arrays and run without a shell; failed commands are logged and do
+not stop the session. SIGINT and SIGTERM stop tracked children with a bounded
+grace period.
 Failed components are restarted with capped exponential backoff when
 restart_on_failure is enabled; the current supervisor permits at most three
 restart attempts per session. A successful compositor exit, including
