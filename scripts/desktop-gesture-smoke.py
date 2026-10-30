@@ -109,7 +109,7 @@ def main():
         state = call('snapshot')['payload']
         check(len(state['workspaces']) == 2, 'default exposes one fixed workspace and one dynamic successor')
         key('Super_L+4')
-        state = wait(lambda value: value['active_workspace'] == 1, 'ignore direct selection beyond dynamic tail')
+        state = wait(lambda value: any(workspace['workspace'] == 1 and workspace['active'] for workspace in value['workspaces']), 'ignore direct selection beyond dynamic tail')
         check(len(state['workspaces']) == 2, 'Super+4 cannot create skipped empty workspaces')
         key('Super_L+2')
         active(2)
