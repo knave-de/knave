@@ -1,5 +1,11 @@
 # Optional empty-workspace skipping
 
+The navigation and workspace-count policy in this decision is superseded by
+[ADR 0016](0016-dynamic-workspaces.md). That decision replaces the wrapping,
+search, direct-selection, and fixed-count rules below with linear navigation
+and a dynamic workspace tail. This ADR remains the historical record of the
+`skip_empty` setting.
+
 Status: accepted for the coordinated workspace-skip-empty change.
 
 Knave owns the additive typed `[compositor.workspace] skip_empty` boolean and

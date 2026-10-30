@@ -196,8 +196,9 @@ contracts, supported capabilities, limits, verification and rollback.
 ## Workspace swipes
 
 Three-finger horizontal touchpad swipes move workspace scenes with your fingers.
-Left advances, right goes back, wrapping at the ends. Release beyond a quarter
-of the output width commits; shorter or cancelled swipes settle back.
+Left advances and creates a workspace at the dynamic tail when needed; right
+goes back and stops at the first workspace. Release beyond a quarter of the
+output width commits; shorter or cancelled swipes settle back.
 Panels and the cursor stay stationary. See the
 [gesture contract](docs/architecture/decisions/0010-workspace-swipes.md).
 Override entries under `[[compositor.gesture.bind]]` by fingers and direction;
@@ -207,7 +208,11 @@ actions, not knavectl commands. Reload applies validated changes atomically.
 To skip empty slots when cycling with next/previous shortcuts or swipes, set
 `skip_empty = true` under `[compositor.workspace]` and reload. It defaults to
 false; direct number/bar selection still reaches empty slots. Minimized windows
-count as occupancy. Closing the last window leaves you on the current workspace.
+count as occupied. The default keeps one predefined workspace and one dynamic
+workspace. Set `predefined` to a larger positive number to keep a contiguous
+prefix permanently; the compositor retains all workspaces through the highest
+occupied slot and one empty workspace after it. Empty slots are removed only
+from the end, never between retained workspaces.
 
 Notifications are provided by the session's built-in service when no other daemon
 already owns `org.freedesktop.Notifications`. The first owner wins; Knave neither
