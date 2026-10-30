@@ -1,8 +1,10 @@
 # Optional empty-workspace skipping
 
-The original wrapping behavior in this decision is superseded by
-[ADR 0016](0016-dynamic-workspaces.md), which keeps navigation linear and grows
-the workspace list at the forward edge.
+The navigation and workspace-count policy in this decision is superseded by
+[ADR 0016](0016-dynamic-workspaces.md). That decision replaces the wrapping,
+search, direct-selection, and fixed-count rules below with linear navigation
+and a dynamic workspace tail. This ADR remains the historical record of the
+`skip_empty` setting.
 
 Status: accepted for the coordinated workspace-skip-empty change.
 
