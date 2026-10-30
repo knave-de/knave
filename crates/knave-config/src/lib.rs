@@ -1650,6 +1650,40 @@ mod tests {
     }
 
     #[test]
+    fn startup_command_entries_round_trip_and_reject_empty_executables() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(
+            &path,
+            "[[session.startup]]\ncommand = [\"kitty\"]\n\
+             [[session.startup]]\ncommand = [\"xterm\", \"-fa\", \"monospace\"]\n",
+        )
+        .unwrap();
+
+        let mut document = ConfigDocument::load(&path).unwrap();
+        assert_eq!(document.config().session.startup.len(), 2);
+        document.write(document.config().clone()).unwrap();
+        assert_eq!(
+            ConfigDocument::load(path).unwrap().config().session.startup,
+            vec![
+                StartupCommand {
+                    command: vec!["kitty".into()],
+                },
+                StartupCommand {
+                    command: vec!["xterm".into(), "-fa".into(), "monospace".into()],
+                },
+            ]
+        );
+
+        let mut config = Config::default();
+        config
+            .session
+            .startup
+            .push(StartupCommand { command: vec![] });
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
     fn overview_service_can_be_disabled() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("config.toml");

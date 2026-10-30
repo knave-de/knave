@@ -13,8 +13,10 @@ rendering, or shell composition.
 4. Wait for a new compositor-owned wayland-* socket, while checking that the
    compositor has not exited.
 5. Start each configured shell role with WAYLAND_DISPLAY set to that socket.
-6. Start each configured `session.startup` command with that same display.
-7. Supervise session components until shutdown or a bounded failure policy is reached.
+6. Wait briefly for Villain's XWayland readiness status when startup commands
+   are configured.
+7. Start each configured `session.startup` command with the session displays.
+8. Supervise session components until shutdown or a bounded failure policy is reached.
 
 The supervisor does not attach to GNOME, KDE, Qt, or another host desktop.
 Winit is a nested development and test backend; direct TTY/DRM is the
@@ -47,8 +49,11 @@ when launching directly with inherited display variables. See [ADR 0015](decisio
 Each `[[session.startup]]` entry supplies a direct executable and argument
 array. Entries start after the shell roles have been started, inherit the
 session environment, receive the session's `WAYLAND_DISPLAY`, and do not inherit
-`DISPLAY` or `WAYLAND_SOCKET` from a host session. A spawn failure is logged
-and startup continues; an entry that exits is reaped without affecting the session.
+`WAYLAND_SOCKET` from a host session. Knave waits up to five seconds for
+Villain's XWayland status; when ready, its `DISPLAY` value is passed to startup
+commands. When XWayland is unavailable or times out, Wayland startup continues
+without a `DISPLAY` value. A spawn failure is logged and startup continues; an
+entry that exits is reaped without affecting the session.
 These processes are stopped on logout and relaunched after a compositor
 restart. They are not restarted when they exit on their own, and they do not
 participate in the shell restart policy. Like the other session children, only

@@ -31,3 +31,4 @@ commands belong to Knave's `knavectl` contract.
 - [ADR 0013: window dragging](decisions/0013-window-dragging.md)
 
 - [ADR 0015: native Polkit agent](decisions/0015-native-polkit-agent.md)
+- [ADR 0016: XWayland environment for startup commands](decisions/0016-startup-xwayland-environment.md)

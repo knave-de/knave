@@ -177,6 +177,8 @@ restart_on_failure = true
 # use ["sh", "-lc", "..."] only when shell syntax is needed.
 # [[session.startup]]
 # command = ["nm-applet"]
+# [[session.startup]]
+# command = ["xterm"]
 
 [shell]
 start_bar = true

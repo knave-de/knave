@@ -29,7 +29,9 @@ variables and globs. To use shell syntax, configure an explicit shell such as
 an empty executable or NUL character is invalid. Startup commands inherit the
 session environment and receive its `WAYLAND_DISPLAY`; inherited `DISPLAY` and
 `WAYLAND_SOCKET` values are cleared so nested sessions cannot target the host
-desktop. X11-only startup commands need a later XWayland environment handoff.
+desktop. Once Villain reports its XWayland display, Knave also sets `DISPLAY`
+for startup commands, so X11 applications such as `xterm` can use the session's
+XWayland server.
 
 `start_bar` starts the persistent bar role. `start_overview_service` starts one
 session-owned Overview process, hidden until toggled by Villain; it defaults to
