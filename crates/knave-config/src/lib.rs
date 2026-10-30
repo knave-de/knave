@@ -1154,8 +1154,62 @@ fn merge_table_leaves(destination: &mut Item, source: &Table) {
                 target.insert(key, Item::Table(Table::new()));
             }
             merge_table_leaves(target.get_mut(key).expect("table initialized"), table);
+        } else if let Some(tables) = value.as_array_of_tables() {
+            if target
+                .get(key)
+                .and_then(Item::as_array_of_tables)
+                .is_none()
+            {
+                target.insert(key, Item::ArrayOfTables(ArrayOfTables::new()));
+            }
+            merge_array_of_tables(
+                target.get_mut(key).expect("array of tables initialized"),
+                tables,
+            );
+        } else if value.as_array().is_some_and(Array::is_empty)
+            && target
+                .get(key)
+                .is_some_and(|item| item.as_array_of_tables().is_some())
+        {
+            merge_array_of_tables(
+                target.get_mut(key).expect("existing array of tables"),
+                &ArrayOfTables::new(),
+            );
         } else {
-            target.insert(key, value.clone());
+            if let Some(existing) = target.get_mut(key) {
+                replace_value_preserving_decor(existing, value);
+            } else {
+                target.insert(key, value.clone());
+            }
+        }
+    }
+}
+
+fn replace_value_preserving_decor(destination: &mut Item, source: &Item) {
+    if let (Some(existing), Some(source)) = (destination.as_value_mut(), source.as_value()) {
+        let decor = existing.decor().clone();
+        let mut value = source.clone();
+        *value.decor_mut() = decor;
+        *existing = value;
+    } else {
+        *destination = source.clone();
+    }
+}
+
+fn merge_array_of_tables(destination: &mut Item, source: &ArrayOfTables) {
+    let target = destination
+        .as_array_of_tables_mut()
+        .expect("window-rule entries are an array of tables");
+    while target.len() > source.len() {
+        target.remove(target.len() - 1);
+    }
+    for (index, source_table) in source.iter().enumerate() {
+        if let Some(destination_table) = target.get_mut(index) {
+            let mut entry = Item::Table(destination_table.clone());
+            merge_table_leaves(&mut entry, source_table);
+            *destination_table = entry.as_table().expect("merged entry is a table").clone();
+        } else {
+            target.push(source_table.clone());
         }
     }
 }
