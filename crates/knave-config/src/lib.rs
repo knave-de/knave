@@ -753,7 +753,10 @@ impl Config {
         let mut pinned_apps = std::collections::HashSet::new();
         for (index, app) in self.shell.pinned_apps.iter().enumerate() {
             let app = app.trim();
-            if app.is_empty() || app != self.shell.pinned_apps[index] || app.contains('\0') {
+            if app.is_empty()
+                || app != self.shell.pinned_apps[index]
+                || app.contains(['\0', '/', '\\'])
+            {
                 return Err(ConfigError::Invalid(format!(
                     "shell.pinned_apps[{index}] must be a desktop-file ID"
                 )));
@@ -1204,16 +1207,30 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
         "start_overview_service",
         value(config.shell.start_overview_service),
     );
-    let mut pinned_apps = Array::new();
-    for app in &config.shell.pinned_apps {
-        pinned_apps.push(app.as_str());
+    let existing_pins = document
+        .get("shell")
+        .and_then(Item::as_table)
+        .and_then(|shell| shell.get("pinned_apps"))
+        .and_then(Item::as_array)
+        .map(|array| {
+            array
+                .iter()
+                .filter_map(toml_edit::Value::as_str)
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        });
+    if existing_pins.as_deref() != Some(config.shell.pinned_apps.as_slice()) {
+        let mut pinned_apps = Array::new();
+        for app in &config.shell.pinned_apps {
+            pinned_apps.push(app.as_str());
+        }
+        set_table_value(
+            document,
+            "shell",
+            "pinned_apps",
+            Item::Value(pinned_apps.into()),
+        );
     }
-    set_table_value(
-        document,
-        "shell",
-        "pinned_apps",
-        Item::Value(pinned_apps.into()),
-    );
 }
 
 fn set_table_value(document: &mut DocumentMut, section: &str, key: &str, item: Item) {
@@ -1363,6 +1380,37 @@ fn config_path() -> Result<PathBuf, ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pinned_apps_reject_paths_and_preserve_array_comments_on_unrelated_writes() {
+        let mut config = Config::default();
+        for path in [
+            "/usr/share/applications/firefox.desktop",
+            "apps\\firefox.desktop",
+        ] {
+            config.shell.pinned_apps = vec![path.into()];
+            assert!(
+                config.validate().is_err(),
+                "accepted path-shaped ID {path:?}"
+            );
+        }
+        config.shell.pinned_apps = vec!["firefox.desktop".into()];
+        config.validate().unwrap();
+
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        fs::write(
+            &path,
+            "[shell]\npinned_apps = [\n  \"firefox.desktop\", # keep this note\n  # \"disabled.desktop\",\n]\n",
+        )
+        .unwrap();
+        let mut document = ConfigDocument::load(&path).unwrap();
+        let mut config = document.config().clone();
+        config.shell.start_bar = false;
+        document.write(config).unwrap();
+        assert!(document.source().contains("# keep this note"));
+        assert!(document.source().contains("# \"disabled.desktop\","));
+    }
 
     #[test]
     fn compositor_policy_defaults_validate_and_preserve_unknown_options() {
