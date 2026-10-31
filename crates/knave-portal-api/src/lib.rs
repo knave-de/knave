@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 pub const MAX_REQUEST: usize = 2 * 1024 * 1024;
 pub const MAX_SOURCES: usize = 64;
+pub const MAX_SHORTCUTS: usize = 64;
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SourceKind {
@@ -101,6 +102,82 @@ impl Reply {
         Ok(())
     }
 }
+/// Request shown by the shell when an application asks to configure shortcuts.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShortcutAssignmentRequest {
+    pub request_id: String,
+    pub app_id: String,
+    pub shortcuts: Vec<ShortcutAssignment>,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShortcutAssignment {
+    pub id: String,
+    pub description: String,
+    pub trigger: Option<String>,
+}
+
+/// One chosen trigger, or an empty choice when the user cancels.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShortcutAssignmentReply {
+    pub request_id: String,
+    pub shortcut_id: Option<String>,
+    pub trigger: Option<String>,
+}
+
+impl ShortcutAssignmentRequest {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.request_id.is_empty()
+            || self.request_id.len() > 256
+            || self.app_id.is_empty()
+            || self.app_id.len() > 255
+            || self.shortcuts.is_empty()
+            || self.shortcuts.len() > MAX_SHORTCUTS
+            || self.error.as_ref().is_some_and(|error| error.len() > 512)
+        {
+            return Err("unsupported or oversized shortcut assignment request".into());
+        }
+        let mut ids = std::collections::HashSet::new();
+        for shortcut in &self.shortcuts {
+            if shortcut.id.is_empty()
+                || shortcut.id.len() > 128
+                || shortcut.description.len() > 512
+                || shortcut
+                    .trigger
+                    .as_ref()
+                    .is_some_and(|trigger| trigger.len() > 64)
+                || !ids.insert(&shortcut.id)
+            {
+                return Err("invalid shortcut assignment entry".into());
+            }
+        }
+        Ok(())
+    }
+}
+
+impl ShortcutAssignmentReply {
+    pub fn validate(&self, request: &ShortcutAssignmentRequest) -> Result<(), String> {
+        if self.request_id != request.request_id {
+            return Err("shortcut assignment reply has the wrong request ID".into());
+        }
+        match (&self.shortcut_id, &self.trigger) {
+            (None, None) => Ok(()),
+            (Some(id), Some(trigger))
+                if request.shortcuts.iter().any(|shortcut| &shortcut.id == id)
+                    && !trigger.is_empty()
+                    && trigger.len() <= 64 =>
+            {
+                Ok(())
+            }
+            _ => Err("invalid shortcut assignment reply".into()),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,6 +262,47 @@ mod tests {
             }
             .validate(&r)
             .is_ok()
+        );
+    }
+    #[test]
+    fn shortcut_assignment_replies_are_bound_to_the_request() {
+        let request = ShortcutAssignmentRequest {
+            request_id: "request".into(),
+            app_id: "example.app".into(),
+            shortcuts: vec![ShortcutAssignment {
+                id: "toggle".into(),
+                description: "Toggle recording".into(),
+                trigger: None,
+            }],
+            error: None,
+        };
+        assert!(request.validate().is_ok());
+        assert!(
+            ShortcutAssignmentReply {
+                request_id: "request".into(),
+                shortcut_id: Some("toggle".into()),
+                trigger: Some("CTRL+F9".into()),
+            }
+            .validate(&request)
+            .is_ok()
+        );
+        assert!(
+            ShortcutAssignmentReply {
+                request_id: "request".into(),
+                shortcut_id: None,
+                trigger: None,
+            }
+            .validate(&request)
+            .is_ok()
+        );
+        assert!(
+            ShortcutAssignmentReply {
+                request_id: "other".into(),
+                shortcut_id: Some("toggle".into()),
+                trigger: Some("CTRL+F9".into()),
+            }
+            .validate(&request)
+            .is_err()
         );
     }
 }

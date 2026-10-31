@@ -206,6 +206,14 @@ pub enum DesktopRequest {
         shortcut_id: String,
         trigger: String,
     },
+    /// Atomically replace a registered shortcut trigger, leaving the old
+    /// binding in place if the new trigger conflicts.
+    ReplaceGlobalShortcut {
+        app_id: String,
+        session_handle: String,
+        shortcut_id: String,
+        trigger: String,
+    },
     /// Remove a shortcut previously registered by the same application.
     UnregisterGlobalShortcut {
         app_id: String,
