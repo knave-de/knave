@@ -124,6 +124,12 @@ The configuration is typed by `knave-config` and consumed directly by Villain;
 Settings can read and write these same fields without a second persistence
 format. The first release supports numbered workspace slots only.
 
+`[compositor] switch_to_new_window_workspace` defaults to `true`. When a new
+window's initial placement selects an inactive workspace, Villain switches to
+that workspace and focuses the window. Set it to `false` to keep the current
+workspace active when windows open elsewhere. This applies to the final
+workspace selected by window rules.
+
 ## Input devices
 
 The additive `[compositor.input]` table sets the global touchpad policy:

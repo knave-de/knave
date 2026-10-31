@@ -14,6 +14,8 @@ master_percent = 50
 # "layout" walks master then stack top to bottom, "mru" walks
 # most-recently-focused windows first.
 focus_cycle_order = "layout"
+# Switch to the workspace selected by a new window's placement rules.
+switch_to_new_window_workspace = true
 environment_file = "environment"
 
 # Workspace switches slide windows and wallpaper for 160 ms with cubic ease-out.
