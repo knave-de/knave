@@ -198,10 +198,33 @@ pub enum DesktopRequest {
     SetOverviewPanes {
         panes: Vec<OverviewPane>,
     },
+    /// Register an application shortcut in the compositor. The key trigger is
+    /// expressed using the XDG shortcuts specification (for example `CTRL+F9`).
+    RegisterGlobalShortcut {
+        app_id: String,
+        session_handle: String,
+        shortcut_id: String,
+        trigger: String,
+    },
+    /// Atomically replace a registered shortcut trigger, leaving the old
+    /// binding in place if the new trigger conflicts.
+    ReplaceGlobalShortcut {
+        app_id: String,
+        session_handle: String,
+        shortcut_id: String,
+        trigger: String,
+    },
+    /// Remove a shortcut previously registered by the same application.
+    UnregisterGlobalShortcut {
+        app_id: String,
+        session_handle: String,
+        shortcut_id: String,
+    },
 }
 
 /// Interleaved notification frames. Subscription connections emit a snapshot
-/// before any event and coalesce events raised while one is still unread.
+/// before any event. State-change events coalesce; global shortcut transitions
+/// are queued so quick press/release pairs are both delivered.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum DesktopResponse {
@@ -218,6 +241,10 @@ pub enum DesktopResponse {
     WorkspacePreview(WorkspacePreview),
     Version {
         component: String,
+    },
+    /// The compositor accepted a global shortcut and reports its active trigger.
+    GlobalShortcutRegistered {
+        trigger: String,
     },
     Error(DesktopError),
 }
@@ -248,6 +275,18 @@ pub enum DesktopEvent {
     /// applied the revalidated settings. Sent only to open subscriptions;
     /// events are not replayed to later subscribers.
     ConfigurationReloaded,
+    /// A registered system wide shortcut was activated.
+    GlobalShortcutActivated {
+        app_id: String,
+        session_handle: String,
+        shortcut_id: String,
+    },
+    /// A registered system wide shortcut was released.
+    GlobalShortcutDeactivated {
+        app_id: String,
+        session_handle: String,
+        shortcut_id: String,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -352,9 +391,10 @@ impl SubscriptionCancel {
 
 /// Subscription stream. The first frame is a complete initial state;
 /// subsequent frames replace it. Intermediate states may be coalesced.
-/// Event frames are interleaved and carry no snapshot state; consume them
-/// with `next_event`, or let `next_snapshot` skip them. Use a separate
-/// DesktopClient for commands and preview requests.
+/// Event frames are interleaved and carry no snapshot state. Shortcut
+/// activated/deactivated pairs are preserved in a bounded queue; other events
+/// may coalesce. Consume them with `next_event`, or let `next_snapshot` skip
+/// them. Use a separate DesktopClient for commands and preview requests.
 pub struct DesktopSubscription {
     reader: BufReader<UnixStream>,
     initial: Option<DesktopSnapshot>,
