@@ -21,7 +21,7 @@ fn configured_theme() -> Result<knave_ui::toolkit::Theme, String> {
 }
 
 fn usage() -> &'static str {
-    "usage: knave-shell [--check] [bar|overview|portal-picker|shortcut-assignment|polkit-agent|polkit-cache]\n       knave-shell --supports-overview-service"
+    "usage: knave-shell [--check] [bar|overview|portal-picker|shortcut-assignment|background-permission|polkit-agent|polkit-cache]\n       knave-shell --supports-overview-service"
 }
 
 fn check(role: ShellRole) {
@@ -99,6 +99,9 @@ fn run() -> Result<(), String> {
     }
     if std::env::args().skip(1).eq(["shortcut-assignment"]) {
         return knave_shell::shortcut_assignment::run_with_theme(configured_theme()?);
+    }
+    if std::env::args().skip(1).eq(["background-permission"]) {
+        return knave_shell::background_permission::run_with_theme(configured_theme()?);
     }
     if std::env::args().skip(1).eq(["--supports-overview-service"]) {
         return Ok(());
