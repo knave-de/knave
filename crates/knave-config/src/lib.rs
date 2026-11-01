@@ -939,6 +939,7 @@ impl ConfigDocument {
     }
 }
 
+/// Apply typed settings to the TOML document while retaining unrecognized keys.
 fn apply_config(document: &mut DocumentMut, config: &Config) {
     if let Some(table) = document
         .get("quick_settings")
