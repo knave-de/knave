@@ -76,6 +76,10 @@ environment_file, and bind entries. Villain receives the validated projection
 during session startup and reload. The unreleased format has no schema version
 or root-level compatibility projection.
 
+Virtual-keyboard protocol clients are allowed by default. Set
+`allow_virtual_keyboard = false` under `[compositor.input]` to deny all such clients;
+Villain applies this policy on startup and config reload.
+
 The tracked `config.example.toml` demonstrates the `[compositor]` section of
 Knave's canonical config. Villain does not install a separate config file.
 
@@ -143,6 +147,7 @@ focus_cycle_order = "layout" # or "mru"
 
 [compositor.input]
 focus_follows_mouse = true # false switches focus on click only
+allow_virtual_keyboard = true # false denies virtual-keyboard protocol clients
 ```
 
 ## Keyboard shortcut inhibition

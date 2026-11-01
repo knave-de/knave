@@ -15,6 +15,7 @@ pub struct InputConfig {
     pub tap_to_click: bool,
     pub natural_scroll: bool,
     pub focus_follows_mouse: bool,
+    pub allow_virtual_keyboard: bool,
 }
 
 impl Default for InputConfig {
@@ -23,6 +24,7 @@ impl Default for InputConfig {
             tap_to_click: true,
             natural_scroll: true,
             focus_follows_mouse: true,
+            allow_virtual_keyboard: true,
         }
     }
 }
@@ -207,6 +209,7 @@ impl RuntimeConfig {
                 tap_to_click: compositor.input.tap_to_click,
                 natural_scroll: compositor.input.natural_scroll,
                 focus_follows_mouse: compositor.input.focus_follows_mouse,
+                allow_virtual_keyboard: compositor.input.allow_virtual_keyboard,
             },
             devices: compositor.device.clone(),
             window_rules: WindowRulesRuntime::compile(&compositor.window_rules),
@@ -318,6 +321,7 @@ mod tests {
         assert!(InputConfig::default().tap_to_click);
         assert!(InputConfig::default().natural_scroll);
         assert!(InputConfig::default().focus_follows_mouse);
+        assert!(InputConfig::default().allow_virtual_keyboard);
         assert_eq!(default_environment()["XDG_SESSION_TYPE"], "wayland");
         assert_eq!(
             default_environment()["ELECTRON_OZONE_PLATFORM_HINT"],
@@ -382,13 +386,14 @@ mod tests {
         let path = directory.join("config.toml");
         fs::write(
             &path,
-            "[compositor]\nmodkey = \"Alt\"\nfocus_cycle_order = \"mru\"\n[compositor.input]\ntap_to_click = false\nnatural_scroll = false\nfocus_follows_mouse = false\n",
+            "[compositor]\nmodkey = \"Alt\"\nfocus_cycle_order = \"mru\"\n[compositor.input]\ntap_to_click = false\nnatural_scroll = false\nfocus_follows_mouse = false\nallow_virtual_keyboard = false\n",
         )
         .unwrap();
         let current = RuntimeConfig::load_from(path.clone()).unwrap();
         assert!(!current.input.tap_to_click);
         assert!(!current.input.natural_scroll);
         assert!(!current.input.focus_follows_mouse);
+        assert!(!current.input.allow_virtual_keyboard);
         assert_eq!(
             current.focus_cycle_order,
             knave_config::FocusCycleOrder::Mru

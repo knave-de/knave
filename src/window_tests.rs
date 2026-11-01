@@ -4,12 +4,13 @@ use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
 use std::{
     collections::HashMap,
     os::{fd::AsFd, unix::net::UnixStream},
+    path::PathBuf,
     sync::{Arc, mpsc},
     time::{Duration, Instant},
 };
 use wayland_client::{
     Connection, Dispatch, QueueHandle, delegate_noop,
-    globals::{GlobalListContents, registry_queue_init},
+    globals::{GlobalList, GlobalListContents, registry_queue_init},
     protocol::{
         wl_buffer, wl_compositor, wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_shm,
         wl_shm_pool, wl_surface,
@@ -258,6 +259,43 @@ fn inspect(sender: &mpsc::Sender<Inspect>, f: impl FnOnce(&mut Villain) + Send +
         }))
         .unwrap();
     receive.recv_timeout(Duration::from_secs(5)).unwrap();
+}
+fn has_global(globals: &GlobalList, interface: &str) -> bool {
+    globals
+        .contents()
+        .with_list(|entries| entries.iter().any(|entry| entry.interface == interface))
+}
+struct ConfigFileGuard {
+    path: PathBuf,
+    original: Option<Vec<u8>>,
+}
+impl ConfigFileGuard {
+    /// Preserve the user's configuration file for a test that needs reloads.
+    fn new() -> Self {
+        let path = knave_config::ConfigDocument::default_path().unwrap();
+        let original = match std::fs::read(&path) {
+            Ok(contents) => Some(contents),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => panic!("could not preserve {}: {error}", path.display()),
+        };
+        Self { path, original }
+    }
+
+    /// Replace the guarded file with test configuration.
+    fn write(&self, contents: &str) {
+        std::fs::create_dir_all(self.path.parent().unwrap()).unwrap();
+        std::fs::write(&self.path, contents).unwrap();
+    }
+}
+impl Drop for ConfigFileGuard {
+    /// Restore the file contents or remove a file created by the test.
+    fn drop(&mut self) {
+        if let Some(contents) = &self.original {
+            let _ = std::fs::write(&self.path, contents);
+        } else {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
 }
 fn find(state: &Villain, app: &str) -> WindowInfo {
     state
@@ -1531,6 +1569,88 @@ fn keyboard_shortcuts_inhibitor_forwards_binding_keys() {
             inspect(&mut state);
         }
         state.space.refresh();
+        state.display_handle.flush_clients().unwrap();
+    }
+    thread.join().unwrap();
+}
+
+#[test]
+#[ignore = "requires a private XDG_RUNTIME_DIR"]
+/// Verify a connected registry sees the virtual-keyboard global disappear and return on reload.
+fn virtual_keyboard_global_tracks_policy_reloads_for_existing_registry() {
+    const VIRTUAL_KEYBOARD_MANAGER: &str = "zwp_virtual_keyboard_manager_v1";
+
+    let config_guard = ConfigFileGuard::new();
+    config_guard.write("[compositor.input]\nallow_virtual_keyboard = true\n");
+    let path = config_guard.path.clone();
+    let mut event_loop = EventLoop::try_new().unwrap();
+    let mut state = Villain::new(
+        &mut event_loop,
+        Display::new().unwrap(),
+        crate::config::RuntimeConfig::load().unwrap(),
+    );
+    let (server, client) = UnixStream::pair().unwrap();
+    state
+        .display_handle
+        .insert_client(server, Arc::new(crate::state::ClientState::default()))
+        .unwrap();
+    let (sender, requests) = mpsc::channel::<Inspect>();
+    let thread = std::thread::spawn(move || {
+        let conn = Connection::from_socket(client).unwrap();
+        let (globals, mut queue) = registry_queue_init::<Client>(&conn).unwrap();
+        assert!(has_global(&globals, VIRTUAL_KEYBOARD_MANAGER));
+
+        let disable_path = path.clone();
+        inspect(&sender, move |state| {
+            std::fs::write(
+                &disable_path,
+                "[compositor.input]\nallow_virtual_keyboard = false\n",
+            )
+            .unwrap();
+            state
+                .dispatch(crate::dispatch::Dispatch::ReloadConfig)
+                .unwrap();
+            assert!(
+                !state
+                    .virtual_keyboard_allowed
+                    .load(std::sync::atomic::Ordering::Relaxed)
+            );
+        });
+        queue.roundtrip(&mut Client::default()).unwrap();
+        assert!(!has_global(&globals, VIRTUAL_KEYBOARD_MANAGER));
+
+        let enable_path = path.clone();
+        inspect(&sender, move |state| {
+            std::fs::write(
+                &enable_path,
+                "[compositor.input]\nallow_virtual_keyboard = true\n",
+            )
+            .unwrap();
+            state
+                .dispatch(crate::dispatch::Dispatch::ReloadConfig)
+                .unwrap();
+            assert!(
+                state
+                    .virtual_keyboard_allowed
+                    .load(std::sync::atomic::Ordering::Relaxed)
+            );
+        });
+        queue.roundtrip(&mut Client::default()).unwrap();
+        assert!(has_global(&globals, VIRTUAL_KEYBOARD_MANAGER));
+    });
+
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !thread.is_finished() {
+        assert!(
+            Instant::now() < deadline,
+            "virtual-keyboard policy test timed out"
+        );
+        event_loop
+            .dispatch(Duration::from_millis(2), &mut state)
+            .unwrap();
+        while let Ok(inspect) = requests.try_recv() {
+            inspect(&mut state);
+        }
         state.display_handle.flush_clients().unwrap();
     }
     thread.join().unwrap();

@@ -40,6 +40,7 @@ natural_scroll = true
 # Focus the window under the pointer while it moves. Set to false to
 # switch window focus on click only.
 focus_follows_mouse = true
+allow_virtual_keyboard = true # false denies clients using the virtual-keyboard protocol
 
 # Optional per-device overrides. `name` matches the runtime libinput device
 # name case-insensitively and supports the `*` and `?` wildcards. Unset fields

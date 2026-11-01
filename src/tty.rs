@@ -575,9 +575,29 @@ fn configure_input_device(
 }
 
 impl Villain {
+    /// Apply configured device settings and virtual-keyboard client policy.
     pub fn apply_input_config(&mut self) {
         let global = self.config.input;
         let rules = self.config.devices.clone();
+        let was_allowed = self.virtual_keyboard_allowed.swap(
+            global.allow_virtual_keyboard,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        if was_allowed != global.allow_virtual_keyboard {
+            if global.allow_virtual_keyboard {
+                self.display_handle
+                    .remove_global::<Self>(self.virtual_keyboard_manager_state.global());
+                let policy = std::sync::Arc::clone(&self.virtual_keyboard_allowed);
+                self.virtual_keyboard_manager_state =
+                    smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState::new::<Self, _>(
+                        &self.display_handle,
+                        move |_| policy.load(std::sync::atomic::Ordering::Relaxed),
+                    );
+            } else {
+                self.display_handle
+                    .disable_global::<Self>(self.virtual_keyboard_manager_state.global());
+            }
+        }
         if let Some(tty) = self.tty.as_mut() {
             for device in &mut tty.input_devices {
                 configure_input_device(device, global, &rules);
