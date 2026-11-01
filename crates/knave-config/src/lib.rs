@@ -151,6 +151,9 @@ pub struct CompositorInputConfig {
     /// `false` keeps focus on click only.
     #[serde(default = "default_true")]
     pub focus_follows_mouse: bool,
+    /// Allow clients to bind the virtual-keyboard Wayland protocol.
+    #[serde(default = "default_true")]
+    pub allow_virtual_keyboard: bool,
 }
 
 impl Default for CompositorInputConfig {
@@ -159,6 +162,7 @@ impl Default for CompositorInputConfig {
             tap_to_click: true,
             natural_scroll: true,
             focus_follows_mouse: true,
+            allow_virtual_keyboard: true,
         }
     }
 }
@@ -935,6 +939,7 @@ impl ConfigDocument {
     }
 }
 
+/// Apply typed settings to the TOML document while retaining unrecognized keys.
 fn apply_config(document: &mut DocumentMut, config: &Config) {
     if let Some(table) = document
         .get("quick_settings")
@@ -1099,6 +1104,7 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
             input["tap_to_click"] = value(config.compositor.input.tap_to_click);
             input["natural_scroll"] = value(config.compositor.input.natural_scroll);
             input["focus_follows_mouse"] = value(config.compositor.input.focus_follows_mouse);
+            input["allow_virtual_keyboard"] = value(config.compositor.input.allow_virtual_keyboard);
             input
         }),
     );
@@ -1451,9 +1457,11 @@ mod tests {
             FocusCycleOrder::Layout
         );
         assert!(document.config().compositor.input.focus_follows_mouse);
+        assert!(document.config().compositor.input.allow_virtual_keyboard);
         let mut config = document.config().clone();
         config.compositor.focus_cycle_order = FocusCycleOrder::Mru;
         config.compositor.input.focus_follows_mouse = false;
+        config.compositor.input.allow_virtual_keyboard = false;
         document.write(config).unwrap();
         let reloaded = ConfigDocument::load(&path).unwrap();
         assert_eq!(
@@ -1461,8 +1469,10 @@ mod tests {
             FocusCycleOrder::Mru
         );
         assert!(!reloaded.config().compositor.input.focus_follows_mouse);
+        assert!(!reloaded.config().compositor.input.allow_virtual_keyboard);
         assert!(document.source().contains("unknown_option = 7"));
         assert!(document.source().contains("focus_follows_mouse = false"));
+        assert!(document.source().contains("allow_virtual_keyboard = false"));
     }
 
     #[test]
