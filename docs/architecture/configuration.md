@@ -136,8 +136,11 @@ workspace selected by window rules.
 ## Input devices
 
 The additive `[compositor.input]` table sets the global touchpad policy:
-`tap_to_click`, `natural_scroll`, and `focus_follows_mouse`, all defaulting
-to true. Per-device
+`tap_to_click`, `natural_scroll`, `focus_follows_mouse`, and
+`allow_virtual_keyboard`, all defaulting to true. Set
+`allow_virtual_keyboard = false` to prevent Wayland clients from binding the
+virtual-keyboard protocol. This is an opt-in restriction; when enabled, it
+blocks all virtual-keyboard clients. Per-device
 overrides use one or more `[[compositor.device]]` rules:
 
 ```toml
@@ -145,6 +148,7 @@ overrides use one or more `[[compositor.device]]` rules:
 tap_to_click = true
 natural_scroll = true
 focus_follows_mouse = true
+allow_virtual_keyboard = true
 
 [[compositor.device]]
 name = "Example Touchpad"
