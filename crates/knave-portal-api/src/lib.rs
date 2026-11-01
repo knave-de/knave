@@ -206,6 +206,7 @@ pub struct BackgroundReply {
 }
 
 impl BackgroundRequest {
+    /// Check that the request has a usable ID and fields within the contract limits.
     pub fn validate(&self) -> Result<(), String> {
         if self.request_id.is_empty()
             || self.request_id.len() > 256
@@ -221,6 +222,7 @@ impl BackgroundRequest {
 }
 
 impl BackgroundReply {
+    /// Check that this reply belongs to the request that opened the prompt.
     pub fn validate(&self, request: &BackgroundRequest) -> Result<(), String> {
         if self.request_id != request.request_id {
             return Err("background reply has the wrong request ID".into());
