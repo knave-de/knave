@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 pub const MAX_REQUEST: usize = 2 * 1024 * 1024;
 pub const MAX_SOURCES: usize = 64;
 pub const MAX_SHORTCUTS: usize = 64;
+pub const MAX_BACKGROUND_FIELD: usize = 1024;
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SourceKind {
@@ -175,6 +176,58 @@ impl ShortcutAssignmentReply {
             }
             _ => Err("invalid shortcut assignment reply".into()),
         }
+    }
+}
+
+/// Request shown by the shell when an application asks to run in the background.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct BackgroundRequest {
+    pub request_id: String,
+    pub app_id: String,
+    pub name: String,
+    pub reason: String,
+}
+
+/// User choice for a background activity request: deny, allow, or allow this run.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BackgroundChoice {
+    Deny,
+    Allow,
+    AllowOnce,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct BackgroundReply {
+    pub request_id: String,
+    pub choice: BackgroundChoice,
+}
+
+impl BackgroundRequest {
+    /// Check that the request has a usable ID and fields within the contract limits.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.request_id.is_empty()
+            || self.request_id.len() > 256
+            || self.app_id.is_empty()
+            || self.app_id.len() > 255
+            || self.name.len() > MAX_BACKGROUND_FIELD
+            || self.reason.len() > MAX_BACKGROUND_FIELD
+        {
+            return Err("unsupported or oversized background request".into());
+        }
+        Ok(())
+    }
+}
+
+impl BackgroundReply {
+    /// Check that this reply belongs to the request that opened the prompt.
+    pub fn validate(&self, request: &BackgroundRequest) -> Result<(), String> {
+        if self.request_id != request.request_id {
+            return Err("background reply has the wrong request ID".into());
+        }
+        Ok(())
     }
 }
 
