@@ -392,7 +392,8 @@ impl Overview {
         );
         dock.classes.push("overview-dock".into());
         dock.layout.clip = ClipMode::Bounds;
-        let item_offset = if paged { 39.0 } else { 10.0 };
+        // Child offsets start inside the dock border.
+        let item_offset = if paged { 38.0 } else { 9.0 };
         if paged {
             for (slot, next) in [(0, false), (1, true)] {
                 let id = ElementId(DOCK_ELEMENT_ID_BASE + 0x4000 + slot as u64);
@@ -460,13 +461,18 @@ impl Overview {
                             },
                         ),
                     ),
-                    Rect::new((item_width - icon_size) / 2.0, 2.0, icon_size, icon_size),
+                    Rect::new(
+                        (item_width - icon_size) / 2.0 - 1.0,
+                        2.0,
+                        icon_size,
+                        icon_size,
+                    ),
                 ));
             } else {
                 let mut fallback = text(
                     DOCK_ELEMENT_ID_BASE + 0x1000 + slot as u64,
                     "▣",
-                    Rect::new(0.0, 2.0, item_width, icon_size),
+                    Rect::new(-1.0, 2.0, item_width, icon_size),
                     icon_size * 0.7,
                     "overview-muted",
                 );
@@ -476,7 +482,7 @@ impl Overview {
             if !item.windows.is_empty() {
                 let mut indicator = panel(
                     DOCK_ELEMENT_ID_BASE + 0x2000 + slot as u64,
-                    Rect::new((item_width - 14.0) / 2.0, 54.0, 14.0, 3.0),
+                    Rect::new((item_width - 14.0) / 2.0 - 1.0, 54.0, 14.0, 3.0),
                 );
                 indicator.classes.push("overview-dock-running".into());
                 button.children.push(indicator);

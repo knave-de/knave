@@ -48,6 +48,7 @@ pub struct Notifications {
     seen: HashSet<u64>,
     regions: Vec<Rect>,
     pointer_down_outside: bool,
+    pressed_card: Option<u64>,
     pressed: bool,
     pending_state: Option<NotificationSnapshot>,
     focus_on_open: bool,
@@ -86,6 +87,7 @@ impl Notifications {
             seen: HashSet::new(),
             regions: Vec::new(),
             pointer_down_outside: false,
+            pressed_card: None,
             pressed: false,
             pending_state: None,
             focus_on_open: false,
@@ -298,6 +300,24 @@ impl Application for Notifications {
         }
         if let Input::PointerDown(p) = &event {
             self.pressed = true;
+            self.pressed_card = self
+                .state
+                .notifications
+                .iter()
+                .filter(|n| n.live && n.actions.iter().any(|a| a.key == "default"))
+                .find(|n| {
+                    self.scene
+                        .bounds(ElementId(view::card_id(n.id)))
+                        .is_some_and(|r| contains(r, *p))
+                })
+                .map(|n| n.id);
+            if self
+                .targets
+                .keys()
+                .any(|id| self.scene.bounds(*id).is_some_and(|r| contains(r, *p)))
+            {
+                self.pressed_card = None;
+            }
             self.pointer_down_outside = self.state.center_open
                 && self.scene.bounds(PANEL).is_some_and(|r| !contains(r, *p));
         }
@@ -305,7 +325,24 @@ impl Application for Notifications {
             event,
             Input::PointerUp(_) | Input::Cancel | Input::FocusLost
         );
+        let clicked_card = if let Input::PointerUp(p) = &event {
+            self.pressed_card.filter(|id| {
+                self.scene
+                    .bounds(ElementId(view::card_id(*id)))
+                    .is_some_and(|r| contains(r, *p))
+            })
+        } else {
+            None
+        };
         let result = self.scene.event(event);
+        if result.action.is_none()
+            && let Some(id) = clicked_card
+        {
+            self.send(NotificationCommand::Invoke {
+                id,
+                action: "default".into(),
+            });
+        }
         match result.action {
             Some(Action::Activated(id)) => self.activate(id),
             Some(Action::Toggled(id, checked)) if id == ElementId(DND) => {
@@ -318,6 +355,7 @@ impl Application for Notifications {
                 self.send(NotificationCommand::CloseCenter);
             }
             self.pressed = false;
+            self.pressed_card = None;
             self.pointer_down_outside = false;
             if let Some(state) = self.pending_state.take() {
                 self.apply(state);

@@ -312,6 +312,8 @@ impl Notifications {
             footer.children.push(next);
             panel.children.push(footer);
         } else {
+            panel = panel.without_surface().class("notifications-structure");
+            panel.style.background = Some(ShapePaint::fill(Color::rgba(0, 0, 0, 0)));
             panel.layout.padding = 0.0;
             panel.layout.height = Length::Px((height - top - gap).max(0.0));
             let notifications: Vec<_> = self
@@ -482,7 +484,13 @@ impl Notifications {
             );
         }
         if n.live {
-            for (index, action) in n.actions.iter().take(MAX_ACTIONS).enumerate() {
+            for (index, action) in n
+                .actions
+                .iter()
+                .filter(|action| action.key != "default")
+                .take(MAX_ACTIONS)
+                .enumerate()
+            {
                 let mut button = p.button(id + 12 + index as u64, &short(&action.label, 100));
                 button.tooltip = Some(action.label.clone());
                 self.targets
