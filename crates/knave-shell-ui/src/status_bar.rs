@@ -287,13 +287,6 @@ impl StatusBar {
                         workspace.workspace.0.to_string()
                     },
                 });
-                if workspace.window_count > 0 {
-                    scene.push(crate::UiNode::Panel {
-                        id: crate::NodeId(5_000 + u64::from(workspace.workspace.0)),
-                        bounds: knave_ui::Rect::new(x + 9.5, ISLAND_Y + 22.0, 3.0, 3.0),
-                        color: knave_ui::Color::ACCENT,
-                    });
-                }
                 scene.target(bounds, crate::UiAction::FocusWorkspace(workspace.workspace));
             }
         }
@@ -583,11 +576,6 @@ fn node_class(node: &crate::UiNode) -> &'static str {
         crate::UiNode::Panel { id, .. } if id.0 == 7_000 => "statusbar__focus-island",
         crate::UiNode::Panel { id, .. } if id.0 == 8_000 => "statusbar__system-island",
         crate::UiNode::Panel { id, .. } if id.0 == 40_010 => "statusbar__unread-badge",
-        crate::UiNode::Panel { id, bounds, .. }
-            if id.0 >= 5_000 && bounds.width == 3.0 && bounds.height == 3.0 =>
-        {
-            "statusbar__workspace-occupancy"
-        }
         crate::UiNode::Panel { .. } => "statusbar__applet-attention",
         crate::UiNode::Label { id, .. } => match id.0 {
             8 => "statusbar__focused-title",
@@ -966,8 +954,8 @@ mod tests {
         let bar = StatusBar::new(1, 600.0, 36.0, Some(&desktop()), true, None, &[]);
         assert!(bar.scene.nodes().iter().any(|node| matches!(node,
             UiNode::Label { text, .. } if text == "0")));
-        assert!(bar.scene.nodes().iter().any(|node| matches!(node,
-            UiNode::Panel { id, bounds, .. } if id.0 == 5_001 && bounds.width == 3.0)));
+        assert!(!bar.scene.nodes().iter().any(|node| matches!(node,
+            UiNode::Panel { id, .. } if (5_000..6_000).contains(&id.0))));
         assert!(
             bar.display
                 .commands
