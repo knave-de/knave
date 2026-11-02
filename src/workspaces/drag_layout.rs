@@ -136,6 +136,48 @@ impl Villain {
 mod tests {
     use super::*;
     #[test]
+    fn moving_constrained_floating_window_preserves_saved_size() {
+        let saved = Rectangle::new((0, 0).into(), (1200, 900).into());
+        let output = (800, 600).into();
+        let unconstrained = (0, 0).into();
+        let moved =
+            move_floating_geometry(saved, saved, output, unconstrained, unconstrained, (32, 0));
+        assert_eq!(moved.size, saved.size);
+        assert_eq!(moved.loc, (0, 0).into());
+        let smaller = Rectangle::new((10, 20).into(), (400, 300).into());
+        let moved = move_floating_geometry(
+            smaller,
+            smaller,
+            output,
+            unconstrained,
+            unconstrained,
+            (32, 0),
+        );
+        assert_eq!(moved.loc, (42, 20).into());
+        assert_eq!(moved.size, smaller.size);
+        let visible = Rectangle::new((100, 20).into(), smaller.size);
+        let moved = move_floating_geometry(
+            smaller,
+            visible,
+            output,
+            unconstrained,
+            unconstrained,
+            (32, 0),
+        );
+        assert_eq!(moved.loc, (132, 20).into());
+        assert_eq!(moved.size, smaller.size);
+        let moved = move_floating_geometry(
+            smaller,
+            visible,
+            output,
+            unconstrained,
+            unconstrained,
+            (0, 32),
+        );
+        assert_eq!(moved.loc, (10, 52).into());
+    }
+
+    #[test]
     fn weighted_stack_fills_height_without_rounding_gaps() {
         assert_eq!(weighted_heights(601, &[1, 1, 1]), vec![200, 200, 201]);
         assert_eq!(weighted_heights(600, &[1, 2, 3]), vec![100, 200, 300]);

@@ -166,6 +166,27 @@ pub(crate) fn constrain_geometry(
     rect
 }
 
+fn move_floating_geometry(
+    mut saved: Geometry,
+    visible: Geometry,
+    output: Size<i32, smithay::utils::Logical>,
+    min: Size<i32, smithay::utils::Logical>,
+    max: Size<i32, smithay::utils::Logical>,
+    delta: (i32, i32),
+) -> Geometry {
+    let mut moved = visible;
+    moved.loc.x = moved.loc.x.saturating_add(delta.0);
+    moved.loc.y = moved.loc.y.saturating_add(delta.1);
+    let loc = constrain_geometry(moved, output, min, max).loc;
+    if delta.0 != 0 {
+        saved.loc.x = loc.x;
+    }
+    if delta.1 != 0 {
+        saved.loc.y = loc.y;
+    }
+    saved
+}
+
 fn window_identity(window: &Window) -> Option<(String, String)> {
     if let Some(surface) = window.toplevel() {
         return Some(smithay::wayland::compositor::with_states(
@@ -1645,6 +1666,54 @@ impl Villain {
             return;
         };
         self.reveal_and_focus(index, target.0, true);
+    }
+
+    /// Move a floating window by a fixed step or swap a tile with its nearest neighbor.
+    pub fn move_focused_directional(&mut self, direction: FocusDirection) {
+        let Some(current) = self.focused_window() else {
+            return;
+        };
+        let index = self.active_workspace;
+        let placements = self.workspace_layout(index);
+        let Some((_, rect, fullscreen, maximized, tiled, visible)) =
+            placements.iter().find(|entry| entry.0 == current)
+        else {
+            return;
+        };
+        if *fullscreen || *maximized || !*visible {
+            return;
+        }
+        if !*tiled {
+            let (dx, dy) = match direction {
+                FocusDirection::Left => (-32, 0),
+                FocusDirection::Right => (32, 0),
+                FocusDirection::Up => (0, -32),
+                FocusDirection::Down => (0, 32),
+            };
+            let (min, max) = Self::window_constraints(&current);
+            if let Some(entry) = self.workspaces[index]
+                .windows
+                .iter_mut()
+                .find(|entry| entry.window == current)
+                && let Some(mut saved) = entry.floating
+            {
+                saved = move_floating_geometry(saved, *rect, self.output_size, min, max, (dx, dy));
+                entry.floating = Some(saved);
+                self.desktop_state_dirty = true;
+                self.relayout_active_workspace();
+            }
+            return;
+        }
+        let candidates: Vec<_> = self
+            .tiled_slots()
+            .into_iter()
+            .filter(|(window, _)| *window != current)
+            .collect();
+        let centers: Vec<_> = candidates.iter().map(|(_, rect)| center_of(rect)).collect();
+        if let Some(target) = nearest_center_in_direction(&centers, center_of(rect), direction) {
+            self.swap_tiles(&current, &candidates[target].0);
+            self.relayout_active_workspace();
+        }
     }
 
     /// Focus a window on workspace `index`, leaving fullscreen and maximize

@@ -46,6 +46,7 @@ pub enum Dispatch {
     RestoreWindow(WindowId),
     FocusCycle(FocusCycleStep),
     FocusDirection(FocusDirection),
+    MoveDirection(FocusDirection),
     Spawn(Vec<String>),
     Quit,
     ToggleOverview,
@@ -251,6 +252,10 @@ impl Villain {
             }
             Dispatch::FocusCycle(step) => {
                 self.cycle_focus(step);
+                Ok(())
+            }
+            Dispatch::MoveDirection(direction) => {
+                self.move_focused_directional(direction);
                 Ok(())
             }
             Dispatch::FocusDirection(direction) => {

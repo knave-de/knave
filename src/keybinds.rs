@@ -216,6 +216,10 @@ impl KeybindRegistry {
             spec("MOD+SHIFT+PRINT", "screenshot", &["window", "clipboard"]),
             spec("MOD+M", "minimize", &[]),
             spec("MOD+SHIFT+M", "restore-minimized", &[]),
+            spec("MOD+SHIFT+H", "move-left", &[]),
+            spec("MOD+SHIFT+J", "move-down", &[]),
+            spec("MOD+SHIFT+K", "move-up", &[]),
+            spec("MOD+SHIFT+L", "move-right", &[]),
             spec("MOD+H", "focus-left", &[]),
             spec("MOD+L", "focus-right", &[]),
             spec("MOD+K", "focus-up", &[]),
@@ -536,6 +540,14 @@ fn parse_dispatch(spec: &BindSpec) -> Result<Dispatch, String> {
                 _ => FocusDirection::Down,
             }))
         }
+        "move-left" | "move-right" | "move-up" | "move-down" if spec.args.is_empty() => {
+            Ok(Dispatch::MoveDirection(match spec.dispatch.as_str() {
+                "move-left" => FocusDirection::Left,
+                "move-right" => FocusDirection::Right,
+                "move-up" => FocusDirection::Up,
+                _ => FocusDirection::Down,
+            }))
+        }
         "quit" if spec.args.is_empty() => Ok(Dispatch::Quit),
         "toggle-overview" if spec.args.is_empty() => Ok(Dispatch::ToggleOverview),
         // Keep user configurations that copied the former default from creating
@@ -558,9 +570,8 @@ fn parse_dispatch(spec: &BindSpec) -> Result<Dispatch, String> {
         "toggle-floating" | "maximize" | "unmaximize" | "toggle-maximize" | "close"
         | "minimize" | "restore-minimized" | "previous-workspace" | "last-workspace"
         | "next-workspace" | "quit" | "toggle-overview" | "focus-next" | "focus-previous"
-        | "focus-left" | "focus-right" | "focus-up" | "focus-down" => {
-            Err("dispatch does not accept arguments".into())
-        }
+        | "focus-left" | "focus-right" | "focus-up" | "focus-down" | "move-left" | "move-right"
+        | "move-up" | "move-down" => Err("dispatch does not accept arguments".into()),
         "exec" => Err("exec requires a program in args".into()),
         "workspace" | "move-to-workspace" => {
             Err(format!("{} requires exactly one argument", spec.dispatch))
@@ -1007,6 +1018,17 @@ mod tests {
             registry.find(&keys(keysyms::KEY_l), false, false, false, true),
             Some(Dispatch::FocusDirection(FocusDirection::Right))
         );
+        for (symbol, direction) in [
+            (keysyms::KEY_h, FocusDirection::Left),
+            (keysyms::KEY_j, FocusDirection::Down),
+            (keysyms::KEY_k, FocusDirection::Up),
+            (keysyms::KEY_l, FocusDirection::Right),
+        ] {
+            assert_eq!(
+                registry.find(&keys(symbol), false, false, true, true),
+                Some(Dispatch::MoveDirection(direction))
+            );
+        }
         for (keys, dispatch) in [
             ("MOD+TAB", "focus-next"),
             ("MOD+SHIFT+TAB", "focus-previous"),
