@@ -6,8 +6,10 @@ pub mod quick_settings;
 use std::{
     env,
     ffi::OsStr,
+    fs,
     io::{self, BufRead, BufReader, Read, Write},
     net::Shutdown,
+    os::unix::fs::FileTypeExt,
     os::unix::net::UnixStream,
     path::{Path, PathBuf},
     time::Duration,
@@ -309,6 +311,10 @@ pub enum DesktopErrorCode {
 pub enum ClientError {
     #[error("{0} is not set")]
     MissingEnvironment(&'static str),
+    #[error("multiple active Knave desktop sockets found; set WAYLAND_DISPLAY or KNAVE_SOCKET")]
+    AmbiguousDesktopSocket,
+    #[error("no active Knave desktop socket found; set WAYLAND_DISPLAY or KNAVE_SOCKET")]
+    NoDesktopSocket,
     #[error("desktop IPC I/O failed: {0}")]
     Io(#[from] io::Error),
     #[error("desktop IPC JSON failed: {0}")]
@@ -329,9 +335,43 @@ pub fn socket_path() -> Result<PathBuf, ClientError> {
     }
     let runtime =
         env::var_os("XDG_RUNTIME_DIR").ok_or(ClientError::MissingEnvironment("XDG_RUNTIME_DIR"))?;
-    let display =
-        env::var_os("WAYLAND_DISPLAY").ok_or(ClientError::MissingEnvironment("WAYLAND_DISPLAY"))?;
-    Ok(socket_path_for_display(runtime.as_ref(), display.as_ref()))
+    if let Some(display) = env::var_os("WAYLAND_DISPLAY") {
+        return Ok(socket_path_for_display(runtime.as_ref(), display.as_ref()));
+    }
+
+    discover_socket(&PathBuf::from(runtime.as_os_str()))
+}
+
+// A process launched from the desktop normally inherits WAYLAND_DISPLAY.
+// If it was stripped by a terminal or service launcher, recover the session
+// only when there is exactly one live Knave compositor socket.
+fn discover_socket(runtime_path: &Path) -> Result<PathBuf, ClientError> {
+    let control_dir = runtime_path.join("knave");
+    let entries = match fs::read_dir(control_dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Err(ClientError::NoDesktopSocket);
+        }
+        Err(error) => return Err(ClientError::Io(error)),
+    };
+    let mut candidates = entries.filter_map(Result::ok).filter_map(|entry| {
+        let name = entry.file_name();
+        let name = name.to_str()?;
+        let display = name.strip_prefix("desktop-")?.strip_suffix(".sock")?;
+        let control_is_socket = entry.file_type().ok()?.is_socket();
+        let wayland_is_socket = fs::symlink_metadata(runtime_path.join(display))
+            .ok()?
+            .file_type()
+            .is_socket();
+        (control_is_socket && wayland_is_socket).then(|| entry.path())
+    });
+    let Some(path) = candidates.next() else {
+        return Err(ClientError::NoDesktopSocket);
+    };
+    if candidates.next().is_some() {
+        return Err(ClientError::AmbiguousDesktopSocket);
+    }
+    Ok(path)
 }
 
 pub fn socket_path_for_display(runtime: &OsStr, display: &OsStr) -> PathBuf {
@@ -492,6 +532,7 @@ fn next_response<R: BufRead>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::net::UnixListener;
 
     #[test]
     fn interaction_commands_roundtrip_and_default_target() {
@@ -657,6 +698,36 @@ mod tests {
             socket_path_for_display(OsStr::new("/run/user/1000"), OsStr::new("wayland-2")),
             PathBuf::from("/run/user/1000/knave/desktop-wayland-2.sock")
         );
+    }
+
+    #[test]
+    fn missing_display_discovers_the_unique_live_knave_socket() {
+        let runtime = tempfile::tempdir().unwrap();
+        let control = runtime.path().join("knave");
+        fs::create_dir(&control).unwrap();
+        let _wayland = UnixListener::bind(runtime.path().join("wayland-7")).unwrap();
+        let _desktop = UnixListener::bind(control.join("desktop-wayland-7.sock")).unwrap();
+
+        assert_eq!(
+            discover_socket(runtime.path()).unwrap(),
+            control.join("desktop-wayland-7.sock")
+        );
+    }
+
+    #[test]
+    fn missing_display_rejects_multiple_live_knave_sockets() {
+        let runtime = tempfile::tempdir().unwrap();
+        let control = runtime.path().join("knave");
+        fs::create_dir(&control).unwrap();
+        let _wayland_1 = UnixListener::bind(runtime.path().join("wayland-1")).unwrap();
+        let _desktop_1 = UnixListener::bind(control.join("desktop-wayland-1.sock")).unwrap();
+        let _wayland_2 = UnixListener::bind(runtime.path().join("wayland-2")).unwrap();
+        let _desktop_2 = UnixListener::bind(control.join("desktop-wayland-2.sock")).unwrap();
+
+        assert!(matches!(
+            discover_socket(runtime.path()),
+            Err(ClientError::AmbiguousDesktopSocket)
+        ));
     }
 
     #[test]

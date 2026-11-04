@@ -28,7 +28,9 @@ scripts that need a dedicated session executable. It uses the same
 ## Desktop control CLI
 
 `knavectl` sends one request to the active Knave desktop socket and prints the
-JSON response. `KNAVE_SOCKET` overrides socket discovery for isolated tests.
+JSON response. `KNAVE_SOCKET` overrides socket discovery; when `WAYLAND_DISPLAY`
+is absent, it discovers the socket if exactly one live Knave session is present.
+If multiple sessions are live, set `WAYLAND_DISPLAY` or `KNAVE_SOCKET` to select one.
 
 | Command | Request |
 | --- | --- |
