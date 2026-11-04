@@ -6,6 +6,40 @@ use knave_config::{
 use smithay::utils::{Logical, Rectangle};
 type Geometry = Rectangle<i32, Logical>;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TitlebarControl {
+    Close,
+    Maximize,
+    Float,
+    Minimize,
+}
+
+impl TitlebarControl {
+    pub(crate) const fn right_slot(self) -> i32 {
+        match self {
+            Self::Close => 0,
+            Self::Maximize => 1,
+            Self::Float => 2,
+            Self::Minimize => 3,
+        }
+    }
+
+    pub(crate) fn from_right_distance(distance: f64) -> Option<Self> {
+        if !(distance > 0.0 && distance <= 96.0) {
+            return None;
+        }
+        Some(if distance <= 24.0 {
+            Self::Close
+        } else if distance <= 48.0 {
+            Self::Maximize
+        } else if distance <= 72.0 {
+            Self::Float
+        } else {
+            Self::Minimize
+        })
+    }
+}
+
 pub(crate) fn inset(mut rect: Geometry, edges: Edges) -> Geometry {
     let horizontal = fit_pair(rect.size.w, i32::from(edges.left), i32::from(edges.right));
     let vertical = fit_pair(rect.size.h, i32::from(edges.top), i32::from(edges.bottom));

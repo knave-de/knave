@@ -19,6 +19,17 @@ runtime paths when they are affected. Compilation, unit tests, and compositor
 startup alone do not prove acceptable DRM, Wayland, GPU, or lifecycle resource
 behavior.
 
+With DEBUG logging enabled for the `villain::perf` tracing target, Winit
+rendering records `slow_render_frame` through `render_frame`; direct-TTY
+rendering through `Tty::render` has no matching frame timer and does not emit
+that event. `titlebar_cache_miss` is emitted for each profiled cache miss, and
+its `slow` field reports whether rasterization crossed the timing threshold.
+Other diagnostics cover scene generation, overview, and effect composition.
+These events help locate expensive work; they are not a frame-time guarantee or
+a substitute for workload-based CPU, memory, and presentation measurements.
+Titlebar raster buffers keep one entry per live server-decorated window and are
+evicted when that window is removed.
+
 Record a baseline and expected delta for performance-sensitive changes. Explain
 or mitigate regressions before merge; do not hide them by reducing the workload
 or omitting measurements.

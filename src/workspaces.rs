@@ -18,6 +18,10 @@ use smithay::{
 use std::{
     collections::BTreeMap,
     process::Command,
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -166,6 +170,65 @@ pub(crate) fn constrain_geometry(
     rect
 }
 
+pub(crate) const TITLEBAR_HEIGHT: i32 = 34;
+
+pub(crate) struct XdgDecorationModeState(
+    pub Mutex<smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode>,
+    pub AtomicBool,
+);
+
+pub(crate) fn mark_decoration_destroyed(
+    surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+) {
+    smithay::wayland::compositor::with_states(surface, |states| {
+        if let Some(state) = states.data_map.get::<XdgDecorationModeState>() {
+            state.1.store(true, Ordering::Release);
+        }
+    });
+}
+
+pub(crate) fn apply_decoration_destroy_on_commit(
+    surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+) -> bool {
+    smithay::wayland::compositor::with_states(surface, |states| {
+        let Some(state) = states.data_map.get::<XdgDecorationModeState>() else {
+            return false;
+        };
+        if !state.1.swap(false, Ordering::AcqRel) {
+            return false;
+        }
+        if let Ok(mut mode) = state.0.lock() {
+            *mode = smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode::ClientSide;
+        }
+        true
+    })
+}
+
+pub(crate) fn has_server_side_decoration(surface: &ToplevelSurface) -> bool {
+    use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
+    smithay::wayland::compositor::with_states(surface.wl_surface(), |states| {
+        states
+            .data_map
+            .get::<XdgDecorationModeState>()
+            .and_then(|state| state.0.lock().ok().map(|mode| *mode))
+            == Some(Mode::ServerSide)
+    })
+}
+
+pub(crate) fn titlebar_rect(
+    window: &Window,
+    client: Geometry,
+    fullscreen: bool,
+) -> Option<Geometry> {
+    if fullscreen || !window.toplevel().is_some_and(has_server_side_decoration) {
+        return None;
+    }
+    Some(Rectangle::new(
+        (client.loc.x, client.loc.y - TITLEBAR_HEIGHT).into(),
+        (client.size.w, TITLEBAR_HEIGHT).into(),
+    ))
+}
+
 fn move_floating_geometry(
     mut saved: Geometry,
     visible: Geometry,
@@ -258,6 +321,20 @@ impl Workspace {
 }
 
 impl Villain {
+    /// A server titlebar is compositor-owned, while the mapped element
+    /// location already marks the client surface origin. Other windows may
+    /// have geometry extents that must be removed to find that origin.
+    fn pointer_origin(
+        window: &Window,
+        location: Point<i32, smithay::utils::Logical>,
+    ) -> Point<i32, smithay::utils::Logical> {
+        if window.toplevel().is_some_and(has_server_side_decoration) {
+            location
+        } else {
+            location - window.geometry().loc
+        }
+    }
+
     pub(crate) fn capture_window(&self, id: WindowId) -> Option<Window> {
         self.workspaces
             .iter()
@@ -624,6 +701,17 @@ impl Villain {
                     crate::appearance::client_rect(base, &self.config.appearance, view, true)
                 }
             };
+            let mut rect = rect;
+            if !is_fullscreen
+                && entry
+                    .window
+                    .toplevel()
+                    .is_some_and(has_server_side_decoration)
+            {
+                let height = TITLEBAR_HEIGHT.min(rect.size.h.saturating_sub(1).max(0));
+                rect.loc.y += height;
+                rect.size.h -= height;
+            }
             let visible = !entry.minimized
                 && !workspace.hidden_by_parent(entry)
                 && exclusive.is_none_or(|owner| {
@@ -676,6 +764,29 @@ impl Villain {
         for (window, rect, fullscreen, maximized, tiled, _) in self.workspace_layout(index) {
             Self::configure_window(&window, rect.loc, rect.size, fullscreen, maximized, tiled);
         }
+    }
+
+    /// Apply decoration-driven client geometry to one window without remapping
+    /// its siblings or disturbing the active workspace's focus and pointer state.
+    pub(crate) fn update_window_decoration(&mut self, window: &Window) -> bool {
+        let Some(index) = self.workspace_for_window(window) else {
+            return false;
+        };
+        let Some((_, rect, fullscreen, maximized, tiled, visible)) = self
+            .workspace_layout(index)
+            .into_iter()
+            .find(|(candidate, ..)| candidate == window)
+        else {
+            return false;
+        };
+        Self::configure_window(window, rect.loc, rect.size, fullscreen, maximized, tiled);
+        if index == self.active_workspace {
+            if visible {
+                self.space.map_element(window.clone(), rect.loc, false);
+            }
+            self.request_repaint();
+        }
+        true
     }
 
     pub fn set_window_fullscreen(&mut self, window: &Window, fullscreen: bool) {
@@ -845,10 +956,23 @@ impl Villain {
             .find(|entry| entry.window == *window)
             .unwrap();
         entry.floating = Some(geometry);
-        let geometry = self.floating_placement(geometry);
-        Self::configure_window(window, geometry.loc, geometry.size, false, false, false);
+        let mut client_geometry = self.floating_placement(geometry);
+        if window.toplevel().is_some_and(has_server_side_decoration) {
+            let height = TITLEBAR_HEIGHT.min(client_geometry.size.h.saturating_sub(1).max(0));
+            client_geometry.loc.y += height;
+            client_geometry.size.h -= height;
+        }
+        Self::configure_window(
+            window,
+            client_geometry.loc,
+            client_geometry.size,
+            false,
+            false,
+            false,
+        );
         if self.space.element_location(window).is_some() {
-            self.space.map_element(window.clone(), geometry.loc, false);
+            self.space
+                .map_element(window.clone(), client_geometry.loc, false);
             self.sync_x11_stacking();
             self.request_repaint();
         }
@@ -2192,7 +2316,7 @@ impl Villain {
         let layout = self.workspace_layout(self.active_workspace);
         for window in self.space.elements().rev() {
             let location = self.space.element_location(window)?;
-            let origin = location - window.geometry().loc;
+            let origin = Self::pointer_origin(window, location);
             let Some((surface, _)) = window.surface_under(
                 self.pointer_location - origin.to_f64(),
                 WindowSurfaceType::ALL,
@@ -2449,6 +2573,9 @@ impl Villain {
     }
 
     fn remove_managed_window(&mut self, target: &Window) {
+        if let Some(id) = self.window_id(target) {
+            self.appearance_renderer.remove_titlebar(id);
+        }
         self.appearance_renderer.clear();
         for workspace in &mut self.workspaces {
             let removed: Vec<_> = workspace

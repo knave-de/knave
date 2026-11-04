@@ -2,6 +2,8 @@
 pub(crate) use paint::normalized_radii;
 #[path = "paint.rs"]
 mod paint;
+#[path = "titlebar.rs"]
+mod titlebar;
 use crate::{focus::KeyboardFocus, state::Villain};
 use knave_config::{
     WindowAppearance,
@@ -16,6 +18,7 @@ use smithay::{
             damage::OutputDamageTracker,
             element::{
                 AsRenderElements, Element, Id, Kind,
+                memory::MemoryRenderBufferRenderElement,
                 solid::SolidColorRenderElement,
                 surface::{WaylandSurfaceRenderElement, render_elements_from_surface_tree},
                 texture::{TextureBuffer, TextureRenderElement},
@@ -33,12 +36,13 @@ use smithay::{
     utils::{Logical, Physical, Rectangle, Scale, Size, Transform},
     wayland::{seat::WaylandFocus, shell::wlr_layer::Layer},
 };
-use std::collections::VecDeque;
+use std::{collections::VecDeque, time::Instant};
 
 smithay::backend::renderer::element::render_elements! {
     pub EffectElement<=GlesRenderer>;
     Surface=WaylandSurfaceRenderElement<GlesRenderer>,
     Solid=SolidColorRenderElement,
+    Memory=MemoryRenderBufferRenderElement<GlesRenderer>,
     CroppedSurface=CropRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>,
     Shape=PixelShaderElement,
     Texture=TextureRenderElement<GlesTexture>,
@@ -89,6 +93,7 @@ struct CachedScene {
 #[derive(Default)]
 pub(crate) struct EffectsRenderer {
     programs: Option<(GlesPixelProgram, GlesTexProgram)>,
+    titlebars: Option<titlebar::Titlebars>,
     scenes: VecDeque<CachedScene>,
     panes: VecDeque<CachedPane>,
 }
@@ -113,6 +118,42 @@ struct CachedPane {
     texture: TextureBuffer<GlesTexture>,
 }
 const MAX_PIXELS: i64 = 36 * 1024 * 1024;
+const SLOW_SCENE_STAGE_US: u128 = 8_000;
+const SLOW_SCENE_TOTAL_US: u128 = 16_000;
+
+fn log_slow_scene_stage(stage: &'static str, started: Option<Instant>, windows: usize) {
+    let Some(started) = started else {
+        return;
+    };
+    let elapsed_us = started.elapsed().as_micros();
+    if elapsed_us >= SLOW_SCENE_STAGE_US {
+        tracing::debug!(
+            target: "villain::perf",
+            event = "slow_base_scene_stage",
+            stage,
+            elapsed_us,
+            windows,
+            "base scene stage exceeded timing threshold"
+        );
+    }
+}
+
+fn log_slow_scene_total(path: &'static str, started: Option<Instant>, windows: usize) {
+    let Some(started) = started else {
+        return;
+    };
+    let elapsed_us = started.elapsed().as_micros();
+    if elapsed_us >= SLOW_SCENE_TOTAL_US {
+        tracing::debug!(
+            target: "villain::perf",
+            event = "slow_base_scene",
+            path,
+            elapsed_us,
+            windows,
+            "base scene generation exceeded timing threshold"
+        );
+    }
+}
 
 fn scene_render_scale(target_scale: f64, has_effects: bool) -> f64 {
     if has_effects { 1.0 } else { target_scale }
@@ -174,9 +215,22 @@ fn window_elements(
 }
 
 impl EffectsRenderer {
+    pub(crate) fn with_warmed_titlebars() -> Self {
+        Self {
+            titlebars: Some(titlebar::Titlebars::default()),
+            ..Self::default()
+        }
+    }
+
     pub(crate) fn clear(&mut self) {
         self.scenes.clear();
         self.panes.clear();
+    }
+
+    pub(crate) fn remove_titlebar(&mut self, window_id: knave_desktop_api::WindowId) {
+        if let Some(titlebars) = &mut self.titlebars {
+            titlebars.remove_window(window_id);
+        }
     }
     pub(crate) fn scene(
         &mut self,
@@ -233,6 +287,9 @@ impl EffectsRenderer {
         layers: SceneLayers,
         target_scale: f64,
     ) -> Result<Vec<EffectElement>, EffectError> {
+        let profile = tracing::enabled!(target: "villain::perf", tracing::Level::DEBUG);
+        let total_started = profile.then(Instant::now);
+        let stage_started = profile.then(Instant::now);
         let size = state.output_size;
         let focused = state.keyboard.current_focus();
         let mut windows: Vec<_> = state
@@ -240,6 +297,7 @@ impl EffectsRenderer {
             .into_iter()
             .filter(|entry| entry.5 && !(layers == SceneLayers::All && state.overview_mapped()))
             .collect();
+        let window_count = windows.len();
         if workspace == state.active_workspace
             && layers == SceneLayers::All
             && let Some(drag) = &state.interaction
@@ -282,6 +340,7 @@ impl EffectsRenderer {
                                 .any(|s| s.enabled))
                     })
             });
+        log_slow_scene_stage("workspace_layout", stage_started, window_count);
         // Effects are composed into a logical-size offscreen target. The fast
         // path returns elements directly to its caller, so use that caller's
         // target scale for both surface placement and clipping.
@@ -296,6 +355,7 @@ impl EffectsRenderer {
         };
         let mut lower = Vec::<EffectElement>::new();
         let mut upper = Vec::<EffectElement>::new();
+        let layers_started = profile.then(Instant::now);
         {
             for output in state.space.outputs() {
                 let map = layer_map_for_output(output);
@@ -331,7 +391,9 @@ impl EffectsRenderer {
                 }
             }
         }
+        log_slow_scene_stage("layer_elements", layers_started, window_count);
         let mut sources = Vec::new();
+        let windows_started = profile.then(Instant::now);
         for (window, rect, fullscreen, maximized, tiled, _) in &windows {
             let is_focused = KeyboardFocus::for_window(window) == focused;
             key.windows
@@ -344,8 +406,59 @@ impl EffectsRenderer {
                 render_scale,
             );
             key.sources.extend(elements.iter().map(source_key));
-            sources.push(elements);
+            let bar = if let (Some(bar_rect), Some(window_id)) = (
+                crate::workspaces::titlebar_rect(window, *rect, *fullscreen),
+                state.window_id(window),
+            ) {
+                let hovered = if workspace == state.active_workspace
+                    && bar_rect.to_f64().contains(state.pointer_location)
+                {
+                    let distance =
+                        f64::from(bar_rect.loc.x + bar_rect.size.w) - state.pointer_location.x;
+                    crate::appearance::TitlebarControl::from_right_distance(distance)
+                        .map(|control| control.right_slot() as u8)
+                } else {
+                    None
+                };
+                if let Some(buffer) = self
+                    .titlebars
+                    .get_or_insert_with(titlebar::Titlebars::default)
+                    .buffer(
+                        window_id,
+                        window,
+                        bar_rect.size.w,
+                        titlebar::TitlebarState {
+                            focused: is_focused,
+                            hovered,
+                            maximized: *maximized,
+                            tiled: *tiled,
+                        },
+                    )
+                {
+                    let element = MemoryRenderBufferRenderElement::from_buffer(
+                        renderer,
+                        (
+                            f64::from(bar_rect.loc.x) * render_scale,
+                            f64::from(bar_rect.loc.y) * render_scale,
+                        ),
+                        buffer,
+                        None,
+                        None,
+                        None,
+                        Kind::Unspecified,
+                    )
+                    .map_err(EffectError::Renderer)?;
+                    key.sources.push(source_key(&element));
+                    Some(EffectElement::Memory(element))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            sources.push((elements, bar));
         }
+        log_slow_scene_stage("window_elements", windows_started, window_count);
         // Include override-redirect X11 surfaces without adding decorations.
         let mut unmanaged = Vec::new();
         if layers == SceneLayers::All && !state.overview_mapped() {
@@ -370,11 +483,15 @@ impl EffectsRenderer {
         if !any_effect {
             self.scenes
                 .retain(|entry| entry.key.workspace != workspace || entry.key.layers != layers);
-            for source in sources {
+            for (mut source, bar) in sources {
+                if let Some(bar) = bar {
+                    source.insert(0, bar);
+                }
                 lower.splice(0..0, source);
             }
             unmanaged.extend(lower);
             upper.extend(unmanaged);
+            log_slow_scene_total("direct", total_started, window_count);
             return Ok(upper);
         }
         if size.w <= 0 || size.h <= 0 || i64::from(size.w) * i64::from(size.h) > MAX_PIXELS {
@@ -386,14 +503,17 @@ impl EffectsRenderer {
             self.scenes.push_back(entry);
             return Ok(vec![EffectElement::Texture(element)]);
         }
+        let effects_started = profile.then(Instant::now);
+        let compile_started = profile.then(Instant::now);
         self.ensure_programs(renderer)
             .map_err(EffectError::Renderer)?;
+        log_slow_scene_stage("effect_programs", compile_started, window_count);
         let (shape_program, texture_program) = self.programs.as_ref().expect("programs compiled");
         let appearance = &state.config.appearance;
         let background = [0.0, 0.0, 0.0, 1.0];
         let mut elements = lower;
         let mut live_pixels = 0_i64;
-        for ((window, rect, fullscreen, maximized, tiled, _), original) in
+        for ((window, rect, fullscreen, maximized, tiled, _), (original, bar)) in
             windows.into_iter().zip(sources)
         {
             let view = if fullscreen {
@@ -501,6 +621,9 @@ impl EffectsRenderer {
             } else {
                 window_elements.extend(original);
             }
+            if let Some(bar) = bar {
+                window_elements.insert(0, bar);
+            }
             if widths != Edges::default() {
                 window_elements.push(EffectElement::Shape(border(
                     shape_program,
@@ -602,6 +725,8 @@ impl EffectsRenderer {
             self.scenes.pop_front();
         }
         self.scenes.push_back(CachedScene { key, texture });
+        log_slow_scene_stage("effects_composition", effects_started, window_count);
+        log_slow_scene_total("effects", total_started, window_count);
         Ok(vec![EffectElement::Texture(element)])
     }
     pub(crate) fn overview_pane(

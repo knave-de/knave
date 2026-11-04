@@ -87,6 +87,7 @@ pub struct Villain {
     // protocol's bookkeeping and exposes it through a trait implementation.
     pub compositor_state: CompositorState,
     pub xdg_shell_state: XdgShellState,
+    pub xdg_decoration_state: smithay::wayland::shell::xdg::decoration::XdgDecorationState,
     pub layer_shell_state: smithay::wayland::shell::wlr_layer::WlrLayerShellState,
     pub shell_surfaces: Vec<crate::layer_shell::ShellSurface>,
     pub(crate) drag_marker_ids: [smithay::backend::renderer::element::Id; 2],
@@ -147,6 +148,11 @@ pub struct Villain {
     pub(crate) interaction_cleanup_pending: bool,
     pub(crate) swallowed_buttons: std::collections::HashSet<u32>,
     pub pressed_buttons: std::collections::HashSet<u32>,
+    pub(crate) titlebar_click: Option<(
+        knave_desktop_api::WindowId,
+        u32,
+        smithay::utils::Point<f64, smithay::utils::Logical>,
+    )>,
     pub repaint_needed: bool,
     pub frame_clock: crate::frame_clock::FrameClock,
     cursor_timer_generation: u64,
@@ -201,7 +207,8 @@ impl Villain {
                 smithay::wayland::foreign_toplevel_list::ForeignToplevelListState::new::<Self>(
                     &display_handle,
                 ),
-            appearance_renderer: Default::default(),
+            appearance_renderer: crate::appearance::render::EffectsRenderer::with_warmed_titlebars(
+            ),
             night_light: Default::default(),
 
             capture: crate::capture::CaptureState::default(),
@@ -243,6 +250,9 @@ impl Villain {
                     xdg_toplevel::WmCapabilities::Fullscreen,
                 ],
             ),
+            xdg_decoration_state: smithay::wayland::shell::xdg::decoration::XdgDecorationState::new::<
+                Self,
+            >(&display_handle),
             xwayland_shell_state: XWaylandShellState::new::<Self>(&display_handle),
             xwm: None,
             xwayland_display: None,
@@ -293,6 +303,7 @@ impl Villain {
             interaction_cleanup_pending: false,
             swallowed_buttons: Default::default(),
             pressed_buttons: Default::default(),
+            titlebar_click: None,
             repaint_needed: true,
             frame_clock: Default::default(),
             cursor_timer_generation: 0,

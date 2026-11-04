@@ -354,6 +354,8 @@ impl CompositorHandler for Villain {
         })
         .last()
         .unwrap();
+        let decoration_destroyed =
+            &root == surface && crate::workspaces::apply_decoration_destroy_on_commit(&root);
         let visible_window = self
             .window_for_surface(&root)
             .is_some_and(|window| self.space.element_location(&window).is_some());
@@ -387,6 +389,9 @@ impl CompositorHandler for Villain {
             // surface. Space uses this geometry to decide what gets rendered
             // on each output.
             window.on_commit();
+            if decoration_destroyed {
+                self.update_window_decoration(&window);
+            }
             self.refresh_window_hints(&window);
             self.finish_new_window_focus(&window);
 
@@ -955,5 +960,118 @@ mod popup_geometry_tests {
             ..PositionerState::default()
         };
         assert!(safe_popup_geometry_unconstrained(positioner).is_none());
+    }
+}
+
+impl smithay::wayland::shell::xdg::decoration::XdgDecorationHandler for Villain {
+    fn new_decoration(&mut self, toplevel: ToplevelSurface) {
+        self.set_decoration_mode(toplevel, DecorationMode::ServerSide);
+    }
+
+    fn request_mode(&mut self, toplevel: ToplevelSurface, mode: DecorationMode) {
+        self.set_decoration_mode(toplevel, mode);
+    }
+
+    fn unset_mode(&mut self, toplevel: ToplevelSurface) {
+        self.set_decoration_mode(toplevel, DecorationMode::ServerSide);
+    }
+}
+
+type DecorationMode = smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
+
+impl Villain {
+    fn set_decoration_mode(&mut self, toplevel: ToplevelSurface, mode: DecorationMode) {
+        let changed = smithay::wayland::compositor::with_states(toplevel.wl_surface(), |states| {
+            let had_mode = states
+                .data_map
+                .get::<crate::workspaces::XdgDecorationModeState>()
+                .is_some();
+            states.data_map.insert_if_missing_threadsafe(|| {
+                crate::workspaces::XdgDecorationModeState(
+                    std::sync::Mutex::new(mode),
+                    std::sync::atomic::AtomicBool::new(false),
+                )
+            });
+            if let Some(decoration) = states
+                .data_map
+                .get::<crate::workspaces::XdgDecorationModeState>()
+                && let Ok(mut effective_mode) = decoration.0.lock()
+            {
+                let replaces_destroyed_object = decoration
+                    .1
+                    .swap(false, std::sync::atomic::Ordering::AcqRel);
+                let changed = !had_mode || *effective_mode != mode || replaces_destroyed_object;
+                *effective_mode = mode;
+                return changed;
+            }
+            true
+        });
+        if !changed {
+            // set_mode and unset_mode each require an xdg_surface.configure
+            // response, even when the effective decoration mode is unchanged.
+            // Avoid a geometry relayout, but still complete the protocol round.
+            if toplevel.is_initial_configure_sent() {
+                toplevel.send_configure();
+            }
+            return;
+        }
+        toplevel.with_pending_state(|state| state.decoration_mode = Some(mode));
+        let window = self.window_for_surface(toplevel.wl_surface());
+        if window
+            .as_ref()
+            .is_none_or(|window| !self.update_window_decoration(window))
+            && toplevel.is_initial_configure_sent()
+        {
+            toplevel.send_pending_configure();
+        }
+    }
+}
+
+// Smithay 0.7 does not notify XdgDecorationHandler when a decoration resource
+// is destroyed, so retain its request handling and add the missing lifecycle
+// marker. The effective mode changes only at the next toplevel surface commit.
+smithay::reexports::wayland_server::delegate_global_dispatch!(Villain: [
+    smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_decoration_manager_v1::ZxdgDecorationManagerV1:
+        smithay::wayland::shell::xdg::decoration::XdgDecorationManagerGlobalData
+] => smithay::wayland::shell::xdg::decoration::XdgDecorationState);
+smithay::reexports::wayland_server::delegate_dispatch!(Villain: [
+    smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_decoration_manager_v1::ZxdgDecorationManagerV1:
+        ()
+] => smithay::wayland::shell::xdg::decoration::XdgDecorationState);
+
+impl smithay::reexports::wayland_server::Dispatch<
+    smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
+    ToplevelSurface,
+> for Villain
+{
+    fn request(
+        state: &mut Self,
+        client: &smithay::reexports::wayland_server::Client,
+        resource: &smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
+        request: smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Request,
+        data: &ToplevelSurface,
+        dhandle: &smithay::reexports::wayland_server::DisplayHandle,
+        data_init: &mut smithay::reexports::wayland_server::DataInit<'_, Self>,
+    ) {
+        use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Request;
+
+        let destroyed = matches!(&request, Request::Destroy);
+        <smithay::wayland::shell::xdg::decoration::XdgDecorationState as smithay::reexports::wayland_server::Dispatch<_, _, Self>>::request(
+            state, client, resource, request, data, dhandle, data_init,
+        );
+        if destroyed {
+            crate::workspaces::mark_decoration_destroyed(data.wl_surface());
+        }
+    }
+
+    fn destroyed(
+        state: &mut Self,
+        client_id: smithay::reexports::wayland_server::backend::ClientId,
+        resource: &smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
+        data: &ToplevelSurface,
+    ) {
+        <smithay::wayland::shell::xdg::decoration::XdgDecorationState as smithay::reexports::wayland_server::Dispatch<_, _, Self>>::destroyed(
+            state, client_id, resource, data,
+        );
     }
 }

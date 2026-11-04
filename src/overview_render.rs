@@ -15,6 +15,44 @@ use smithay::{
 };
 
 use crate::{cursor::CursorRenderElement, state::Villain};
+use std::time::Instant;
+
+const SLOW_OVERVIEW_STAGE_US: u128 = 8_000;
+const SLOW_OVERVIEW_TOTAL_US: u128 = 16_000;
+
+fn log_slow_stage(stage: &'static str, started: Option<Instant>, elements: usize) {
+    let Some(started) = started else {
+        return;
+    };
+    let elapsed_us = started.elapsed().as_micros();
+    if elapsed_us >= SLOW_OVERVIEW_STAGE_US {
+        tracing::debug!(
+            target: "villain::perf",
+            event = "slow_overview_stage",
+            stage,
+            elapsed_us,
+            elements,
+            "overview composition stage exceeded timing threshold"
+        );
+    }
+}
+
+fn log_slow_total(path: &'static str, started: Option<Instant>, elements: usize) {
+    let Some(started) = started else {
+        return;
+    };
+    let elapsed_us = started.elapsed().as_micros();
+    if elapsed_us >= SLOW_OVERVIEW_TOTAL_US {
+        tracing::debug!(
+            target: "villain::perf",
+            event = "slow_overview_elements",
+            path,
+            elapsed_us,
+            elements,
+            "overview element generation exceeded timing threshold"
+        );
+    }
+}
 
 smithay::backend::renderer::element::render_elements! {
     pub OverviewRenderElement<=GlesRenderer>;
@@ -33,14 +71,30 @@ pub fn elements(
     renderer: &mut GlesRenderer,
     cursor: Vec<CursorRenderElement>,
 ) -> Result<Vec<OverviewRenderElement>, crate::appearance::render::EffectError> {
+    let profile = tracing::enabled!(target: "villain::perf", tracing::Level::DEBUG);
+    let total_started = profile.then(Instant::now);
     if let Some(background) = state.screenshot.background() {
-        return screenshot_elements(state, renderer, cursor, background);
+        let stage_started = profile.then(Instant::now);
+        let result = screenshot_elements(state, renderer, cursor, background);
+        log_slow_stage(
+            "screenshot",
+            stage_started,
+            result.as_ref().map_or(0, Vec::len),
+        );
+        log_slow_total(
+            "screenshot",
+            total_started,
+            result.as_ref().map_or(0, Vec::len),
+        );
+        return result;
     }
+    let stage_started = profile.then(Instant::now);
     let mut result: Vec<_> = cursor
         .into_iter()
         .map(OverviewRenderElement::Cursor)
         .collect();
     let cursor_len = result.len();
+    log_slow_stage("cursor_elements", stage_started, cursor_len);
     let now = std::time::Instant::now();
     let scenes = if let Some(transition) = state.gestures.transition {
         let incoming = transition.offset
@@ -57,6 +111,7 @@ pub fn elements(
             backend::renderer::element::AsRenderElements, desktop::layer_map_for_output,
         };
         let output_scale = state.config.output_scale;
+        let stage_started = profile.then(Instant::now);
         // Keep shell UI stationary, above the two clipped workspace scenes.
         for output in state.space.outputs() {
             let map = layer_map_for_output(output);
@@ -85,11 +140,13 @@ pub fn elements(
                 }
             }
         }
+        log_slow_stage("transition_overlays", stage_started, result.len());
         let width = state.output_size.w;
         let bounds = Rectangle::from_size((width, state.output_size.h).into());
         let mut effects = std::mem::take(&mut state.appearance_renderer);
         let scenes = (|| {
             for (workspace, x) in scenes {
+                let stage_started = profile.then(Instant::now);
                 let x = x.round() as i32;
                 let clip = Rectangle::new((x, 0).into(), (width, state.output_size.h).into());
                 let Some(clip) = clip.intersection(bounds) else {
@@ -101,7 +158,15 @@ pub fn elements(
                     workspace,
                     crate::appearance::render::SceneLayers::Wallpaper,
                     state.config.output_scale,
-                )?;
+                );
+                let scene = match scene {
+                    Ok(scene) => scene,
+                    Err(error) => {
+                        log_slow_stage("transition_background_scene", stage_started, 0);
+                        return Err(error);
+                    }
+                };
+                let before = result.len();
                 result.extend(scene.into_iter().filter_map(|element| {
                     let physical_origin =
                         smithay::utils::Point::<i32, smithay::utils::Logical>::from((x, 0))
@@ -115,10 +180,20 @@ pub fn elements(
                     CropRenderElement::from_element(shifted, output_scale, physical_clip)
                         .map(OverviewRenderElement::Swipe)
                 }));
+                log_slow_stage(
+                    "transition_background_scene",
+                    stage_started,
+                    result.len().saturating_sub(before),
+                );
             }
             Ok(result)
         })();
         state.appearance_renderer = effects;
+        log_slow_total(
+            "transition",
+            total_started,
+            scenes.as_ref().map_or(0, Vec::len),
+        );
         return scenes;
     }
     let output = state.output_size;
@@ -127,6 +202,7 @@ pub fn elements(
         use smithay::{
             backend::renderer::element::AsRenderElements, desktop::layer_map_for_output,
         };
+        let stage_started = profile.then(Instant::now);
         for output in state.space.outputs() {
             let map = layer_map_for_output(output);
             for layer in map
@@ -153,6 +229,7 @@ pub fn elements(
                 }
             }
         }
+        log_slow_stage("overview_shell_layers", stage_started, result.len());
     }
     for pane in state
         .overview_panes
@@ -174,6 +251,7 @@ pub fn elements(
             continue;
         };
         let mut effects = std::mem::take(&mut state.appearance_renderer);
+        let stage_started = profile.then(Instant::now);
         let element = effects.overview_pane(
             state,
             renderer,
@@ -181,7 +259,15 @@ pub fn elements(
             Rectangle::new((pane.x, pane.y).into(), (width, height).into()),
         );
         state.appearance_renderer = effects;
-        result.push(OverviewRenderElement::Scene(element?));
+        let element = match element {
+            Ok(element) => element,
+            Err(error) => {
+                log_slow_stage("overview_pane", stage_started, result.len());
+                return Err(error);
+            }
+        };
+        log_slow_stage("overview_pane", stage_started, result.len() + 1);
+        result.push(OverviewRenderElement::Scene(element));
     }
     if overview_mapped {
         result.push(OverviewRenderElement::ScreenshotOverlay(
@@ -201,6 +287,7 @@ pub fn elements(
         ));
     }
     let mut effects = std::mem::take(&mut state.appearance_renderer);
+    let stage_started = profile.then(Instant::now);
     let scene = effects.scene(
         state,
         renderer,
@@ -209,7 +296,17 @@ pub fn elements(
         state.config.output_scale,
     );
     state.appearance_renderer = effects;
-    result.extend(scene?.into_iter().map(OverviewRenderElement::Scene));
+    let scene = match scene {
+        Ok(scene) => scene,
+        Err(error) => {
+            log_slow_stage("active_workspace_scene", stage_started, result.len());
+            return Err(error);
+        }
+    };
+    let scene_len = scene.len();
+    log_slow_stage("active_workspace_scene", stage_started, scene_len);
+    result.extend(scene.into_iter().map(OverviewRenderElement::Scene));
+    log_slow_total("normal", total_started, result.len());
     Ok(result)
 }
 

@@ -163,7 +163,81 @@ impl Villain {
                 return true;
             }
         }
+        if button == 0x110
+            && state == ButtonState::Pressed
+            && self.handle_gallery_titlebar(button, time)
+        {
+            return true;
+        }
         self.try_start_edge_resize(button, state) || self.try_start_split_drag(button, state, time)
+    }
+
+    fn handle_gallery_titlebar(&mut self, button: u32, time: u32) -> bool {
+        if !self.can_start_interaction() || self.layer_under_pointer(true).is_some() {
+            return false;
+        }
+        let mut hit = None;
+        for (window, rect, fullscreen, maximized, _, visible) in self
+            .workspace_layout(self.active_workspace)
+            .into_iter()
+            .rev()
+        {
+            if !visible {
+                continue;
+            }
+            if let Some(bar) = crate::workspaces::titlebar_rect(&window, rect, fullscreen)
+                && bar.to_f64().contains(self.pointer_location)
+            {
+                hit = Some((window, bar, maximized));
+                break;
+            }
+            // A higher window's content occludes titlebars underneath it.
+            if rect.to_f64().contains(self.pointer_location) {
+                return false;
+            }
+        }
+        let Some((window, bar, maximized)) = hit else {
+            return false;
+        };
+        self.focus_managed_window(&window);
+        self.swallowed_buttons.insert(button);
+        let from_right = f64::from(bar.loc.x + bar.size.w) - self.pointer_location.x;
+        if let Some(control) = crate::appearance::TitlebarControl::from_right_distance(from_right) {
+            use crate::appearance::TitlebarControl;
+            match control {
+                TitlebarControl::Close => {
+                    self.apply_window_action(&window, crate::workspaces::WindowAction::Close)
+                }
+                TitlebarControl::Maximize => self.set_window_maximized(&window, !maximized),
+                TitlebarControl::Float => {
+                    let _ = self.toggle_floating_focused();
+                }
+                TitlebarControl::Minimize => {
+                    self.apply_window_action(&window, crate::workspaces::WindowAction::Minimize)
+                }
+            }
+        } else if let Some(id) = self.window_id(&window) {
+            let double = self
+                .titlebar_click
+                .is_some_and(|(previous, when, location)| {
+                    previous == id
+                        && time.wrapping_sub(when) <= 400
+                        && (location.x - self.pointer_location.x).abs() <= 5.0
+                        && (location.y - self.pointer_location.y).abs() <= 5.0
+                });
+            self.titlebar_click = if double {
+                None
+            } else {
+                Some((id, time, self.pointer_location))
+            };
+            if double {
+                self.set_window_maximized(&window, !maximized);
+            } else {
+                let _ = self.begin_window_interaction(WindowTarget::Window(id), false, None);
+            }
+        }
+        self.request_repaint();
+        true
     }
 
     pub fn x11_grab_button_matches(&self, button: u32) -> bool {

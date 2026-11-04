@@ -10,6 +10,8 @@ members = []
 resolver = "3"
 
 [dependencies]
+knave-ui = { git = "https://github.com/knave-de/knave-ui.git", rev = "ca308928f3aa18d1f6c996a396ff3c3fa6457122" }
+cosmic-text = "0.19"
 knave-capture-protocol = { git = "https://github.com/knave-de/knave.git", rev = "f1708b7bc1aaf5695c80106af51cc41149f565cd", features = ["server"] }
 libc = "0.2"
 regex = "1"

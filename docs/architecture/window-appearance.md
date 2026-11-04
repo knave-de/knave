@@ -31,6 +31,24 @@ There is no configurable override. Saved maximization and floating placement
 survive view transitions. Knave's `docs/architecture/window-appearance.md`
 contains the complete validated contract, defaults, bounds and TOML example.
 
+## Server titlebars
+
+Villain provides a 34 logical-pixel titlebar when an xdg-toplevel uses the
+`xdg-decoration` protocol in server-side mode. Villain initially offers server
+side decoration and follows the client's negotiated mode; a client that
+requests client-side decoration keeps its own chrome and receives no Villain
+titlebar. Destroying the decoration object returns the toplevel to client-side
+mode at its next surface commit. The titlebar is outside the client's
+configured content rectangle and is not shown for fullscreen windows. XWayland
+windows do not use this xdg-toplevel
+negotiation and do not receive these titlebars.
+
+The titlebar controls from right to left are close, maximize/restore, toggle
+floating, and minimize. Double-clicking an empty titlebar toggles maximize;
+dragging an empty titlebar moves the window. These controls are compositor
+behavior and are not currently configurable. They are included in normal scene
+rendering and workspace previews.
+
 Reload validates before replacing config, cancels grabs, drops cached scenes and
 recomputes geometry. Keyboard focus requests repaint without requiring a client
 commit. Both nested and direct backends, previews and Overview panes share one

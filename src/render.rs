@@ -16,6 +16,10 @@ use smithay::{
 };
 
 use crate::state::Villain;
+use std::time::Instant;
+
+const SLOW_FRAME_US: u128 = 16_000;
+const SLOW_FRAME_STAGE_US: u128 = 8_000;
 
 pub struct Winit {
     backend: winit::WinitGraphicsBackend<GlesRenderer>,
@@ -242,20 +246,48 @@ fn render_frame(state: &mut Villain) {
     }
     state.repaint_needed = false;
 
+    let profile = tracing::enabled!(target: "villain::perf", tracing::Level::DEBUG);
+    let frame_started = profile.then(Instant::now);
+    let mut bind_us = 0;
+    let mut elements_us = 0;
+    let mut cursor_us = 0;
+    let mut overview_us = 0;
+    let mut night_light_us = 0;
+    let mut output_us = 0;
+    let mut submit_us = 0;
+
     let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+        let stage_started = profile.then(Instant::now);
         let age = winit.backend.buffer_age().unwrap_or(0);
         let (renderer, mut framebuffer) = winit.backend.bind()?;
+        if let Some(started) = stage_started {
+            bind_us = started.elapsed().as_micros();
+        }
         let now = state.start_time.elapsed();
+        let stage_started = profile.then(Instant::now);
         let cursor_elements = state.cursor.render_elements(
             renderer,
             state.pointer_location,
             now,
             state.config.output_scale,
         );
+        if let Some(started) = stage_started {
+            cursor_us = started.elapsed().as_micros();
+        }
+        let stage_started = profile.then(Instant::now);
         let elements = crate::overview_render::elements(state, renderer, cursor_elements)?;
+        if let Some(started) = stage_started {
+            overview_us = started.elapsed().as_micros();
+        }
+        elements_us = cursor_us + overview_us;
+        let stage_started = profile.then(Instant::now);
         let elements = state
             .night_light
             .apply(renderer, state.output_size, elements)?;
+        if let Some(started) = stage_started {
+            night_light_us = started.elapsed().as_micros();
+        }
+        let stage_started = profile.then(Instant::now);
         let result = winit.damage.render_output(
             renderer,
             &mut framebuffer,
@@ -263,16 +295,54 @@ fn render_frame(state: &mut Villain) {
             &elements,
             [0.0, 0.0, 0.0, 1.0],
         )?;
+        if let Some(started) = stage_started {
+            output_us = started.elapsed().as_micros();
+        }
         let damage = result.damage.cloned();
         drop(framebuffer);
+        let stage_started = profile.then(Instant::now);
         if let Some(damage) = damage {
             winit.backend.submit(Some(&damage))?;
+        }
+        if let Some(started) = stage_started {
+            submit_us = started.elapsed().as_micros();
         }
         state.schedule_frame_callbacks(&winit.output);
         let delay = state.cursor.next_animation_delay(now);
         state.schedule_cursor_frame(delay);
         Ok(())
     })();
+    if let Some(started) = frame_started {
+        let frame_us = started.elapsed().as_micros();
+        let slow_frame = frame_us >= SLOW_FRAME_US;
+        let slow_stage = [
+            bind_us,
+            elements_us,
+            cursor_us,
+            overview_us,
+            night_light_us,
+            output_us,
+            submit_us,
+        ]
+        .into_iter()
+        .any(|duration| duration >= SLOW_FRAME_STAGE_US);
+        if slow_frame || slow_stage {
+            tracing::debug!(
+                target: "villain::perf",
+                event = "slow_render_frame",
+                frame_us,
+                bind_us,
+                elements_us,
+                cursor_us,
+                overview_us,
+                night_light_us,
+                output_us,
+                submit_us,
+                success = result.is_ok(),
+                "render frame exceeded timing threshold"
+            );
+        }
+    }
     if let Err(error) = result {
         state.cancel_swipe(0);
         state.cancel_workspace_motion();

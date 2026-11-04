@@ -29,6 +29,8 @@ struct Configure {
 #[derive(Default)]
 struct Client {
     configures: HashMap<usize, Configure>,
+    configure_counts: HashMap<usize, usize>,
+    decoration_configure_counts: HashMap<usize, usize>,
     pointer_buttons: usize,
     swipes: Vec<String>,
     pinches: Vec<String>,
@@ -38,6 +40,7 @@ struct Client {
     keyboard_enters: Vec<(wl_surface::WlSurface, Vec<u8>)>,
     inhibitor_states: Vec<bool>,
     closes: usize,
+    decoration_modes: HashMap<usize, u32>,
 }
 impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for Client {
     fn event(
@@ -109,6 +112,7 @@ impl Dispatch<xdg_toplevel::XdgToplevel, usize> for Client {
                     tiled: states.contains(&(xdg_toplevel::State::TiledLeft as u32)),
                 },
             );
+            *state.configure_counts.entry(*id).or_default() += 1;
         } else if let xdg_toplevel::Event::Close = event {
             state.closes += 1;
         }
@@ -1667,3 +1671,206 @@ mod drag_tests;
 
 #[path = "stacking_tests.rs"]
 mod stacking_tests;
+
+use wayland_protocols::xdg::decoration::zv1::client::{
+    zxdg_decoration_manager_v1, zxdg_toplevel_decoration_v1,
+};
+delegate_noop!(Client: ignore zxdg_decoration_manager_v1::ZxdgDecorationManagerV1);
+impl Dispatch<zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1, usize> for Client {
+    fn event(
+        state: &mut Self,
+        _: &zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
+        event: zxdg_toplevel_decoration_v1::Event,
+        id: &usize,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zxdg_toplevel_decoration_v1::Event::Configure {
+            mode: wayland_client::WEnum::Value(mode),
+        } = event
+        {
+            state.decoration_modes.insert(*id, mode as u32);
+            *state.decoration_configure_counts.entry(*id).or_default() += 1;
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires private Unix sockets and an isolated XDG_RUNTIME_DIR"]
+fn xdg_decoration_negotiation_and_geometry() {
+    let mut event_loop = EventLoop::try_new().unwrap();
+    let mut state = Villain::new(
+        &mut event_loop,
+        Display::new().unwrap(),
+        crate::config::RuntimeConfig::load().unwrap(),
+    );
+    let (server, client) = UnixStream::pair().unwrap();
+    state
+        .display_handle
+        .insert_client(server, Arc::new(crate::state::ClientState::default()))
+        .unwrap();
+    let (sender, requests) = mpsc::channel::<Inspect>();
+    let thread = std::thread::spawn(move || {
+        let conn = Connection::from_socket(client).unwrap();
+        let (globals, mut queue) = registry_queue_init::<Client>(&conn).unwrap();
+        let qh = queue.handle();
+        let compositor: wl_compositor::WlCompositor = globals.bind(&qh, 1..=4, ()).unwrap();
+        let wm: xdg_wm_base::XdgWmBase = globals.bind(&qh, 1..=6, ()).unwrap();
+        let manager: zxdg_decoration_manager_v1::ZxdgDecorationManagerV1 =
+            globals.bind(&qh, 1..=1, ()).unwrap();
+        let mut client = Client::default();
+        let surface = compositor.create_surface(&qh, ());
+        let xdg = wm.get_xdg_surface(&surface, &qh, ());
+        let top = xdg.get_toplevel(&qh, 1);
+        // A decoration object with no requested mode defaults to server-side.
+        let decoration = manager.get_toplevel_decoration(&top, &qh, 1);
+        top.set_app_id("arbitrary.application".into());
+        surface.commit();
+        queue.roundtrip(&mut client).unwrap();
+        queue.roundtrip(&mut client).unwrap();
+        let sibling_surface = compositor.create_surface(&qh, ());
+        let sibling_xdg = wm.get_xdg_surface(&sibling_surface, &qh, ());
+        let sibling_top = sibling_xdg.get_toplevel(&qh, 2);
+        sibling_top.set_app_id("sibling.application".into());
+        sibling_surface.commit();
+        queue.roundtrip(&mut client).unwrap();
+        queue.roundtrip(&mut client).unwrap();
+        let sibling_configures = client.configure_counts[&2];
+        assert_eq!(
+            client.decoration_modes[&1],
+            zxdg_toplevel_decoration_v1::Mode::ServerSide as u32
+        );
+        decoration.set_mode(zxdg_toplevel_decoration_v1::Mode::ClientSide);
+        surface.commit();
+        queue.roundtrip(&mut client).unwrap();
+        queue.roundtrip(&mut client).unwrap();
+        assert_eq!(
+            client.decoration_modes[&1],
+            zxdg_toplevel_decoration_v1::Mode::ClientSide as u32
+        );
+        assert_eq!(
+            client.configure_counts[&2], sibling_configures,
+            "changing one window's decoration mode must not configure its sibling"
+        );
+        let client_side_configures = client.decoration_configure_counts[&1];
+        let client_side_toplevel_configures = client.configure_counts[&1];
+        decoration.set_mode(zxdg_toplevel_decoration_v1::Mode::ClientSide);
+        surface.commit();
+        queue.roundtrip(&mut client).unwrap();
+        queue.roundtrip(&mut client).unwrap();
+        assert_eq!(
+            client.configure_counts[&1],
+            client_side_toplevel_configures + 1,
+            "repeating set_mode must still receive an xdg_surface.configure response"
+        );
+        assert_eq!(
+            client.decoration_configure_counts[&1], client_side_configures,
+            "repeating the negotiated mode must not resend the decoration mode"
+        );
+        inspect(&sender, |state| {
+            let (window, rect, fullscreen, _, _, _) = &state.workspace_layout(0)[0];
+            assert!(crate::workspaces::titlebar_rect(window, *rect, *fullscreen).is_none());
+        });
+        decoration.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
+        surface.commit();
+        queue.roundtrip(&mut client).unwrap();
+        queue.roundtrip(&mut client).unwrap();
+        assert_eq!(
+            client.decoration_modes[&1],
+            zxdg_toplevel_decoration_v1::Mode::ServerSide as u32
+        );
+        let server_side_configures = client.configure_counts[&1];
+        decoration.unset_mode();
+        surface.commit();
+        queue.roundtrip(&mut client).unwrap();
+        queue.roundtrip(&mut client).unwrap();
+        assert_eq!(
+            client.configure_counts[&1],
+            server_side_configures + 1,
+            "unset_mode must receive an xdg_surface.configure response even when unchanged"
+        );
+        assert_eq!(
+            client.decoration_modes[&1],
+            zxdg_toplevel_decoration_v1::Mode::ServerSide as u32
+        );
+        inspect(&sender, |state| {
+            let layout = state.workspace_layout(0);
+            let (window, rect, fullscreen, _, _, _) = &layout[0];
+            let bar = crate::workspaces::titlebar_rect(window, *rect, *fullscreen).unwrap();
+            assert_eq!(bar.size.h, 34);
+            assert_eq!(bar.loc.y + bar.size.h, rect.loc.y);
+            state.host_focused = true;
+            state.pointer_location = (
+                f64::from(bar.loc.x + bar.size.w - 36),
+                f64::from(bar.loc.y + 17),
+            )
+                .into();
+            assert!(state.handle_compositor_button(
+                0x110,
+                smithay::backend::input::ButtonState::Pressed,
+                1
+            ));
+            assert!(state.workspaces[0].maximized.is_some());
+            state.handle_compositor_button(
+                0x110,
+                smithay::backend::input::ButtonState::Released,
+                2,
+            );
+        });
+
+        decoration.destroy();
+        surface.commit();
+        queue.roundtrip(&mut client).unwrap();
+        queue.roundtrip(&mut client).unwrap();
+        inspect(&sender, |state| {
+            let layout = state.workspace_layout(0);
+            let (window, rect, fullscreen, _, _, _) = &layout[0];
+            assert!(crate::workspaces::titlebar_rect(window, *rect, *fullscreen).is_none());
+        });
+
+        // Toplevels without the protocol object do not gain a compositor frame.
+        let bare_surface = compositor.create_surface(&qh, ());
+        let bare_xdg = wm.get_xdg_surface(&bare_surface, &qh, ());
+        let bare_top = bare_xdg.get_toplevel(&qh, 2);
+        bare_top.set_app_id("undecorated.application".into());
+        bare_surface.commit();
+        queue.roundtrip(&mut client).unwrap();
+        queue.roundtrip(&mut client).unwrap();
+        inspect(&sender, |state| {
+            let bare = state.workspace_layout(0).into_iter().find(|(window, ..)| {
+                window.toplevel().is_some_and(|top| {
+                    smithay::wayland::compositor::with_states(top.wl_surface(), |states| {
+                        states
+                            .data_map
+                            .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                            .and_then(|data| {
+                                data.lock()
+                                    .ok()
+                                    .and_then(|attributes| attributes.app_id.clone())
+                            })
+                            .as_deref()
+                            == Some("undecorated.application")
+                    })
+                })
+            });
+            let (window, rect, fullscreen, _, _, _) = bare.expect("bare toplevel mapped");
+            assert!(crate::workspaces::titlebar_rect(&window, rect, fullscreen).is_none());
+        });
+    });
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !thread.is_finished() {
+        assert!(
+            Instant::now() < deadline,
+            "titlebar protocol test timed out"
+        );
+        event_loop
+            .dispatch(Duration::from_millis(2), &mut state)
+            .unwrap();
+        while let Ok(inspect) = requests.try_recv() {
+            inspect(&mut state);
+        }
+        state.space.refresh();
+        state.display_handle.flush_clients().unwrap();
+    }
+    thread.join().unwrap();
+}
