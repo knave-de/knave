@@ -689,18 +689,21 @@ mod tests {
         defaults
             .set_stylesheet("panel { background-color: var(--surface-selected); }")
             .unwrap();
+        // Only the selection fill is shared; buttons keep their themed elevation.
         assert_eq!(
             picker
                 .scene
                 .computed_style(ElementId(TAB))
                 .unwrap()
                 .style
-                .background,
+                .background
+                .and_then(|paint| paint.fill),
             defaults
                 .computed_style(ElementId(0))
                 .unwrap()
                 .style
                 .background
+                .and_then(|paint| paint.fill)
         );
     }
     #[test]

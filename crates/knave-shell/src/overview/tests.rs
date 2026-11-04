@@ -1207,7 +1207,7 @@ fn overview_controls_follow_the_selected_toolkit_theme() {
         search_paint.fill,
         baseline.style.background.and_then(|paint| paint.fill)
     );
-    assert!(search.outline.is_none_or(|outline| outline.width == 0.0));
+    assert_eq!(search.outline.map(|outline| outline.width), Some(1.0));
     let selected_card = app
         .scene
         .computed_style(ElementId(0x100_0000_0000 + 2 * 32))

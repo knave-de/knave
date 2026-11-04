@@ -945,7 +945,7 @@ dependencies = [
 [[package]]
 name = "knave-renderer"
 version = "0.1.0"
-source = "git+https://github.com/knave-de/knave-ui.git?rev=e6db89f959c3ac8fc85746fcd09074996a01becb#e6db89f959c3ac8fc85746fcd09074996a01becb"
+source = "git+https://github.com/knave-de/knave-ui.git?rev=8cebd447b978708508d97c68f891fd432562736b#8cebd447b978708508d97c68f891fd432562736b"
 dependencies = [
  "bytemuck",
  "glyphon",
@@ -996,7 +996,7 @@ dependencies = [
 [[package]]
 name = "knave-ui"
 version = "0.1.0"
-source = "git+https://github.com/knave-de/knave-ui.git?rev=e6db89f959c3ac8fc85746fcd09074996a01becb#e6db89f959c3ac8fc85746fcd09074996a01becb"
+source = "git+https://github.com/knave-de/knave-ui.git?rev=8cebd447b978708508d97c68f891fd432562736b#8cebd447b978708508d97c68f891fd432562736b"
 dependencies = [
  "rustix",
  "unicode-segmentation",
