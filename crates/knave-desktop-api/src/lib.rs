@@ -329,6 +329,8 @@ pub enum ClientError {
     FrameTooLarge,
 }
 
+/// Resolve the Knave control socket from an explicit override or session env.
+/// When `WAYLAND_DISPLAY` is missing, discovery succeeds only for one live session.
 pub fn socket_path() -> Result<PathBuf, ClientError> {
     if let Some(path) = env::var_os(SOCKET_ENVIRONMENT_VARIABLE) {
         return Ok(path.into());
@@ -342,9 +344,10 @@ pub fn socket_path() -> Result<PathBuf, ClientError> {
     discover_socket(&PathBuf::from(runtime.as_os_str()))
 }
 
-// A process launched from the desktop normally inherits WAYLAND_DISPLAY.
-// If it was stripped by a terminal or service launcher, recover the session
-// only when there is exactly one live Knave compositor socket.
+/// Discover one live control socket when a process lacks `WAYLAND_DISPLAY`.
+///
+/// This only selects a socket when the runtime directory contains exactly one
+/// live Knave session, avoiding guesses when multiple desktops are running.
 fn discover_socket(runtime_path: &Path) -> Result<PathBuf, ClientError> {
     let control_dir = runtime_path.join("knave");
     let entries = match fs::read_dir(control_dir) {
@@ -354,24 +357,62 @@ fn discover_socket(runtime_path: &Path) -> Result<PathBuf, ClientError> {
         }
         Err(error) => return Err(ClientError::Io(error)),
     };
-    let mut candidates = entries.filter_map(Result::ok).filter_map(|entry| {
+    let mut candidates = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(ClientError::Io)?;
         let name = entry.file_name();
-        let name = name.to_str()?;
-        let display = name.strip_prefix("desktop-")?.strip_suffix(".sock")?;
-        let control_is_socket = entry.file_type().ok()?.is_socket();
-        let wayland_is_socket = fs::symlink_metadata(runtime_path.join(display))
-            .ok()?
-            .file_type()
-            .is_socket();
-        (control_is_socket && wayland_is_socket).then(|| entry.path())
-    });
-    let Some(path) = candidates.next() else {
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        let Some(display) = name
+            .strip_prefix("desktop-")
+            .and_then(|name| name.strip_suffix(".sock"))
+        else {
+            continue;
+        };
+        let control_is_socket = match entry.file_type() {
+            Ok(file_type) => file_type.is_socket(),
+            // The compositor may have removed this entry during discovery.
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(ClientError::Io(error)),
+        };
+        if !control_is_socket || !is_socket_path(&runtime_path.join(display))? {
+            continue;
+        }
+
+        // A socket inode can remain after an unclean compositor exit. Probe
+        // the listener before counting it; never unlink paths while discovery
+        // is running because a compositor may be binding or restarting them.
+        match UnixStream::connect(entry.path()) {
+            Ok(stream) => drop(stream),
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::ConnectionRefused | io::ErrorKind::NotFound
+                ) =>
+            {
+                continue;
+            }
+            Err(error) => return Err(ClientError::Io(error)),
+        }
+        candidates.push(entry.path());
+    }
+    let Some(path) = candidates.pop() else {
         return Err(ClientError::NoDesktopSocket);
     };
-    if candidates.next().is_some() {
+    if !candidates.is_empty() {
         return Err(ClientError::AmbiguousDesktopSocket);
     }
     Ok(path)
+}
+
+fn is_socket_path(path: &Path) -> Result<bool, ClientError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => Ok(metadata.file_type().is_socket()),
+        // Concurrent compositor shutdown makes this pair unavailable.
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(ClientError::Io(error)),
+    }
 }
 
 pub fn socket_path_for_display(runtime: &OsStr, display: &OsStr) -> PathBuf {
@@ -728,6 +769,36 @@ mod tests {
             discover_socket(runtime.path()),
             Err(ClientError::AmbiguousDesktopSocket)
         ));
+    }
+
+    #[test]
+    fn missing_display_ignores_stale_socket_pairs() {
+        let runtime = tempfile::tempdir().unwrap();
+        let control = runtime.path().join("knave");
+        fs::create_dir(&control).unwrap();
+        let stale_wayland_path = runtime.path().join("wayland-stale");
+        let stale_control_path = control.join("desktop-wayland-stale.sock");
+        drop(UnixListener::bind(&stale_wayland_path).unwrap());
+        drop(UnixListener::bind(&stale_control_path).unwrap());
+        let _wayland = UnixListener::bind(runtime.path().join("wayland-live")).unwrap();
+        let _desktop = UnixListener::bind(control.join("desktop-wayland-live.sock")).unwrap();
+
+        assert!(
+            fs::symlink_metadata(stale_wayland_path)
+                .unwrap()
+                .file_type()
+                .is_socket()
+        );
+        assert!(
+            fs::symlink_metadata(stale_control_path)
+                .unwrap()
+                .file_type()
+                .is_socket()
+        );
+        assert_eq!(
+            discover_socket(runtime.path()).unwrap(),
+            control.join("desktop-wayland-live.sock")
+        );
     }
 
     #[test]
