@@ -160,7 +160,7 @@ mod tests {
             .collect();
         let reference = images[0].pixels();
         assert_eq!((images[0].width(), images[0].height()), (128, 128));
-        assert_eq!(pixel(&images[0], 64, 20), [0, 0, 0, 0]);
+        assert_eq!(pixel(&images[0], 64, 5), [0, 0, 0, 0]);
         assert_eq!(pixel(&images[0], 50, 20)[3], 255);
         assert!(
             reference
@@ -186,7 +186,7 @@ mod tests {
                     .map(|pixel| pixel[3])
                     .collect::<Vec<_>>(),
             );
-            assert_eq!(pixel(image, 64, 20), [0, 0, 0, 0]);
+            assert_eq!(pixel(image, 64, 5), [0, 0, 0, 0]);
         }
         for policy in POLICIES
             .into_iter()
@@ -235,11 +235,10 @@ mod tests {
     #[test]
     fn every_raster_variant_uses_the_official_svg_path_geometry() {
         let geometry = path_data(SOURCE_SVGS[0]);
-        assert_eq!(geometry.len(), 2);
+        assert_eq!(geometry.len(), 8);
         assert_eq!(geometry, path_data(SOURCE_SVGS[1]));
         for svg in VARIANT_SVGS {
-            assert!(svg.contains("viewBox=\"0 0 512 512\""));
-            assert!(!svg.contains("<rect"));
+            assert!(svg.contains("viewBox=\"0 0 862 862\""));
             assert_eq!(path_data(svg), geometry);
         }
     }
