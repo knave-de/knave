@@ -1,0 +1,34 @@
+[workspace]
+members = [
+    "crates/knave-apps",
+    "crates/knave-icons",
+    "crates/knave-shell",
+    "crates/knave-shell-ui",
+    "crates/knave-wayland",
+]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+knave-shell-ui = { path = "crates/knave-shell-ui" }
+knave-apps = { path = "crates/knave-apps" }
+knave-icons = { path = "crates/knave-icons" }
+knave-renderer = { git = "https://github.com/knave-de/knave-ui.git", rev = "8cebd447b978708508d97c68f891fd432562736b" }
+knave-wayland = { path = "crates/knave-wayland" }
+knave-ui = { git = "https://github.com/knave-de/knave-ui.git", rev = "8cebd447b978708508d97c68f891fd432562736b" }
+base64 = "0.22"
+png = "0.18"
+wgpu = "30.0.1"
+knave-desktop-api = { git = "https://github.com/knave-de/knave.git", rev = "c98a74381f0c9a02467170fe510aacdf523ecf89" }
+# Consumes the typed wallpaper and notification projections. Bump together
+# with the knave-desktop-api revision.
+knave-config = { git = "https://github.com/knave-de/knave.git", rev = "c98a74381f0c9a02467170fe510aacdf523ecf89" }
+pollster = "1.0.1"
+thiserror = "2.0.21"
+smithay-client-toolkit = { version = "0.21.1", default-features = false, features = ["calloop", "xkbcommon"] }
+xkbcommon = "0.8"
+wayland-client = { version = "0.31.15", features = ["system"] }

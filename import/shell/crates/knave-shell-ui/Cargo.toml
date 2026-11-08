@@ -1,0 +1,15 @@
+[package]
+name = "knave-shell-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+knave-ui.workspace = true
+knave-desktop-api.workspace = true
+png.workspace = true
+
+[dev-dependencies]
+knave-renderer.workspace = true
+wgpu.workspace = true
+pollster.workspace = true

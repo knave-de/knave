@@ -1,0 +1,7 @@
+/* Full-screen structural widgets must not paint over the desktop. */
+.shell-structure,
+.shell-overlay,
+.notifications-root,
+.quick-settings-root {
+    background-color: transparent;
+}

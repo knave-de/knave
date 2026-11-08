@@ -1,0 +1,8 @@
+.quick-settings-header-button,
+.quick-settings-confirm {
+    text-align: center;
+}
+
+.quick-settings-active {
+    background-color: var(--surface-selected);
+}

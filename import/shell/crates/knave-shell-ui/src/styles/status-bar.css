@@ -1,0 +1,36 @@
+/* Keep the compact status text within the fixed-height bar. */
+.statusbar__workspace-label {
+    font-size: 11px;
+    line-height: 14px;
+    text-align: center;
+}
+
+.statusbar__workspace-label--active {
+    color: var(--on-accent);
+}
+
+.statusbar__focused-title,
+.statusbar__applet-label,
+.statusbar__content {
+    font-size: 11px;
+    line-height: 14px;
+}
+
+.statusbar__unread-badge {
+    color: var(--on-accent);
+    background-color: var(--accent);
+    border-radius: 8px;
+}
+
+.statusbar__unread-count {
+    color: var(--on-accent);
+    font-size: 8px;
+    line-height: 10px;
+    text-align: center;
+}
+
+.statusbar__dnd-marker,
+.statusbar__notification-state {
+    font-size: 8px;
+    line-height: 10px;
+}
