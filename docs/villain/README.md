@@ -43,9 +43,9 @@ Villain is Cargo-first:
 Install the compositor to the user prefix, system prefix, or an explicit
 staging prefix:
 
-    scripts/install.sh --user
-    scripts/install.sh --system
-    scripts/install.sh --prefix "$PWD/stage"
+    scripts/villain/install.sh --user
+    scripts/villain/install.sh --system
+    scripts/villain/install.sh --prefix "$PWD/stage"
 
 The installer installs villain only. knavectl is installed by the Knave
 repository because it is the public control CLI for the complete desktop.

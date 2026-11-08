@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: scripts/install.sh [--user|--system|--prefix PATH]
+Usage: scripts/villain/install.sh [--user|--system|--prefix PATH]
 
 Builds and installs the Villain compositor. knavectl is installed by the
 Knave repository because it is the desktop environment's public control CLI.
@@ -40,8 +40,8 @@ while (($# > 0)); do
     shift
 done
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cargo build --manifest-path "${repo_root}/Cargo.toml" --release --locked
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cargo build --manifest-path "${repo_root}/Cargo.toml" -p villain --release --locked
 
 install_cmd=(install)
 if [[ "$prefix" == /usr/* ]] && [[ "$(id -u)" -ne 0 ]]; then
@@ -50,7 +50,7 @@ fi
 
 "${install_cmd[@]}" -Dm755 "${repo_root}/target/release/villain" \
     "${prefix}/bin/villain"
-"${install_cmd[@]}" -Dm644 "${repo_root}/README.md" \
+"${install_cmd[@]}" -Dm644 "${repo_root}/docs/villain/README.md" \
     "${prefix}/share/doc/villain/README.md"
 
 printf 'Installed Villain to %s/bin/villain\n' "$prefix"

@@ -101,9 +101,9 @@ user actions back through that same contract.
 
 ## Install
 
-    scripts/install.sh --user
-    scripts/install.sh --system
-    scripts/install.sh --prefix "$PWD/stage"
+    scripts/shell/install.sh --user
+    scripts/shell/install.sh --system
+    scripts/shell/install.sh --prefix "$PWD/stage"
 
 --user installs to ~/.local/bin and --system installs to /usr/local/bin,
 requesting sudo only for the target prefix. --prefix is explicit and useful for

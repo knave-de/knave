@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: scripts/install.sh [--user|--system|--prefix PATH]
+Usage: scripts/shell/install.sh [--user|--system|--prefix PATH]
 
 Builds and installs the Rust/wgpu Knave Shell binary and README.
 Use --user for ~/.local, --system for /usr/local, or --prefix for an
@@ -41,8 +41,8 @@ while (($# > 0)); do
     shift
 done
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cargo build --manifest-path "${repo_root}/Cargo.toml" --workspace --release --locked
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cargo build --manifest-path "${repo_root}/Cargo.toml" -p knave-shell --release --locked
 
 install_cmd=(install)
 if [[ "$prefix" == /usr/* ]] && [[ "$(id -u)" -ne 0 ]]; then
@@ -51,6 +51,6 @@ fi
 
 "${install_cmd[@]}" -Dm755 "${repo_root}/target/release/knave-shell" \
     "${prefix}/bin/knave-shell"
-"${install_cmd[@]}" -Dm644 "${repo_root}/README.md" \
+"${install_cmd[@]}" -Dm644 "${repo_root}/docs/shell/README.md" \
     "${prefix}/share/doc/knave-shell/README.md"
 echo "installed knave-shell into ${prefix}/bin"
