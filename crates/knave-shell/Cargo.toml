@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 knave-shell-ui.workspace = true
-knave-portal-api = { git = "https://github.com/knave-de/knave.git", rev = "e90e88cb63424b688568ec9e1821d6a3e273cacd" }
+knave-portal-api.workspace = true
 serde_json = "1"
 base64 = "0.22"
 png = "0.18"
