@@ -21,8 +21,9 @@ does not reach into Villain's private implementation, and Villain does not
 write competing user-facing configuration.
 
 The standalone `knave-ui` repository owns the `knave-ui` and `knave-renderer`
-crates, assets and rendering tests. `knaveshell` consumes their pinned Git revision
-and owns desktop composition, application integration and Wayland hosting.
+crates, assets and rendering tests. This repository consumes their pinned Git
+revision and owns desktop composition, application integration and Wayland
+hosting.
 
 The Rust/wgpu shell is the supported implementation. It replaces the removed
 Qt path without changing ownership boundaries or silently changing the public

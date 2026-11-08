@@ -1,5 +1,9 @@
 # Knave Shell
 
+> This document was imported from the standalone `knaveshell` repository. The
+> crate now lives at `crates/knave-shell` in the Knave monorepo; the build and
+> harness commands below still assume a separate checkout.
+
 Knave Shell is the Rust/wgpu user-facing shell for the independent Knave
 Desktop Environment. It owns presentation and interaction surfaces while
 Villain owns compositor policy, window state, focus, and input dispatch.
@@ -8,7 +12,7 @@ backend. The direct Wayland layer-shell path is the runtime target.
 
 ## Runtime
 
-The optional development harness in `../knave/docs/desktop-testing.md` uses
+The optional development harness in `docs/desktop-testing.md` uses
 `KNAVE_HARNESS_READY_DIR` for one-shot readiness markers. Configured shell services
 signal after Wayland/renderer initialization and receipt of desktop state; the bar
 also waits for a compositor frame callback. This private test handshake adds no
@@ -169,7 +173,7 @@ history; restored history has no stale actions. Transient notifications do not
 enter history or the count. If another daemon acquired notification delivery
 first, the bell indicates external delivery and shows saved Knave history only.
 Disconnected state is explicit. Match this Shell with the Knave revision supplying
-[ADR 0012](../knave/docs/architecture/decisions/0012-notifications.md); the session
+[ADR 0012](../architecture/decisions/0012-notifications.md); the session
 checks `--supports-notifications-service` before starting the role.
 
 ### Application applets

@@ -1,5 +1,9 @@
 # Villain
 
+> This document was imported from the standalone `villain` repository. The crate
+> now lives at `crates/villain` in the Knave monorepo; the build and harness
+> commands below still assume a separate checkout.
+
 Villain is the compositor and window manager for the independent Knave Desktop
 Environment. It owns Wayland protocol handling, window layout, focus,
 workspaces, input policy, rendering, and direct seat/output access.
@@ -108,7 +112,7 @@ relevant direct/nested live-test coverage.
 - [Component boundaries](docs/architecture/component-boundaries.md)
 - [Performance policy](docs/architecture/performance.md)
 - [Change-impact checklist](docs/architecture/change-impact.md)
-- [Agent instructions](AGENTS.md)
+- [Agent instructions](../../crates/villain/AGENTS.md)
 
 ## Window focus
 

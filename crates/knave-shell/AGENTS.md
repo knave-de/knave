@@ -3,38 +3,24 @@
 Knave Shell is the Rust/wgpu desktop-facing shell for the independent Knave
 Desktop Environment. It owns shell presentation and interaction surfaces while
 Knave owns settings/session orchestration and Villain owns compositor policy.
-The repository is Cargo-only; it has no Qt, CMake, C ABI, or host-desktop
-integration runtime.
+The crate lives in the Knave monorepo and is Cargo-only; it has no Qt, CMake,
+C ABI, or host-desktop integration runtime.
 
-## Required workspace flow for all edits
+General repository policy (worktrees, commits, attribution, verification,
+performance, documentation) is defined by the root `AGENTS.md`; this file adds
+shell-specific guidance only.
 
-All repository changes, including code, configuration, scripts, tests,
-documentation and `AGENTS.md` edits, must use the managed
-[development workspace flow](https://github.com/knave-de/knave/blob/master/docs/dev-workflow.md). Read-only investigation may
-use the source checkouts; edits and commits belong in feature worktrees.
-Creating a branch in a source checkout does not satisfy this requirement.
+## Workspace flow
 
-Before the first edit, create a workspace from the Knave checkout with
-`./knave-dev create FEATURE --change REPO`, repeating `--change` for every
-repository you intend to edit. An existing managed workspace may be reused
-only when its manifest selects all affected repositories for changes. Check
-`workspace.json`, the current branches and Git status before editing. If an
-additional repository is needed, create a new workspace with that repository
-selected; do not edit a detached dependency worktree or silently move its pin.
-Preserve the source checkouts, their branches and unrelated work.
-
-Edit, commit and run checks inside the selected feature worktrees. For runtime
-or coordinated component changes, use the managed build, frozen bundle, nested
-test and verification steps before handoff. For documentation-only edits,
-review the diff and run `git diff --check`; a binary rebuild is unnecessary.
-Keep existing verified bundles immutable and leave running user sessions alone.
+All changes belong in a Git worktree of this repository, as described in the
+root `AGENTS.md`. The former `knave-dev` managed workspace and bundle tooling
+assumes the pre-monorepo layout and is being replaced in phase 1.
 
 ## Startup and investigation
 
 Before editing:
 
-1. Read this file and the umbrella `knave/AGENTS.md` when working on a
-   cross-repository change.
+1. Read this file and the root `AGENTS.md`.
 2. Read relevant README, architecture, API, and build documentation when it
    exists.
 3. Inspect the complete owning module and search all of its consumers.
