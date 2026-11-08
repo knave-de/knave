@@ -1,0 +1,46 @@
+[package]
+name = "villain"
+version = "0.1.0"
+edition = "2024"
+description = "A tiling-first Wayland compositor and window manager for the Knave Desktop Environment"
+license = "MIT"
+
+[workspace]
+members = []
+resolver = "3"
+
+[dependencies]
+knave-ui = { git = "https://github.com/knave-de/knave-ui.git", rev = "ca308928f3aa18d1f6c996a396ff3c3fa6457122" }
+cosmic-text = "0.19"
+knave-capture-protocol = { git = "https://github.com/knave-de/knave.git", rev = "f1708b7bc1aaf5695c80106af51cc41149f565cd", features = ["server"] }
+libc = "0.2"
+regex = "1"
+toml = "0.9"
+smithay = { version = "0.7.0", default-features = false, features = [
+    "backend_winit",
+    "backend_drm",
+    "backend_gbm",
+    "backend_udev",
+    "backend_libinput",
+    "backend_session_libseat",
+    "desktop",
+    "wayland_frontend",
+    "xwayland",
+] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+xcursor = "0.3.11"
+knave-desktop-api = { git = "https://github.com/knave-de/knave.git", rev = "c98a74381f0c9a02467170fe510aacdf523ecf89" }
+knave-config = { git = "https://github.com/knave-de/knave.git", rev = "e920106d2fc8abf509dbbb2849e3961002725bc1" }
+serde_json = "1"
+base64 = "0.22"
+png = "0.18"
+wayland-protocols = { version = "0.32", features = ["server", "staging"] }
+zbus = "5"
+futures-lite = "2"
+async-io = "2"
+
+[dev-dependencies]
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }

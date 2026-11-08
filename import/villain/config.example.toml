@@ -1,0 +1,155 @@
+# Compositor settings for ~/.config/knave/config.toml
+
+[compositor]
+
+modkey = "Alt"
+# Logical-to-buffer output scale, rounded by Wayland to 1/120ths (1..4).
+scale = 1.0
+# Initial master width in percent; stack receives the remainder (10..90).
+master_percent = 50
+# Order focus-switching shortcuts cycle a workspace's windows in:
+# "layout" walks master then stack top to bottom, "mru" walks
+# most-recently-focused windows first.
+focus_cycle_order = "layout"
+# Switch to the workspace selected by a new window's placement rules, or its
+# launch workspace when it has no placement rule. Set false to stay here.
+switch_to_new_window_workspace = true
+environment_file = "environment"
+
+# MOD+SHIFT+1..9 sends the focused window (and its dialogs) to that workspace.
+# MOD+SHIFT+0 sends it to workspace 10; focus stays on the source workspace.
+# Override with dispatch = "move-to-workspace" and args = ["2"].
+
+# Workspace switches slide windows and wallpaper for 160 ms with cubic ease-out.
+# Focus changes immediately; panels stay stationary. A click or scroll finishes
+# the transition before input is delivered. Duration, easing and style are fixed;
+# there are currently no compositor animation settings. Overview browsing is separate.
+
+# Opt in to skipping empty slots for next/previous shortcuts and workspace swipes.
+# Number shortcuts and bar clicks select predefined slots and the existing
+# dynamic tail; next/previous navigation grows the tail.
+[compositor.workspace]
+# Keep this many numbered workspaces permanently; the dynamic tail keeps one
+# empty workspace available after the highest occupied workspace.
+predefined = 1
+skip_empty = false
+
+[compositor.input]
+tap_to_click = true
+natural_scroll = true
+# Focus the window under the pointer while it moves. Set to false to
+# switch window focus on click only.
+focus_follows_mouse = true
+allow_virtual_keyboard = true # false denies clients using the virtual-keyboard protocol
+
+# Optional per-device overrides. `name` matches the runtime libinput device
+# name case-insensitively and supports the `*` and `?` wildcards. Unset fields
+# keep the libinput value. Later rules override earlier ones for the same
+# device. `enabled = false` stops events without detaching the device.
+#
+# [[compositor.device]]
+# name = "Example Touchpad"
+# tap_to_click = true
+# natural_scroll = false
+# sensitivity = 0.4
+# disable_while_typing = true
+#
+# [[compositor.device]]
+# name = "*Receiver Mouse"
+# enabled = false
+
+# Gesture entries override only matching fingers+direction; later entries win.
+# Default: three-finger horizontal swipe switches workspaces. Use action = "none"
+# to pass that gesture to clients. These are Villain actions, not knavectl commands.
+# [[compositor.gesture.bind]]
+# fingers = 3
+# direction = "horizontal"
+# action = "none"
+
+# Screenshots save under ~/Pictures/Screenshots and post a notification with
+# an image preview. `PRINT` selects a region, `SHIFT+PRINT` captures the
+# focused output and `MOD+PRINT` the focused window. Add `CTRL` to copy to the
+# clipboard instead of saving; copied captures are preview-only. A saved
+# capture's notification shows its path and opens it with xdg-open when the
+# notification is activated. Every entry below only overrides the default with
+# the same keys, so define just the shortcuts you want to change.
+# [[compositor.bind]]
+# keys = "PRINT"
+# dispatch = "screenshot"
+# args = ["region", "save"]
+# [[compositor.bind]]
+# keys = "SHIFT+PRINT"
+# dispatch = "screenshot"
+# args = ["output", "save"]
+# [[compositor.bind]]
+# keys = "MOD+PRINT"
+# dispatch = "screenshot"
+# args = ["window", "save"]
+# [[compositor.bind]]
+# keys = "CTRL+PRINT"
+# dispatch = "screenshot"
+# args = ["region", "clipboard"]
+# [[compositor.bind]]
+# keys = "CTRL+SHIFT+PRINT"
+# dispatch = "screenshot"
+# args = ["output", "clipboard"]
+# [[compositor.bind]]
+# keys = "MOD+SHIFT+PRINT"
+# dispatch = "screenshot"
+# args = ["window", "clipboard"]
+
+# Each entry overrides the default binding with the same keys; unmentioned
+# defaults stay active and other entries are additions.
+[[compositor.bind]]
+keys = "MOD+Q"
+dispatch = "exec"
+args = ["bemenu-run"]
+
+# Built-in window bindings, written explicitly so you can customize them.
+# MOD follows modkey above (Super or Alt). Combine it with CTRL, SHIFT or ALT.
+# Mouse names: BUTTON_LEFT, BUTTON_RIGHT, BUTTON_MIDDLE.
+# A different combination adds a binding; it keeps the original default active.
+
+# Move a floating window, or drag a tile and swap with its drop target.
+# args = ["pointer"] selects the window under the pointer; omit args to use focus.
+[[compositor.bind]]
+keys = "MOD+BUTTON_LEFT"
+dispatch = "move-window"
+args = ["pointer"]
+
+# Resize a floating window from the nearest corner; for tiles, adjust master width.
+[[compositor.bind]]
+keys = "MOD+BUTTON_RIGHT"
+dispatch = "resize-window"
+args = ["pointer"]
+
+# Toggle the focused window between tiled and floating; remember floating geometry.
+[[compositor.bind]]
+keys = "MOD+V"
+dispatch = "toggle-floating"
+
+# Keyboard alternative: move the focused window with the pointer, then left click
+# or press Enter to commit. Escape cancels. resize-window also supports this mode.
+# [[compositor.bind]]
+# keys = "MOD+SHIFT+G"
+# dispatch = "move-window"
+
+# Floating edges/corners and tiled dividers resize with an unmodified left drag.
+# Horizontal stack dividers resize only their two neighbors. No binding is needed.
+# Drag thresholds, hit margins and stack minimum heights currently have no setting.
+
+# Built-in workspace navigation. MOD follows modkey above.
+# Next/previous keep their slide direction through wrapping and skipped empty slots.
+# Number shortcuts MOD+1 through MOD+9 and MOD+0 select workspaces 1 through 10.
+# [[compositor.bind]]
+# keys = "MOD+RIGHT"
+# dispatch = "next-workspace"
+# [[compositor.bind]]
+# keys = "MOD+LEFT"
+# dispatch = "previous-workspace"
+
+# Return to the last workspace used; replace this combination to override it.
+# TILDE and ~ are aliases for GRAVE (no Shift required).
+[[compositor.bind]]
+keys = "MOD+GRAVE"
+dispatch = "last-workspace"

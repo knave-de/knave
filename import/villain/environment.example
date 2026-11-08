@@ -1,0 +1,10 @@
+# ~/.config/villain/environment
+# Values are literal data. This file is not executed as a shell script.
+
+XDG_SESSION_TYPE=wayland
+XDG_CURRENT_DESKTOP=Villain
+XDG_SESSION_DESKTOP=villain
+ELECTRON_OZONE_PLATFORM_HINT=wayland
+MOZ_ENABLE_WAYLAND=1
+QT_QPA_PLATFORM=wayland
+GDK_BACKEND=wayland
