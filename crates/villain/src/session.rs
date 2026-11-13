@@ -211,8 +211,11 @@ impl ActivationWorker {
 
 impl Drop for ActivationWorker {
     fn drop(&mut self) {
+        let (pending, ready) = &*self.pending;
+        let pending = pending.lock().unwrap();
         self.stop.store(true, Ordering::Release);
-        self.pending.1.notify_all();
+        ready.notify_all();
+        drop(pending);
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }

@@ -1,6 +1,7 @@
 # Wayland frame callback regression
 
-Run `tests/run-frame-callbacks.sh` against a test compositor selected by
+From the workspace root, run `crates/villain/tests/run-frame-callbacks.sh`
+against a test compositor selected by
 `WAYLAND_DISPLAY` and `XDG_RUNTIME_DIR`. It needs a C compiler, `pkg-config`,
 `wayland-scanner`, and the Wayland client/protocol development packages.
 

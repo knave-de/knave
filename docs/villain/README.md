@@ -380,7 +380,7 @@ Left advances and creates a workspace at the dynamic tail when needed; right
 goes back and stops at the first workspace. Release beyond a quarter of the
 output width commits; shorter or cancelled swipes settle back.
 Panels and the cursor stay stationary. See the
-[Knave gesture contract](https://github.com/knave-de/knave/blob/master/architecture/decisions/0010-workspace-swipes.md).
+[Knave gesture contract](../architecture/decisions/0010-workspace-swipes.md).
 Override entries under `[[compositor.gesture.bind]]` by fingers and direction;
 `action = "none"` disables the matching compositor gesture. These are Villain
 actions, not knavectl commands. Reload applies validated changes atomically.

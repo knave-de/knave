@@ -141,8 +141,8 @@ dispatch = "toggle-floating"
 # Drag thresholds, hit margins and stack minimum heights currently have no setting.
 
 # Built-in workspace navigation. MOD follows modkey above.
-# Next and previous stop at the ends. Navigation skips empty slots, and Next
-# grows the dynamic tail rather than wrapping.
+# Next and previous stop at the ends. When enabled, navigation skips empty slots.
+# Next grows the dynamic tail rather than wrapping.
 # Number shortcuts MOD+1 through MOD+9 and MOD+0 select workspaces 1 through 10.
 # [[compositor.bind]]
 # keys = "MOD+RIGHT"

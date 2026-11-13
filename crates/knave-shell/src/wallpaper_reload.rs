@@ -216,7 +216,12 @@ fn evaluate(config: &Path, shared: &(Mutex<Shared>, Condvar), load: LoadImage, n
                         return;
                     }
                     state.applied.fit = fit;
-                    state.pending = Some(ReloadUpdate::FitChange { fit });
+                    match state.pending.as_mut() {
+                        Some(ReloadUpdate::Image {
+                            fit: pending_fit, ..
+                        }) => *pending_fit = fit,
+                        _ => state.pending = Some(ReloadUpdate::FitChange { fit }),
+                    }
                     drop(state);
                     notify();
                     return;
@@ -441,6 +446,38 @@ mod tests {
             Some(ReloadUpdate::FitChange { .. })
         ));
         assert!(matches!(state.applied.fit, ImageFit::Stretch));
+        drop(state);
+        assert!(receiver.try_recv().is_ok());
+    }
+
+    #[test]
+    fn a_fit_change_preserves_a_pending_image_update() {
+        let directory = tempfile::tempdir().unwrap();
+        let image = directory.path().join("image.png");
+        std::fs::write(&image, encode_png()).unwrap();
+        let config = config_document(&directory, Some(&image), "contain");
+        let shared = shared_with(AppliedWallpaper {
+            path: None,
+            fit: ImageFit::Cover,
+        });
+        let (notify, receiver) = mpsc::sync_channel::<()>(1);
+        let wake = || {
+            let _ = notify.try_send(());
+        };
+
+        evaluate(&config, &shared, wallpaper::load, &wake);
+        config_document(&directory, Some(&image), "stretch");
+        evaluate(&config, &shared, must_not_load, &wake);
+
+        let mut state = shared.0.lock().unwrap();
+        assert_eq!(state.applied.fit, ImageFit::Stretch);
+        match state.pending.take() {
+            Some(ReloadUpdate::Image { fit, image }) => {
+                assert_eq!(fit, ImageFit::Stretch);
+                assert!(image.is_some());
+            }
+            other => panic!("expected the decoded image update to remain pending: {other:?}"),
+        }
         drop(state);
         assert!(receiver.try_recv().is_ok());
     }
