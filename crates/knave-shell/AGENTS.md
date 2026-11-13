@@ -13,8 +13,8 @@ shell-specific guidance only.
 ## Workspace flow
 
 All changes belong in a Git worktree of this repository, as described in the
-root `AGENTS.md`. The former `knave-dev` managed workspace and bundle tooling
-assumes the pre-monorepo layout and is being replaced in phase 1.
+root `AGENTS.md`. When changing both Shell and the external `knave-ui` toolkit,
+use a Cargo `[patch]` to test the toolkit worktree with this workspace.
 
 ## Startup and investigation
 
@@ -138,7 +138,7 @@ long documentation for routine refactors or repeat source code in prose.
 - Create a new focused branch for every task.
 - Use Conventional Commits.
 - Commit every coherent implementation slice.
-- Link dependent cross-repository pull requests.
+- Link dependent pull requests when a change crosses repository boundaries.
 - Describe affected contracts, consumers, compatibility, verification,
   rollout, and rollback in cross-repository pull requests.
 - Never merge, squash-merge, or otherwise integrate a branch or pull request
@@ -149,7 +149,7 @@ long documentation for routine refactors or repeat source code in prose.
 
 ## Verification
 
-For desktop UI/runtime features, follow `../knave/docs/desktop-testing.md` and
+For desktop UI/runtime features, follow `../../docs/desktop-testing.md` and
 the umbrella Knave desktop-feature verification instructions. Build the affected
 workspace binaries, exercise the feature in the isolated Winit harness, verify
 state/output and screenshots, and record an MP4 demonstration for the user.

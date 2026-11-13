@@ -54,7 +54,6 @@ pub(crate) enum EffectError {
     TargetTooLarge,
     Renderer(GlesError),
     Damage(smithay::backend::renderer::damage::Error<GlesError>),
-    OutsideOutput,
 }
 impl std::fmt::Display for EffectError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -62,7 +61,6 @@ impl std::fmt::Display for EffectError {
             Self::TargetTooLarge => f.write_str("effect target exceeds 36 Mi pixels"),
             Self::Renderer(error) => write!(f, "effect renderer failed: {error}"),
             Self::Damage(error) => write!(f, "effect composition failed: {error}"),
-            Self::OutsideOutput => f.write_str("blur rectangle outside output"),
         }
     }
 }
@@ -640,43 +638,46 @@ impl EffectsRenderer {
                     (rect.loc.x - padding, rect.loc.y - padding).into(),
                     (rect.size.w + padding * 2, rect.size.h + padding * 2).into(),
                 )
-                .intersection(Rectangle::from_size(size))
-                .ok_or(EffectError::OutsideOutput)?;
-                let relocated: Vec<_> = elements
-                    .iter()
-                    .map(|element| {
-                        RelocateRenderElement::from_element(
-                            element,
-                            (-capture.loc.x, -capture.loc.y),
-                            Relocate::Relative,
-                        )
-                    })
-                    .collect();
-                let mut backdrop = render_texture(renderer, capture.size, &relocated, background)?;
-                for _ in 0..style.blur.passes {
-                    for direction in [(1.0, 0.0), (0.0, 1.0)] {
-                        let element = filtered(
-                            renderer,
-                            backdrop,
-                            texture_program,
-                            (0, 0).into(),
-                            [0.0; 4],
-                            1.0,
-                            direction,
-                            f32::from(style.blur.radius),
-                        );
-                        backdrop = render_texture(renderer, capture.size, &[element], [0.0; 4])?;
+                .intersection(Rectangle::from_size(size));
+                if let Some(capture) = capture {
+                    let relocated: Vec<_> = elements
+                        .iter()
+                        .map(|element| {
+                            RelocateRenderElement::from_element(
+                                element,
+                                (-capture.loc.x, -capture.loc.y),
+                                Relocate::Relative,
+                            )
+                        })
+                        .collect();
+                    let mut backdrop =
+                        render_texture(renderer, capture.size, &relocated, background)?;
+                    for _ in 0..style.blur.passes {
+                        for direction in [(1.0, 0.0), (0.0, 1.0)] {
+                            let element = filtered(
+                                renderer,
+                                backdrop,
+                                texture_program,
+                                (0, 0).into(),
+                                [0.0; 4],
+                                1.0,
+                                direction,
+                                f32::from(style.blur.radius),
+                            );
+                            backdrop =
+                                render_texture(renderer, capture.size, &[element], [0.0; 4])?;
+                        }
                     }
+                    let source_rect = Rectangle::new(rect.loc - capture.loc, rect.size);
+                    window_elements.push(filtered_region(
+                        renderer,
+                        backdrop,
+                        texture_program,
+                        rect,
+                        source_rect,
+                        inner_radii,
+                    ));
                 }
-                let source_rect = Rectangle::new(rect.loc - capture.loc, rect.size);
-                window_elements.push(filtered_region(
-                    renderer,
-                    backdrop,
-                    texture_program,
-                    rect,
-                    source_rect,
-                    inner_radii,
-                ));
             }
             if view.shadows {
                 for (side, shadow) in [

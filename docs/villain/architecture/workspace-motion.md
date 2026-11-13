@@ -70,7 +70,7 @@ Nested Winit software rendering does not establish DRM/GPU or physical input beh
 Run the feature check (ImageMagick and the standard harness dependencies required):
 
 ```sh
-python3 scripts/workspace-motion-smoke.py --bundle /absolute/bundle --run /fresh/artifacts
+python3 scripts/villain/workspace-motion-smoke.py --bundle /absolute/bundle --run /fresh/artifacts
 ```
 
 Use `--baseline` with a preceding bundle to measure the same workloads without

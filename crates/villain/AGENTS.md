@@ -91,7 +91,7 @@ non-obvious reasons. Do not restate obvious Rust code or write long comments.
 
 ## Build and verification
 
-For desktop runtime/UI features, follow `../knave/docs/desktop-testing.md` and
+For desktop runtime/UI features, follow `../../docs/desktop-testing.md` and
 the umbrella Knave desktop-feature verification instructions. Build the affected
 workspace binaries, exercise the feature in the isolated Winit harness, verify
 state/output and screenshots, and record an MP4 demonstration for the user.
@@ -99,7 +99,7 @@ Provide the video link and assertions in the final response. Leave a requested
 interactive handoff running with its VNC/SSH connection details; stop sessions
 used only for automated checks. This does not establish direct-TTY/GPU behavior.
 
-Villain is a Cargo workspace. Use:
+Villain is a member of the Knave Cargo workspace. From the repository root, use:
 
 ```console
 cargo fmt --all -- --check
@@ -150,7 +150,7 @@ commands or behavior that the code does not provide.
 - Create a new focused branch for every task.
 - Use Conventional Commits.
 - Commit every coherent implementation slice.
-- Link dependent cross-repository pull requests.
+- Link dependent pull requests when a change crosses repository boundaries.
 - Describe affected contracts, consumers, compatibility, verification,
   rollout, and rollback in cross-repository pull requests.
 - Never merge, squash-merge, or otherwise integrate a branch or pull request

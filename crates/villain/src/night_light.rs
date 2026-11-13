@@ -24,6 +24,7 @@ type NightCache = (
     Vec<Key>,
     u16,
     Size<i32, Logical>,
+    f64,
     TextureBuffer<smithay::backend::renderer::gles::GlesTexture>,
 );
 #[derive(Default)]
@@ -45,6 +46,7 @@ impl NightLight {
         &mut self,
         renderer: &mut GlesRenderer,
         size: Size<i32, Logical>,
+        output_scale: f64,
         elements: Vec<OverviewRenderElement>,
     ) -> Result<Vec<OverviewRenderElement>, EffectError> {
         let Some(temperature) = self.temperature else {
@@ -61,17 +63,24 @@ impl NightLight {
                 )
             })
             .collect();
-        let hit = self
-            .cache
-            .as_ref()
-            .is_some_and(|(old, t, s, _)| *old == keys && *t == temperature && *s == size);
+        let hit = self.cache.as_ref().is_some_and(|(old, t, s, scale, _)| {
+            *old == keys && *t == temperature && *s == size && *scale == output_scale
+        });
         if !hit {
-            let texture =
-                crate::appearance::render::render_night_texture(renderer, size, &elements)?;
+            let physical_size = Size::from((
+                (f64::from(size.w) * output_scale).round() as i32,
+                (f64::from(size.h) * output_scale).round() as i32,
+            ));
+            let texture = crate::appearance::render::render_night_texture(
+                renderer,
+                physical_size,
+                &elements,
+            )?;
             self.cache = Some((
                 keys,
                 temperature,
                 size,
+                output_scale,
                 TextureBuffer::from_texture(renderer, texture, 1, Transform::Normal, None),
             ));
         }
@@ -85,13 +94,13 @@ impl NightLight {
                     .map_err(EffectError::Renderer)?,
             )
         }
-        let buffer = &self.cache.as_ref().unwrap().3;
+        let buffer = &self.cache.as_ref().unwrap().4;
         let inner = TextureRenderElement::from_texture_buffer(
             (0.0, 0.0),
             buffer,
             Some(1.0),
             None,
-            None,
+            Some(size),
             Kind::Unspecified,
         );
         let [r, g, b] = gains(temperature);

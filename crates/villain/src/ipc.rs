@@ -7,7 +7,7 @@ use std::{
     cell::RefCell,
     ffi::OsStr,
     fs,
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Read, Write},
     net::Shutdown,
     os::unix::{fs::FileTypeExt, net::UnixListener},
     path::{Path, PathBuf},
@@ -66,6 +66,7 @@ pub struct IpcServer {
 }
 const MAX_CLIENTS: usize = 16;
 const IO_TIMEOUT: Duration = Duration::from_secs(2);
+const MAX_REQUEST_BYTES: u64 = 64 * 1024;
 const QUEUED: u8 = 0;
 const EXECUTING: u8 = 1;
 const CANCELLED: u8 = 2;
@@ -230,17 +231,28 @@ fn serve_connection(
     mut stream: std::os::unix::net::UnixStream,
     sender: channel::Sender<IpcMessage>,
 ) {
+    if stream.set_read_timeout(Some(IO_TIMEOUT)).is_err() {
+        return;
+    }
     let Ok(reader_stream) = stream.try_clone() else {
         return;
     };
     let mut reader = BufReader::new(reader_stream);
     loop {
-        let mut line = String::new();
-        match reader.read_line(&mut line) {
+        let mut line = Vec::new();
+        match (&mut reader)
+            .take(MAX_REQUEST_BYTES + 1)
+            .read_until(b'\n', &mut line)
+        {
             Ok(0) | Err(_) => return,
-            Ok(_) => {}
+            Ok(size) if size <= MAX_REQUEST_BYTES as usize && line.last() == Some(&b'\n') => {}
+            Ok(_) => {
+                let response = invalid_request("request too large or missing newline".into());
+                let _ = write_response(&mut stream, &response);
+                return;
+            }
         }
-        let request = match serde_json::from_str(&line) {
+        let request = match serde_json::from_slice(&line) {
             Ok(request) => request,
             Err(error) => {
                 if write_response(

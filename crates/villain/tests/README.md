@@ -20,10 +20,13 @@ fixed-size hints, parent dialogs, background requests, and pointer move/resize
 grabs. XWayland must be installed for its test. The layer-shell regression checks the initial configure handshake, buffer mapping,
 reserved panel space, fullscreen geometry, focus modes, workspace independence,
 popups outside parent bounds, popup grabs, unmapping, remapping, and destruction.
-Run all three with:
+Run only these three with an isolated runtime:
 
 ```sh
 test_runtime=$(mktemp -d)
-XDG_RUNTIME_DIR="$test_runtime" XDG_CONFIG_HOME="$test_runtime" \
-  cargo test -p villain -- --ignored --nocapture --test-threads=1
+for test in wayland_floating_and_fullscreen_requests x11_workspace_input_isolation \
+  layer_lifecycle_focus_and_workspace_independence; do
+  XDG_RUNTIME_DIR="$test_runtime" XDG_CONFIG_HOME="$test_runtime" \
+    cargo test -p villain "$test" -- --ignored --nocapture --test-threads=1 || exit
+done
 ```

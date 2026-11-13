@@ -204,61 +204,64 @@ fn evaluate(config: &Path, shared: &(Mutex<Shared>, Condvar), load: LoadImage, n
             return;
         }
     };
-    let mut state = shared.0.lock().unwrap();
-    if state.stopped {
-        return;
-    }
-    let changed = match desired {
+    match desired {
         Desired::Image { path, fit } => {
-            if state.applied.path.as_deref() == Some(path.as_str()) {
-                if state.applied.fit == fit {
-                    false
-                } else {
+            {
+                let mut state = shared.0.lock().unwrap();
+                if state.stopped {
+                    return;
+                }
+                if state.applied.path.as_deref() == Some(path.as_str()) {
+                    if state.applied.fit == fit {
+                        return;
+                    }
                     state.applied.fit = fit;
                     state.pending = Some(ReloadUpdate::FitChange { fit });
-                    true
-                }
-            } else {
-                match load(Path::new(&path)) {
-                    Ok(image) => {
-                        state.applied = AppliedWallpaper {
-                            path: Some(path.clone()),
-                            fit,
-                        };
-                        state.pending = Some(ReloadUpdate::Image {
-                            fit,
-                            image: Some(image),
-                        });
-                        true
-                    }
-                    Err(error) => {
-                        eprintln!(
-                            "knave-shell: wallpaper reload {path}: {error}; keeping previous image"
-                        );
-                        false
-                    }
+                    drop(state);
+                    notify();
+                    return;
                 }
             }
+            let image = match load(Path::new(&path)) {
+                Ok(image) => image,
+                Err(error) => {
+                    eprintln!(
+                        "knave-shell: wallpaper reload {path}: {error}; keeping previous image"
+                    );
+                    return;
+                }
+            };
+            let mut state = shared.0.lock().unwrap();
+            if state.stopped {
+                return;
+            }
+            state.applied = AppliedWallpaper {
+                path: Some(path),
+                fit,
+            };
+            state.pending = Some(ReloadUpdate::Image {
+                fit,
+                image: Some(image),
+            });
+            drop(state);
+            notify();
         }
         Desired::Cleared => {
-            if state.applied.path.is_none() {
-                false
-            } else {
-                state.applied = AppliedWallpaper {
-                    path: None,
-                    fit: ImageFit::Cover,
-                };
-                state.pending = Some(ReloadUpdate::Image {
-                    fit: ImageFit::Cover,
-                    image: None,
-                });
-                true
+            let mut state = shared.0.lock().unwrap();
+            if state.stopped || state.applied.path.is_none() {
+                return;
             }
+            state.applied = AppliedWallpaper {
+                path: None,
+                fit: ImageFit::Cover,
+            };
+            state.pending = Some(ReloadUpdate::Image {
+                fit: ImageFit::Cover,
+                image: None,
+            });
+            drop(state);
+            notify();
         }
-    };
-    drop(state);
-    if changed {
-        notify();
     }
 }
 

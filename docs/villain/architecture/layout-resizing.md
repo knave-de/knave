@@ -3,7 +3,9 @@
 Villain owns the per-workspace master ratio, divider hit testing, pointer grab,
 keyboard actions and window geometry. Knave owns the optional
 `[compositor] master_percent` setting (integer 10..90, default 50). The Shell
-and desktop contract are unchanged. Horizontal stack dividers now resize adjacent stack pairs; see Knave ADR 0013. Villain pins knave-config at `d051735bca26affc370467779dbb1f625cac6318`.
+and desktop contract are unchanged. Horizontal stack dividers now resize
+adjacent stack pairs; see Knave ADR 0013. `knave-config` is a workspace path
+dependency, so the packages build together.
 
 The runtime ratio uses basis points for smooth dragging. An unset workspace
 override follows configuration; a manual drag or key adjustment preserves its
@@ -32,13 +34,8 @@ knavectl IPC commands.
 
 ## Compatibility and rollback
 
-Existing configs retain 50/50. Publish/deploy the Knave config commit before
-Villain's dependency pin. For development before publication, use a local Cargo
-patch to the matching knave-config checkout. The exact git pin was verified
-through Cargo's local git cache, with no committed filesystem override. No API or
-binary version increment is needed for this optional setting. Rolling back Villain requires removing
-new actions from custom binding sets, since old dispatch parsers reject them.
-Leave the new percentage setting in place or remove it explicitly.
+Existing configs retain 50/50. Knave and Villain update together from the
+workspace. This optional setting requires no API or binary version increment.
 
 ## Verification and resource behavior
 

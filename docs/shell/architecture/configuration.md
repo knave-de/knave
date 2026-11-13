@@ -11,10 +11,11 @@ compositor/session/shell projections through typed APIs.
 The shell reads the `appearance.theme.mode` value from that same canonical file
 when each surface process starts. `dark` and `light` select the corresponding embedded
 toolkit stylesheet. `system` uses dark CSS deterministically until Knave has an
-authoritative system color preference source. Theme changes take effect after
-restarting the shell; reconstructed status-bar and overview scenes retain the
-startup selection. This does not change the Settings portal's `color-scheme`
-projection.
+authoritative system color preference source. Theme file changes reload live
+through the theme watcher. Invalid updates keep the last valid theme;
+reconstructed status-bar and overview scenes use the current selection,
+including contrast and chroma policy. This does not change the Settings
+portal's `color-scheme` projection.
 
 Adding a shell setting requires a schema entry, validation/default behavior,
 serialization and migration review in Knave, and tests for unknown and source

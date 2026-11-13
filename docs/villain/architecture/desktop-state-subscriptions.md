@@ -30,7 +30,7 @@ change occurs. See Knave's ADR 0002 for wire semantics.
 ## Measurement
 
 After `cargo build --release --locked`, run
-`python3 scripts/measure-desktop-subscriptions.py` on a Wayland desktop. The
+`python3 scripts/villain/measure-desktop-subscriptions.py` on a Wayland desktop. The
 script starts separate, isolated nested compositors and compares a client
 querying every 500 ms with an idle subscription on the same new server binary.
 This is a protocol-equivalent polling baseline, not a run of the old server.

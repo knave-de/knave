@@ -37,6 +37,13 @@ use wayland_protocols::ext::{
 const MAX_SESSIONS: usize = 8;
 pub(crate) const MAX_PIXELS: i64 = 8 * 1024 * 1024;
 
+fn workspace_allowed(allowed: u32, index: usize) -> bool {
+    u32::try_from(index)
+        .ok()
+        .and_then(|index| 1_u32.checked_shl(index))
+        .is_some_and(|bit| allowed & bit != 0)
+}
+
 pub(crate) struct CapturedFrame {
     pub size: Size<i32, Buffer>,
     pub scale: f64,
@@ -409,7 +416,7 @@ fn finish_pending(state: &mut Villain) {
         };
         let pixels = match &data.session.target {
             CaptureSource::Workspaces { allowed, .. }
-                if *allowed & (1 << state.active_workspace) == 0 =>
+                if !workspace_allowed(*allowed, state.active_workspace) =>
             {
                 // Never invoke the renderer while on an excluded workspace.
                 Ok(data
@@ -441,7 +448,7 @@ fn finish_pending(state: &mut Villain) {
             frame.failed(frame::FailureReason::Unknown);
             continue;
         };
-        if matches!(data.session.target, CaptureSource::Workspaces { allowed, .. } if allowed & (1 << state.active_workspace) != 0)
+        if matches!(data.session.target, CaptureSource::Workspaces { allowed, .. } if workspace_allowed(allowed, state.active_workspace))
         {
             *data.session.last_allowed.lock().unwrap() = Some(pixels.clone());
         }

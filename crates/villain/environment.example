@@ -1,4 +1,4 @@
-# ~/.config/villain/environment
+# ~/.config/knave/environment
 # Values are literal data. This file is not executed as a shell script.
 
 XDG_SESSION_TYPE=wayland

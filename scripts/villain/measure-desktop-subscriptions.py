@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 import time
 
-BINARY = Path(__file__).resolve().parents[1] / "target/release/villain"
+BINARY = Path(__file__).resolve().parents[2] / "target/release/villain"
 DURATION = 5.0
 
 
@@ -75,7 +75,7 @@ def session(mode):
                     return sock, sock.makefile("rwb")
 
                 sock, file = connect()
-                subscribe = {"type": "subscribe", "payload": {"protocol": {"major": 1, "minor": 2}}}
+                subscribe = {"type": "subscribe"}
                 snapshot = {"type": "query", "payload": {"query": "snapshot"}}
                 if mode == "idle-subscription" or mode == "stress":
                     initial = request(file, subscribe)
@@ -133,7 +133,11 @@ def session(mode):
                     sock.close()
                 if proc.poll() is None:
                     proc.terminate()
-                proc.wait(timeout=5)
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
 
 
 if __name__ == "__main__":

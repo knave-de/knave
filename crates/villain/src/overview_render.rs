@@ -327,7 +327,7 @@ fn screenshot_elements(
         background,
         None,
         None,
-        None,
+        Some(state.output_size),
         Kind::Unspecified,
     )
     .map_err(crate::appearance::render::EffectError::Renderer)?;

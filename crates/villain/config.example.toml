@@ -14,7 +14,9 @@ focus_cycle_order = "layout"
 # Switch to the workspace selected by a new window's placement rules, or its
 # launch workspace when it has no placement rule. Set false to stay here.
 switch_to_new_window_workspace = true
-environment_file = "environment"
+# Optional; if set, the file must exist. If omitted, a missing `environment`
+# file next to config.toml is ignored.
+# environment_file = "environment"
 
 # MOD+SHIFT+1..9 sends the focused window (and its dialogs) to that workspace.
 # MOD+SHIFT+0 sends it to workspace 10; focus stays on the source workspace.
@@ -139,7 +141,8 @@ dispatch = "toggle-floating"
 # Drag thresholds, hit margins and stack minimum heights currently have no setting.
 
 # Built-in workspace navigation. MOD follows modkey above.
-# Next/previous keep their slide direction through wrapping and skipped empty slots.
+# Next and previous stop at the ends. Navigation skips empty slots, and Next
+# grows the dynamic tail rather than wrapping.
 # Number shortcuts MOD+1 through MOD+9 and MOD+0 select workspaces 1 through 10.
 # [[compositor.bind]]
 # keys = "MOD+RIGHT"

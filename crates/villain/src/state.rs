@@ -466,10 +466,12 @@ fn init_wayland_listener(
 
     loop_handle
         .insert_source(listening_socket, move |client_stream, _, state| {
-            state
+            if let Err(error) = state
                 .display_handle
                 .insert_client(client_stream, Arc::new(ClientState::default()))
-                .expect("insert Wayland client");
+            {
+                tracing::warn!(%error, "could not accept Wayland client");
+            }
         })
         .expect("register Wayland socket");
 

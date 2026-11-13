@@ -758,9 +758,15 @@ impl XdgShellHandler for Villain {
         let Ok(root) = find_popup_root_surface(&popup) else {
             return;
         };
-        // Layer popup grabs may only originate from the focused layer client.
-        // Ordinary application popup policy remains separate.
-        if !self.layer_surface_visible(&root) {
+        let layer_popup = self.shell_surfaces.iter().any(|entry| {
+            entry.layer.wl_surface() == &root
+                || layer_map_for_output(&entry.output)
+                    .layer_for_surface(&root, smithay::desktop::WindowSurfaceType::ALL)
+                    .is_some()
+        });
+        // Layer popups must remain mapped and visible; application popups are
+        // validated against their focused root or parent below.
+        if layer_popup && !self.layer_surface_visible(&root) {
             return;
         }
         let focused = self

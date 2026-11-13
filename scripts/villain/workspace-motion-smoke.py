@@ -159,7 +159,8 @@ def main():
         select(1)
         settle(1)
         call('key', 'Super_L+Left')
-        check(query()['active_workspace'] == 1 and not query().get('motion_timer', False), 'backward navigation stops at workspace one')
+        stopped = query()
+        check(stopped['active_workspace'] == 1 and not stopped.get('motion_timer', False), 'backward navigation stops at workspace one')
 
         # Click the actual bar's workspace chip, then interrupt with a window click.
         call('click', '192', '18', '1')

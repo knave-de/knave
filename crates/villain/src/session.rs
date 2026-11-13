@@ -8,9 +8,8 @@ use std::{
     path::{Path, PathBuf},
     process::Command,
     sync::{
-        Arc,
+        Arc, Condvar, Mutex,
         atomic::{AtomicBool, Ordering},
-        mpsc::{self, SyncSender},
     },
     thread::{self, JoinHandle},
     time::Duration,
@@ -130,24 +129,20 @@ enum ActivationCommand {
         environment: BTreeMap<String, String>,
         restart_portal: bool,
     },
-    Stop,
 }
 
 /// Keeps session activation off the compositor loop with one bounded request
 /// slot. The stop flag lets shutdown cancel a command child before joining.
 pub(crate) struct ActivationWorker {
-    sender: SyncSender<ActivationCommand>,
-    receiver: Option<mpsc::Receiver<ActivationCommand>>,
+    pending: Arc<(Mutex<Option<ActivationCommand>>, Condvar)>,
     stop: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
 
 impl ActivationWorker {
     pub(crate) fn new() -> Self {
-        let (sender, receiver) = mpsc::sync_channel(1);
         Self {
-            sender,
-            receiver: Some(receiver),
+            pending: Arc::new((Mutex::new(None), Condvar::new())),
             stop: Arc::new(AtomicBool::new(false)),
             thread: None,
         }
@@ -157,16 +152,25 @@ impl ActivationWorker {
         if self.thread.is_some() {
             return;
         }
-        let Some(receiver) = self.receiver.take() else {
-            return;
-        };
         let worker_stop = Arc::clone(&self.stop);
+        let worker_pending = Arc::clone(&self.pending);
         self.thread = thread::Builder::new()
             .name("villain-session-activation".into())
             .spawn(move || {
-                while let Ok(command) = receiver.recv() {
+                loop {
+                    let command = {
+                        let (pending, ready) = &*worker_pending;
+                        let mut pending = pending.lock().unwrap();
+                        while pending.is_none() && !worker_stop.load(Ordering::Acquire) {
+                            pending = ready.wait(pending).unwrap();
+                        }
+                        if worker_stop.load(Ordering::Acquire) {
+                            break;
+                        }
+                        pending.take()
+                    };
+                    let Some(command) = command else { continue };
                     match command {
-                        ActivationCommand::Stop => break,
                         ActivationCommand::Run {
                             environment,
                             restart_portal,
@@ -190,25 +194,25 @@ impl ActivationWorker {
 
     pub(crate) fn submit(&mut self, environment: BTreeMap<String, String>, restart_portal: bool) {
         self.start();
-        match self.sender.try_send(ActivationCommand::Run {
-            environment,
-            restart_portal,
-        }) {
-            Ok(()) => {}
-            Err(mpsc::TrySendError::Full(_)) => {
-                tracing::debug!("session activation queue is full; coalescing request");
-            }
-            Err(mpsc::TrySendError::Disconnected(_)) => {
-                tracing::warn!("session activation worker is unavailable");
-            }
+        let (pending, ready) = &*self.pending;
+        let mut pending = pending.lock().unwrap();
+        if pending
+            .replace(ActivationCommand::Run {
+                environment,
+                restart_portal,
+            })
+            .is_some()
+        {
+            tracing::debug!("replaced pending session activation with the latest environment");
         }
+        ready.notify_one();
     }
 }
 
 impl Drop for ActivationWorker {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
-        let _ = self.sender.try_send(ActivationCommand::Stop);
+        self.pending.1.notify_all();
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }

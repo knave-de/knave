@@ -281,9 +281,12 @@ fn render_frame(state: &mut Villain) {
         }
         elements_us = cursor_us + overview_us;
         let stage_started = profile.then(Instant::now);
-        let elements = state
-            .night_light
-            .apply(renderer, state.output_size, elements)?;
+        let elements = state.night_light.apply(
+            renderer,
+            state.output_size,
+            state.config.output_scale,
+            elements,
+        )?;
         if let Some(started) = stage_started {
             night_light_us = started.elapsed().as_micros();
         }

@@ -15,9 +15,12 @@ pub struct Assignment {
     size: [f32; 2],
 }
 impl Assignment {
-    fn new(request: ShortcutAssignmentRequest) -> Result<Self, String> {
+    fn new(request: ShortcutAssignmentRequest, theme: Theme) -> Result<Self, String> {
         request.validate()?;
-        let scene = Scene::new(Self::compose(&request, None, request.error.as_deref()))
+        let mut scene = Scene::new(Self::compose(&request, None, request.error.as_deref()))
+            .map_err(|error| error.to_string())?;
+        scene
+            .set_desktop_theme(theme, knave_shell_ui::styles::STYLESHEET)
             .map_err(|error| error.to_string())?;
         Ok(Self {
             request,
@@ -133,6 +136,16 @@ impl Assignment {
     }
 }
 impl Application for Assignment {
+    fn theme_policy_changed(
+        &mut self,
+        policy: ThemePolicy,
+        css: &str,
+    ) -> Result<(), StylesheetError> {
+        self.scene
+            .set_theme_policy_stylesheets(policy, knave_shell_ui::styles::STYLESHEET, css)?;
+        self.dirty = true;
+        Ok(())
+    }
     fn wants_raw_keys(&self) -> bool {
         true
     }
@@ -216,9 +229,16 @@ impl Application for Assignment {
     fn frame(&mut self, size: [f32; 2], text: &mut dyn TextMeasurer) -> &DisplayList {
         if self.dirty || self.size != size {
             let focus = self.scene.focus();
+            let policy = self.scene.theme_policy();
+            let css = self.scene.user_theme_stylesheet().to_owned();
             if let Ok(mut scene) =
                 Scene::new(Self::compose(&self.request, self.selected, self.error()))
             {
+                let _ = scene.set_theme_policy_stylesheets(
+                    policy,
+                    knave_shell_ui::styles::STYLESHEET,
+                    &css,
+                );
                 scene.layout(size, text);
                 let _ = scene.set_focus(focus.or(Some(CANCEL)));
                 self.scene = scene;
@@ -253,7 +273,7 @@ pub fn run_with_theme(theme: Theme) -> Result<(), String> {
             layer: SurfaceLayer::Overlay,
             namespace: "knave-shortcut-assignment".into(),
         },
-        Assignment::new(request)?,
+        Assignment::new(request, theme)?,
         theme,
     )
     .map_err(|error| error.to_string())

@@ -119,7 +119,7 @@ def main():
     parser.add_argument('--bundle', type=Path, required=True)
     parser.add_argument('--run', type=Path, required=True)
     parser.add_argument('--display', default='104')
-    parser.add_argument('--harness', type=Path, default=Path(__file__).resolve().parents[2] / 'knave/scripts/desktop-harness.py')
+    parser.add_argument('--harness', type=Path, default=Path(__file__).resolve().parents[1] / 'desktop-harness.py')
     args = parser.parse_args()
     directory = args.run.resolve()
     spec = importlib.util.spec_from_file_location('tray_harness', args.harness)

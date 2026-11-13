@@ -151,8 +151,9 @@ Deploy matching Villain, Shell and portal binaries; see Knave ADR 0007.
 
 Static wallpaper is configured through Knave's `[shell.wallpaper]` settings:
 `image` is an absolute PNG path and `fit` is `cover`, `contain`, or `stretch`.
-Knave Session starts the background role automatically; restart the session to
-apply changes. Remove `image` for the black compositor background.
+Knave Session starts the background role automatically. A configuration reload
+applies wallpaper image and fit changes; invalid settings or images keep the
+previous wallpaper. Remove `image` for the black compositor background.
 
 ### Notifications
 

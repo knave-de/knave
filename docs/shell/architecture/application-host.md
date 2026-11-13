@@ -99,9 +99,11 @@ host baseline; this does not establish long-run resource behavior.
 `knave-shell wallpaper ABSOLUTE_PNG_PATH cover|contain|stretch` is supervised by
 Knave Session when `[shell.wallpaper].image` is set. It uses the background layer
 and no keyboard interactivity, loads one bounded PNG and keeps black behind it.
-Decode errors are logged and fall back to black. There is no watcher or redraw
-timer. Configuration changes apply on session restart; the canonical settings
-and lifecycle decision are documented in Knave ADR 0008.
+Decode errors are logged and fall back to black. A desktop subscription applies
+configuration reloads without a file watcher or polling timer. One worker owns
+the subscription and keeps at most one pending update; image decoding happens
+outside the render loop. Invalid settings or images keep the previous wallpaper.
+The canonical settings and lifecycle decision are documented in Knave ADR 0008.
 
 Overview uses a transparent clear color; Villain places a 50% black dimmer behind
 the full-card previews and shell controls. The host selects premultiplied surface alpha when supported, matching

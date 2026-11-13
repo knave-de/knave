@@ -108,10 +108,10 @@ relevant direct/nested live-test coverage.
 
 ## Documentation
 
-- [Architecture index](docs/architecture/README.md)
-- [Component boundaries](docs/architecture/component-boundaries.md)
-- [Performance policy](docs/architecture/performance.md)
-- [Change-impact checklist](docs/architecture/change-impact.md)
+- [Architecture index](architecture/README.md)
+- [Component boundaries](architecture/component-boundaries.md)
+- [Performance policy](architecture/performance.md)
+- [Change-impact checklist](architecture/change-impact.md)
 - [Agent instructions](../../crates/villain/AGENTS.md)
 
 ## Window focus
@@ -243,7 +243,7 @@ keys = "MOD+F"
 dispatch = "toggle-maximize"
 ```
 
-See [maximization policy](docs/architecture/maximization.md).
+See [maximization policy](architecture/maximization.md).
 
 ## Master/stack resizing
 
@@ -349,7 +349,7 @@ focus opacity, per-side shadows and background blur through Knave's
 `[compositor.appearance]` settings. Maximized effects are individually opt-in;
 fullscreen always bypasses effects. Validate with `knave config check` and reload
 with `knavectl reload` after deploying the matching compositor. See
-[window appearance](docs/architecture/window-appearance.md) for implementation,
+[window appearance](architecture/window-appearance.md) for implementation,
 compatibility, rollout and resource behavior; the full TOML reference belongs to Knave.
 
 ## Selective screen sharing
@@ -371,7 +371,7 @@ for 160 ms; focus and workspace state change immediately. Next/previous keep the
 direction through skipped empty slots and dynamic workspace creation. Repeated
 switches retarget from current positions. Panels and the cursor remain stationary. Pointer clicks
 and scrolling finish the transition before delivery. See the
-[motion design](docs/architecture/workspace-motion.md) for ownership and interruptions.
+[motion design](architecture/workspace-motion.md) for ownership and interruptions.
 
 ## Workspace swipes
 
@@ -380,7 +380,7 @@ Left advances and creates a workspace at the dynamic tail when needed; right
 goes back and stops at the first workspace. Release beyond a quarter of the
 output width commits; shorter or cancelled swipes settle back.
 Panels and the cursor stay stationary. See the
-[Knave gesture contract](https://github.com/knave-de/knave/blob/master/docs/architecture/decisions/0010-workspace-swipes.md).
+[Knave gesture contract](https://github.com/knave-de/knave/blob/master/architecture/decisions/0010-workspace-swipes.md).
 Override entries under `[[compositor.gesture.bind]]` by fingers and direction;
 `action = "none"` disables the matching compositor gesture. These are Villain
 actions, not knavectl commands. Reload applies validated changes atomically.

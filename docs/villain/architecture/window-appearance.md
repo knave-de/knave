@@ -1,9 +1,8 @@
 # Window appearance implementation
 
 Knave owns `[compositor.appearance]` in its canonical config. Villain consumes
-`knave-config` at `3ef4a82a2dd173999f0500515f69b79fc9c32b88`. The configuration
-revision is published on Knave master. Locked builds resolve the merged revision
-without a machine-specific Cargo patch.
+`knave-config` through the workspace path dependency. Knave and Villain packages
+update together.
 
 Configure `gaps.outer` and `gaps.inner` using top/right/bottom/left logical pixels.
 Adjacent tiles add their inner-edge contributions. Outer gaps follow panel
@@ -72,15 +71,12 @@ Changing window content can still require full offscreen composition; blur costs
 more than ordinary rendering. Cache bounds do not include client buffers or driver
 allocations. Direct-TTY and long-running GPU performance require separate checks.
 
-Roll out the Knave config commit first, then this matching Villain build; restart
-the compositor once. Subsequent edits use `knave config check` and `knavectl reload`.
-Rollback restores the old Villain binary first; appearance tables may remain as
-unknown data preserved by Knave. Schema 2 and package versions remain unchanged.
-No config data or bindings are deleted.
+Restart the compositor once after deployment. Subsequent edits use `knave config
+check` and `knavectl reload`. No config data or bindings are deleted.
 
 ## Verification on 2026-09-30
 
-Knave's 23 tests and all 34 Villain tests passed with the matching git pins,
+Knave's 23 tests and all 34 Villain tests passed with the coordinated workspace,
 including isolated Wayland, layer-shell, XWayland and surfaceless GLES cases.
 Format, warnings-denied Clippy, locked debug/release builds and diff checks passed.
 Coverage includes independent gap/border geometry, tiny outputs, radius normalization,

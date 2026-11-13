@@ -58,8 +58,10 @@ jobs:
       - name: Run tests
         run: cargo test --workspace --locked
 
+      - name: Test desktop harness
+        run: python3 scripts/test_desktop_harness.py
+
       - name: Build release artifacts
         run: cargo build --workspace --release --locked
 
-      # The legacy multi-repo dev tooling tests are intentionally absent during
-      # the phase 0 merge. They return with the phase 1 worktree/bundle tooling.
+      # Legacy multi-repo dev tooling tests remain out of scope for the monorepo.

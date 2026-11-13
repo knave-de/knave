@@ -210,7 +210,7 @@ fn load_named_cursor(
         .map(|image| CursorFrame {
             buffer: MemoryRenderBuffer::from_slice(
                 &image.pixels_rgba,
-                Fourcc::Argb8888,
+                Fourcc::Abgr8888,
                 (image.width as i32, image.height as i32),
                 1,
                 Transform::Normal,
