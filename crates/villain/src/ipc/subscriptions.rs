@@ -44,19 +44,13 @@ impl Subscriber {
         let mut slot = self.latest.lock().unwrap();
         let notify = slot.is_none();
         *slot = Some(frame);
-        if notify && !self.wake() {
-            return false;
-        }
-        true
+        !notify || self.wake()
     }
     fn publish_event(&self, frame: Frame) -> bool {
         let mut slot = self.event.lock().unwrap();
         let notify = slot.is_none();
         *slot = Some(frame);
-        if notify && !self.wake() {
-            return false;
-        }
-        true
+        !notify || self.wake()
     }
 
     fn publish_shortcut_event(&self, frame: Frame) -> bool {
