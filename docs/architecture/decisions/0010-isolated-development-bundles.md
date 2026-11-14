@@ -1,9 +1,5 @@
 # ADR 0010: Isolated development bundles
 
-> **Status: superseded.** Shell and Villain were merged into this repository and
-> workspace in phase 0. The multi-repository assumptions below no longer hold;
-> the bundle tooling is being replaced by monorepo tooling in phase 1.
-
 ## Decision
 
 Knave owns a Python development CLI alongside the existing desktop harness.
