@@ -1668,3 +1668,122 @@ fn full_named_themes_leave_compositor_preview_windows_unpainted() {
         );
     }
 }
+
+/// Drives the actual worker results and retained UI without Wayland or a GPU.
+fn wait_for_apps(app: &mut Overview, expected: &[&str]) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        app.frame([1200.0, 800.0], &mut Metrics);
+        let names: Vec<_> = app
+            .search()
+            .into_iter()
+            .filter_map(|index| match &app.apps {
+                Apps::Ready(catalog) => catalog.get(index).map(|entry| entry.name.as_str()),
+                _ => None,
+            })
+            .collect();
+        if names == expected {
+            for name in expected {
+                assert!(
+                    app.display.commands.iter().any(|command| matches!(command,
+                        knave_ui::DisplayCommand::Text { text, .. } if text == name
+                    )),
+                    "updated application {name} was not rendered"
+                );
+            }
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "wanted {expected:?}, got {names:?}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
+fn install_entry(path: &std::path::Path, name: &str) {
+    std::fs::write(
+        path,
+        format!("[Desktop Entry]\nType=Application\nName={name}\nExec=/bin/true\n"),
+    )
+    .unwrap();
+}
+
+#[test]
+fn application_changes_refresh_search_and_all_apps_without_reopening() {
+    let root = tempfile::tempdir().unwrap();
+    let directory = root.path().join("applications");
+    std::fs::create_dir(&directory).unwrap();
+    install_entry(&directory.join("old.desktop"), "Refresh Old");
+    let mut app = Overview::new()
+        .with_catalog_environment(Environment {
+            data_dirs: vec![root.path().into()],
+            ..Default::default()
+        })
+        .with_icon_lookup(icon_lookup(true));
+    app.desktop_snapshot(&snapshot());
+    app.query = TextEdit::new("Refresh").unwrap();
+    wait_for_apps(&mut app, &["Refresh Old"]);
+    install_entry(&directory.join("new.desktop"), "Refresh New");
+    wait_for_apps(&mut app, &["Refresh New", "Refresh Old"]);
+    assert_eq!(app.query.text(), "Refresh");
+    // Editors and installers commonly replace entries atomically.
+    install_entry(&directory.join("replacement.tmp"), "Refresh Changed");
+    std::fs::rename(
+        directory.join("replacement.tmp"),
+        directory.join("new.desktop"),
+    )
+    .unwrap();
+    wait_for_apps(&mut app, &["Refresh Changed", "Refresh Old"]);
+    std::fs::rename(
+        directory.join("new.desktop"),
+        directory.join("renamed.desktop"),
+    )
+    .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        app.frame([1200.0, 800.0], &mut Metrics);
+        if matches!(&app.apps, Apps::Ready(catalog) if catalog.search("Changed", 1).first().is_some_and(|i| catalog.get(*i).unwrap().id == "renamed.desktop"))
+        {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    app.query = TextEdit::new("").unwrap();
+    app.all_apps = true;
+    std::fs::remove_file(directory.join("old.desktop")).unwrap();
+    wait_for_apps(&mut app, &["Refresh Changed"]);
+    std::fs::remove_file(directory.join("renamed.desktop")).unwrap();
+    wait_for_apps(&mut app, &[]);
+    assert!(app.all_apps);
+}
+
+#[test]
+fn application_watch_recovers_missing_and_replaced_directories() {
+    let root = tempfile::tempdir().unwrap();
+    let data = root.path().join("missing/data");
+    let directory = data.join("applications");
+    let mut app = Overview::new()
+        .with_catalog_environment(Environment {
+            data_dirs: vec![data],
+            ..Default::default()
+        })
+        .with_icon_lookup(icon_lookup(true));
+    app.desktop_snapshot(&snapshot());
+    settle(&mut app, [1200.0, 800.0]);
+    assert!(matches!(app.apps, Apps::Unavailable));
+    app.all_apps = true;
+    std::fs::create_dir_all(directory.join("nested")).unwrap();
+    install_entry(&directory.join("nested/new.desktop"), "Recovered");
+    wait_for_apps(&mut app, &["Recovered"]);
+    // Subsequent edits in the newly created subdirectory must also be watched.
+    install_entry(&directory.join("nested/new.desktop"), "Modified");
+    wait_for_apps(&mut app, &["Modified"]);
+    std::fs::remove_dir_all(&directory).unwrap();
+    std::fs::create_dir(&directory).unwrap();
+    install_entry(&directory.join("replacement.desktop"), "Replacement");
+    wait_for_apps(&mut app, &["Replacement"]);
+    install_entry(&directory.join("replacement.desktop"), "Still Watched");
+    wait_for_apps(&mut app, &["Still Watched"]);
+}

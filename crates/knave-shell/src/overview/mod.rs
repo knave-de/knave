@@ -2,6 +2,7 @@
 pub(crate) mod icons;
 pub(crate) mod loader;
 mod view;
+mod watch;
 use knave_apps::{Catalog, Environment};
 use knave_desktop_api::{
     DesktopCommand, DesktopSnapshot, OverviewPane, WindowId, WindowSummary, WorkspaceId,
@@ -442,6 +443,10 @@ impl Overview {
                     if catalog.truncated() {
                         eprintln!("knave-shell: application catalog is incomplete (scan limit)");
                     }
+                    // Catalog indexes can now name different apps; do not retain row focus.
+                    if self.scene.focus() != Some(SEARCH) {
+                        let _ = self.scene.set_focus(None);
+                    }
                     self.apps = Apps::Ready(catalog);
                     self.result_page = 0;
                     if std::mem::take(&mut self.launch_when_ready)
@@ -452,7 +457,9 @@ impl Overview {
                 }
                 Done::Catalog(Err(error)) => {
                     eprintln!("knave-shell: {error}");
-                    self.apps = Apps::Unavailable;
+                    if !matches!(self.apps, Apps::Ready(_)) {
+                        self.apps = Apps::Unavailable;
+                    }
                     self.launch_when_ready = false;
                 }
                 Done::Icon(name, image) => self.icons.finish(name, image),
