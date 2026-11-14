@@ -38,7 +38,9 @@ side decoration and follows the client's negotiated mode; a client that
 requests client-side decoration keeps its own chrome and receives no Villain
 titlebar. Destroying the decoration object returns the toplevel to client-side
 mode at its next surface commit. The titlebar is outside the client's
-configured content rectangle and is not shown for fullscreen windows.
+configured content rectangle and is not shown for fullscreen windows. When
+borders or rounded corners are enabled, the compositor titlebar shares the
+client's outer frame and rounded hit contour.
 
 XWayland clients do not negotiate `xdg-decoration`. A managed X11 window gets
 the same titlebar when it relies on the window manager for decorations, as

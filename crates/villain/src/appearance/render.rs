@@ -394,6 +394,7 @@ impl EffectsRenderer {
         let windows_started = profile.then(Instant::now);
         for (window, rect, fullscreen, maximized, tiled, _) in &windows {
             let is_focused = KeyboardFocus::for_window(window) == focused;
+            let titlebar = crate::workspaces::titlebar_rect(window, *rect, *fullscreen);
             key.windows
                 .push((*rect, *fullscreen, *maximized, *tiled, is_focused));
             let elements = window_elements(
@@ -404,10 +405,8 @@ impl EffectsRenderer {
                 render_scale,
             );
             key.sources.extend(elements.iter().map(source_key));
-            let bar = if let (Some(bar_rect), Some(window_id)) = (
-                crate::workspaces::titlebar_rect(window, *rect, *fullscreen),
-                state.window_id(window),
-            ) {
+            let bar = if let (Some(bar_rect), Some(window_id)) = (titlebar, state.window_id(window))
+            {
                 let hovered = if workspace == state.active_workspace
                     && bar_rect.to_f64().contains(state.pointer_location)
                 {
@@ -538,7 +537,9 @@ impl EffectsRenderer {
             } else {
                 Edges::default()
             };
-            let outer = expand(rect, widths);
+            let titlebar = crate::workspaces::titlebar_rect(&window, rect, fullscreen);
+            let frame = crate::appearance::frame_rect(rect, titlebar);
+            let outer = crate::appearance::outer_rect(rect, titlebar, widths);
             let radii = normalized_radii(
                 if view.radius {
                     appearance.border.radius
@@ -547,15 +548,24 @@ impl EffectsRenderer {
                 },
                 outer.size,
             );
-            let inner_radii = [
+            let inset_radii = [
                 (radii[0] - f32::from(widths.left.max(widths.top))).max(0.0),
                 (radii[1] - f32::from(widths.right.max(widths.top))).max(0.0),
                 (radii[2] - f32::from(widths.right.max(widths.bottom))).max(0.0),
                 (radii[3] - f32::from(widths.left.max(widths.bottom))).max(0.0),
             ];
+            let mask_titlebar = titlebar.is_some_and(|bar| {
+                view.radius && inset_radii.into_iter().any(|radius| radius > 0.0) && bar.size.h > 0
+            });
             // Flatten retained lower content before another effect window can exceed
             // the scene pixel budget. Transient targets remain bounded independently.
-            let window_pixels = i64::from(rect.size.w) * i64::from(rect.size.h) * 2;
+            let titlebar_pixels = if mask_titlebar {
+                titlebar.map_or(0, |bar| i64::from(bar.size.w) * i64::from(bar.size.h))
+            } else {
+                0
+            };
+            let window_pixels =
+                i64::from(rect.size.w) * i64::from(rect.size.h) * 2 + titlebar_pixels;
             if live_pixels + window_pixels > MAX_PIXELS && live_pixels > 0 {
                 let lower_texture = render_texture(renderer, size, &elements, background)?;
                 let lower_buffer = TextureBuffer::from_texture(
@@ -591,16 +601,37 @@ impl EffectsRenderer {
                             Kind::Unspecified,
                         );
                     let content = render_texture(renderer, rect.size, &root_elements, [0.0; 4])?;
-                    window_elements.push(filtered(
-                        renderer,
-                        content,
-                        texture_program,
-                        rect.loc,
-                        inner_radii,
-                        opacity,
-                        (0.0, 0.0),
-                        0.0,
-                    ));
+                    let content = if mask_titlebar {
+                        let titlebar_height = titlebar.expect("masked titlebar exists").size.h;
+                        filtered_with_mask(
+                            renderer,
+                            content,
+                            texture_program,
+                            rect.loc,
+                            inset_radii,
+                            opacity,
+                            (0.0, 0.0),
+                            0.0,
+                            [
+                                0.0,
+                                -(titlebar_height as f32),
+                                frame.size.w as f32,
+                                frame.size.h as f32,
+                            ],
+                        )
+                    } else {
+                        filtered(
+                            renderer,
+                            content,
+                            texture_program,
+                            rect.loc,
+                            inset_radii,
+                            opacity,
+                            (0.0, 0.0),
+                            0.0,
+                        )
+                    };
+                    window_elements.push(content);
                     for (popup, location) in PopupManager::popups_for_surface(&root) {
                         let location = rect.loc + location - popup.geometry().loc;
                         let popup_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
@@ -620,6 +651,27 @@ impl EffectsRenderer {
                 window_elements.extend(original);
             }
             if let Some(bar) = bar {
+                let bar = if mask_titlebar && let Some(bar_rect) = titlebar {
+                    let relocated = RelocateRenderElement::from_element(
+                        &bar,
+                        (-bar_rect.loc.x, -bar_rect.loc.y),
+                        Relocate::Relative,
+                    );
+                    let texture = render_texture(renderer, bar_rect.size, &[relocated], [0.0; 4])?;
+                    filtered_with_mask(
+                        renderer,
+                        texture,
+                        texture_program,
+                        bar_rect.loc,
+                        inset_radii,
+                        1.0,
+                        (0.0, 0.0),
+                        0.0,
+                        [0.0, 0.0, frame.size.w as f32, frame.size.h as f32],
+                    )
+                } else {
+                    bar
+                };
                 window_elements.insert(0, bar);
             }
             if widths != Edges::default() {
@@ -669,14 +721,33 @@ impl EffectsRenderer {
                         }
                     }
                     let source_rect = Rectangle::new(rect.loc - capture.loc, rect.size);
-                    window_elements.push(filtered_region(
-                        renderer,
-                        backdrop,
-                        texture_program,
-                        rect,
-                        source_rect,
-                        inner_radii,
-                    ));
+                    let blurred = if mask_titlebar {
+                        let frame_origin = frame.loc - capture.loc;
+                        filtered_region_with_mask(
+                            renderer,
+                            backdrop,
+                            texture_program,
+                            rect,
+                            source_rect,
+                            inset_radii,
+                            [
+                                frame_origin.x as f32,
+                                frame_origin.y as f32,
+                                frame.size.w as f32,
+                                frame.size.h as f32,
+                            ],
+                        )
+                    } else {
+                        filtered_region(
+                            renderer,
+                            backdrop,
+                            texture_program,
+                            rect,
+                            source_rect,
+                            inset_radii,
+                        )
+                    };
+                    window_elements.push(blurred);
                 }
             }
             if view.shadows {

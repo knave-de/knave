@@ -64,6 +64,31 @@ pub(super) fn filtered(
     radius: f32,
 ) -> EffectElement {
     let size = texture.size();
+    filtered_with_mask(
+        renderer,
+        texture,
+        program,
+        loc,
+        radii,
+        opacity,
+        direction,
+        radius,
+        [0.0, 0.0, size.w as f32, size.h as f32],
+    )
+}
+#[allow(clippy::too_many_arguments)]
+pub(super) fn filtered_with_mask(
+    renderer: &GlesRenderer,
+    texture: GlesTexture,
+    program: &GlesTexProgram,
+    loc: smithay::utils::Point<i32, Logical>,
+    radii: [f32; 4],
+    opacity: f32,
+    direction: (f32, f32),
+    radius: f32,
+    mask_rect: [f32; 4],
+) -> EffectElement {
+    let size = texture.size();
     let flip = if texture.is_y_inverted() { 1.0 } else { 0.0 };
     let buffer = TextureBuffer::from_texture(renderer, texture, 1, Transform::Normal, None);
     EffectElement::Filter(TextureShaderElement::new(
@@ -72,7 +97,7 @@ pub(super) fn filtered(
         vec![
             Uniform::new("extent", (size.w as f32, size.h as f32)),
             Uniform::new("radii", radii),
-            Uniform::new("mask_rect", [0.0, 0.0, size.w as f32, size.h as f32]),
+            Uniform::new("mask_rect", mask_rect),
             Uniform::new("direction", direction),
             Uniform::new("blur_radius", radius),
             Uniform::new("flip_y", flip),
@@ -86,6 +111,31 @@ pub(super) fn filtered_region(
     destination: Geometry,
     source: Geometry,
     radii: [f32; 4],
+) -> EffectElement {
+    filtered_region_with_mask(
+        renderer,
+        texture,
+        program,
+        destination,
+        source,
+        radii,
+        [
+            source.loc.x as f32,
+            source.loc.y as f32,
+            source.size.w as f32,
+            source.size.h as f32,
+        ],
+    )
+}
+#[allow(clippy::too_many_arguments)]
+pub(super) fn filtered_region_with_mask(
+    renderer: &GlesRenderer,
+    texture: GlesTexture,
+    program: &GlesTexProgram,
+    destination: Geometry,
+    source: Geometry,
+    radii: [f32; 4],
+    mask_rect: [f32; 4],
 ) -> EffectElement {
     let size = texture.size();
     let flip = if texture.is_y_inverted() { 1.0 } else { 0.0 };
@@ -107,24 +157,9 @@ pub(super) fn filtered_region(
             Uniform::new("direction", (0.0_f32, 0.0_f32)),
             Uniform::new("blur_radius", 0.0_f32),
             Uniform::new("flip_y", flip),
-            Uniform::new(
-                "mask_rect",
-                [
-                    source.loc.x as f32,
-                    source.loc.y as f32,
-                    source.size.w as f32,
-                    source.size.h as f32,
-                ],
-            ),
+            Uniform::new("mask_rect", mask_rect),
         ],
     ))
-}
-pub(super) fn expand(mut rect: Geometry, width: Edges) -> Geometry {
-    rect.loc.x -= i32::from(width.left);
-    rect.loc.y -= i32::from(width.top);
-    rect.size.w += i32::from(width.left) + i32::from(width.right);
-    rect.size.h += i32::from(width.top) + i32::from(width.bottom);
-    rect
 }
 pub(crate) fn normalized_radii(r: Corners, size: Size<i32, Logical>) -> [f32; 4] {
     let mut values = [

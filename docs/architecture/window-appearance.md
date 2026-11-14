@@ -24,6 +24,8 @@ content, so increasing a border never covers application controls. One tiled
 window uses the same gap policy. Floating windows keep their saved client size
 and position, constrained inside the usable area, outer gaps and border allowance;
 inner gaps only apply to tiles. Move/resize geometry remains client geometry.
+For server-side decorated toplevels, the compositor titlebar sits inside this
+same border frame; the border surrounds both the titlebar and client content.
 
 Gap insets shrink proportionally when the configured opposing edges exceed the
 available dimension, retaining at least one logical pixel of client content.
