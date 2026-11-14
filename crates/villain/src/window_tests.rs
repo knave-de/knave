@@ -1827,6 +1827,21 @@ fn xdg_decoration_negotiation_and_geometry() {
                     .into(),
             ));
             state.host_focused = true;
+            state.pointer_location = (f64::from(bar.loc.x + 2), f64::from(bar.loc.y + 2)).into();
+            assert!(
+                !state.handle_compositor_button(
+                    0x110,
+                    smithay::backend::input::ButtonState::Pressed,
+                    1
+                ),
+                "a rounded titlebar border corner must not start a titlebar drag"
+            );
+            assert!(state.interaction.is_none());
+            state.handle_compositor_button(
+                0x110,
+                smithay::backend::input::ButtonState::Released,
+                2,
+            );
             state.pointer_location = (
                 f64::from(bar.loc.x + bar.size.w - 36),
                 f64::from(bar.loc.y + 17),
