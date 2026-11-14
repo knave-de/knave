@@ -13,25 +13,27 @@ Shell and Villain now live in this repository (`crates/knave-shell`,
 `crates/villain`); sharing a workspace does not merge their component
 ownership.
 
-## Required workspace flow for all edits
+## Workspace selection for all edits
 
-All repository changes, including code, configuration, scripts, tests,
-documentation and `AGENTS.md` edits, belong in an isolated Git worktree.
-Read-only investigation may use the source checkouts; edits and commits belong
-in feature worktrees. Creating a branch in a source checkout does not satisfy
-this requirement.
+Use the working directory supplied for the task, including an existing prepared
+worktree. An explicit user-selected path such as `./` takes precedence over the
+default isolation policy, even when it is the main checkout. Do not create or
+switch to another worktree merely because the selected directory already exists
+or already has a branch.
 
-Create a worktree from this repository with plain Git:
+When no task directory is supplied, use an isolated feature worktree for edits
+and commits. Create it with plain Git and state its absolute path before editing:
 
     git worktree add -b FEATURE ../knave-FEATURE master
 
-Preserve the source checkouts, their branches and unrelated work. Do not edit a
-detached dependency worktree or silently move its pin.
+Keep edits, commits and checks in the selected directory. Give delegated agents
+the same path for work on the same feature; a prepared worktree satisfies
+isolation without creating another one. Preserve unrelated changes and branches.
+Do not edit a detached dependency worktree or silently move its pin.
 
-Edit, commit and run checks inside the feature worktree. For documentation-only
-edits, review the diff and run `git diff --check`; a binary rebuild is
-unnecessary. Keep existing verified bundles immutable and leave running user
-sessions alone.
+For documentation-only edits, review the diff and run `git diff --check`; a
+binary rebuild is unnecessary. Keep existing verified bundles immutable and
+leave running user sessions alone.
 
 The former `knave-dev` managed workspace, bundle and session tooling still lives
 under `scripts/` and `docs/dev-workflow.md`. It assumes the pre-monorepo
@@ -144,8 +146,9 @@ reporting the worktree path and commit; do not claim the managed bundle steps
 were used.
 
 The development CLI creates workspaces and builds; it does not choose agent
-providers or spawn agents. When agents are explicitly delegated, give each
-independent feature its own worktree and share the bounded build queue.
+providers or spawn agents. When agents are explicitly delegated, keep work on
+the same feature in the selected directory. Use separate worktrees for independent features only when
+consistent with the user's selected workspace, and share the bounded build queue.
 
 The Knave stack is Rust/Cargo-first. Use Cargo for libraries, binaries, tests,
 and workspace orchestration across the environment. The Rust/wgpu shell is the
