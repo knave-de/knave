@@ -46,6 +46,14 @@ pub struct Tty {
 }
 
 impl Tty {
+    pub(crate) fn update_keyboard_leds(&mut self, leds: smithay::reexports::input::Led) {
+        for device in &mut self.input_devices {
+            if device.has_capability(smithay::reexports::input::DeviceCapability::Keyboard) {
+                device.led_update(leds);
+            }
+        }
+    }
+
     pub(crate) fn set_scale(
         &mut self,
         scale: f64,
@@ -263,6 +271,7 @@ pub fn init(
                     // alive even if an input device fails to resume.
                     tracing::warn!(?error, "input resume failed");
                 }
+                crate::state::Villain::sync_keyboard_leds(state);
                 let tty = state.tty.as_mut().unwrap();
                 // Preserve connector state. Resetting every connector here
                 // invalidates the existing DRM surface during VT handoff.
@@ -330,6 +339,15 @@ impl Tty {
     }
 }
 
+impl Villain {
+    pub(crate) fn sync_keyboard_leds(&mut self) {
+        let leds = smithay::reexports::input::Led::from(self.keyboard.led_state());
+        if let Some(tty) = self.tty.as_mut() {
+            tty.update_keyboard_leds(leds);
+        }
+    }
+}
+
 pub fn render_if_needed(state: &mut Villain) {
     let Some(mut tty) = state.tty.take() else {
         return;
@@ -356,6 +374,11 @@ fn process_input(event: InputEvent<LibinputInputBackend>, state: &mut Villain) {
     match event {
         InputEvent::DeviceAdded { mut device } => {
             configure_input_device(&mut device, state.config.input, &state.config.devices);
+            if device.has_capability(smithay::reexports::input::DeviceCapability::Keyboard) {
+                device.led_update(smithay::reexports::input::Led::from(
+                    state.keyboard.led_state(),
+                ));
+            }
             if let Some(tty) = state.tty.as_mut() {
                 tty.input_devices.push(device);
             }
