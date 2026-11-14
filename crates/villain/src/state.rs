@@ -398,6 +398,19 @@ impl SeatHandler for Villain {
         &mut self.seat_state
     }
 
+    fn led_state_changed(
+        &mut self,
+        _seat: &smithay::input::Seat<Self>,
+        led_state: smithay::input::keyboard::LedState,
+    ) {
+        if let Some(tty) = self.tty.as_mut() {
+            let leds = smithay::reexports::input::Led::from(led_state);
+            for device in &mut tty.input_devices {
+                device.led_update(leds);
+            }
+        }
+    }
+
     fn cursor_image(
         &mut self,
         _seat: &smithay::input::Seat<Self>,
