@@ -93,6 +93,13 @@ pub fn elements(
         .into_iter()
         .map(OverviewRenderElement::Cursor)
         .collect();
+    result.extend(
+        state
+            .cursor
+            .drag_icon_elements(renderer, state.pointer_location, state.config.output_scale)
+            .into_iter()
+            .map(OverviewRenderElement::Cursor),
+    );
     let cursor_len = result.len();
     log_slow_stage("cursor_elements", stage_started, cursor_len);
     let now = std::time::Instant::now();

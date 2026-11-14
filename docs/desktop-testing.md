@@ -189,3 +189,18 @@ enforcement and real Polkit authentication require physical-device review.
 Workspace runs require only `target/PROFILE/knave`; all desktop process modes
 use that executable. Pre-monorepo bundles require their original tooling and
 are not a validation path for single-executable builds.
+
+## Native file drag-and-drop
+
+With a debug workspace build, run:
+
+```sh
+python3 scripts/desktop-dnd-smoke.py --run /tmp/knave-dnd-001
+```
+
+Requires PyGObject with GTK 3 and GdkPixbuf. Two separate native Wayland clients
+exercise a file-URI drop, drag-icon pixels and hotspot placement, pointer movement,
+and icon cleanup on accepted/rejected drops and source disconnect. The runner
+records MP4s, screenshots, assertions and compositor resource samples around ten
+rejected drags, then stops its applications and harness. It does not establish
+XWayland interoperability or direct-TTY/GPU behavior.
