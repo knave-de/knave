@@ -338,6 +338,7 @@ impl CompositorHandler for Villain {
         // This turns a client's wl_buffer commit into the state Smithay's
         // renderer can later inspect.
         on_commit_buffer_handler::<Self>(surface);
+        self.cursor.drag_icon_commit(surface);
         self.popups.commit(surface);
         if let Some(smithay::desktop::PopupKind::Xdg(popup)) = self.popups.find_popup(surface) {
             if !popup.is_initial_configure_sent() {
@@ -417,6 +418,9 @@ impl CompositorHandler for Villain {
     }
 
     fn destroyed(&mut self, surface: &WlSurface) {
+        if self.cursor.remove_drag_icon(surface) {
+            self.request_repaint();
+        }
         self.fractional_scale_surfaces
             .retain(|weak| weak.id() != surface.id());
     }
@@ -510,7 +514,23 @@ impl ext_data_control::DataControlHandler for Villain {
     }
 }
 
-impl ClientDndGrabHandler for Villain {}
+impl ClientDndGrabHandler for Villain {
+    fn started(
+        &mut self,
+        _source: Option<smithay::reexports::wayland_server::protocol::wl_data_source::WlDataSource>,
+        icon: Option<WlSurface>,
+        _seat: Seat<Self>,
+    ) {
+        self.cursor.set_drag_icon(icon);
+        self.request_repaint();
+    }
+
+    fn dropped(&mut self, _target: Option<WlSurface>, _validated: bool, _seat: Seat<Self>) {
+        // Smithay calls this when the grab is unset, including cancellation.
+        self.cursor.set_drag_icon(None);
+        self.request_repaint();
+    }
+}
 
 impl ServerDndGrabHandler for Villain {
     fn send(&mut self, _mime_type: String, _fd: OwnedFd, _seat: Seat<Self>) {}

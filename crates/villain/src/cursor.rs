@@ -15,8 +15,9 @@ use smithay::{
     desktop::utils::send_frames_surface_tree,
     input::pointer::{CursorIcon, CursorImageStatus, CursorImageSurfaceData},
     output::Output,
+    reexports::wayland_server::{Resource, protocol::wl_surface::WlSurface},
     utils::{Point, Transform},
-    wayland::compositor::with_states,
+    wayland::compositor::{SurfaceAttributes, with_states},
 };
 use std::{collections::HashMap, fs, time::Duration};
 
@@ -34,6 +35,7 @@ struct CursorFrame {
 
 pub struct CursorState {
     image: CursorImageStatus,
+    drag_icon: Option<(WlSurface, Point<i32, smithay::utils::Logical>)>,
     split_override: bool,
     interaction_override: Option<CursorIcon>,
     screenshot_override: bool,
@@ -54,6 +56,7 @@ impl CursorState {
             .unwrap_or(24);
         Self {
             image: CursorImageStatus::default_named(),
+            drag_icon: None,
             split_override: false,
             interaction_override: None,
             screenshot_override: false,
@@ -63,6 +66,64 @@ impl CursorState {
             named: HashMap::new(),
             fallback: fallback_cursor(),
         }
+    }
+
+    pub(crate) fn set_drag_icon(&mut self, surface: Option<WlSurface>) {
+        self.drag_icon = surface.map(|surface| (surface, (0, 0).into()));
+    }
+
+    pub(crate) fn drag_icon_commit(&mut self, surface: &WlSurface) {
+        if let Some((icon, offset)) = &mut self.drag_icon
+            && icon == surface
+        {
+            // wl_surface attach/offset moves the icon relative to its previous origin.
+            let delta = with_states(surface, |states| {
+                states
+                    .cached_state
+                    .get::<SurfaceAttributes>()
+                    .current()
+                    .buffer_delta
+                    .take()
+            });
+            if let Some(delta) = delta {
+                *offset += delta;
+            }
+        }
+    }
+
+    pub(crate) fn remove_drag_icon(&mut self, surface: &WlSurface) -> bool {
+        if self
+            .drag_icon
+            .as_ref()
+            .is_some_and(|(icon, _)| icon == surface)
+        {
+            self.drag_icon = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(crate) fn drag_icon_elements(
+        &self,
+        renderer: &mut GlesRenderer,
+        location: Point<f64, smithay::utils::Logical>,
+        output_scale: f64,
+    ) -> Vec<CursorRenderElement> {
+        let Some((surface, offset)) = &self.drag_icon else {
+            return Vec::new();
+        };
+        if !surface.is_alive() {
+            return Vec::new();
+        }
+        render_elements_from_surface_tree(
+            renderer,
+            surface,
+            (location + offset.to_f64()).to_physical_precise_round(output_scale),
+            output_scale,
+            1.0,
+            Kind::Unspecified,
+        )
     }
 
     pub(crate) fn set_interaction_override(&mut self, icon: Option<CursorIcon>) {
@@ -152,6 +213,11 @@ impl CursorState {
     }
 
     pub fn send_frame(&self, output: &Output, now: Duration) {
+        if let Some((surface, _)) = &self.drag_icon {
+            send_frames_surface_tree(surface, output, now, Some(Duration::ZERO), |_, _| {
+                Some(output.clone())
+            });
+        }
         if let CursorImageStatus::Surface(surface) = &self.image {
             send_frames_surface_tree(surface, output, now, Some(Duration::ZERO), |_, _| {
                 Some(output.clone())
@@ -164,6 +230,10 @@ impl CursorState {
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) -> bool {
         matches!(&self.image, CursorImageStatus::Surface(cursor) if cursor == surface)
+            || self
+                .drag_icon
+                .as_ref()
+                .is_some_and(|(icon, _)| icon == surface)
     }
 
     pub fn next_animation_delay(&self, now: Duration) -> Option<Duration> {
