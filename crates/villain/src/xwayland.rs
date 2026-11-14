@@ -1358,6 +1358,22 @@ mod tests {
         assert_eq!(bar.size.w, client.size.w);
         assert_eq!(client.size, (300, 200).into());
         assert_eq!(bar.loc.y + crate::workspaces::TITLEBAR_HEIGHT, client.loc.y);
+        let previous_floating_borders = state.config.appearance.views.floating.borders;
+        let previous_border_width = state.config.appearance.border.width;
+        state.config.appearance.views.floating.borders = true;
+        state.config.appearance.border.width = knave_config::appearance::Edges {
+            top: 3,
+            right: 4,
+            bottom: 5,
+            left: 2,
+        };
+        let (outer, _, frame, _) = state.input_shape(&window, client);
+        assert_eq!(frame.loc, bar.loc, "X11 titlebar begins at the frame's top");
+        assert_eq!(frame.size.h, bar.size.h + client.size.h);
+        assert_eq!(outer.loc, (frame.loc.x - 2, frame.loc.y - 3).into());
+        assert_eq!(outer.size, (frame.size.w + 6, frame.size.h + 8).into());
+        state.config.appearance.views.floating.borders = previous_floating_borders;
+        state.config.appearance.border.width = previous_border_width;
         let outer = state.floating_geometry(&window).unwrap();
         assert_eq!(bar.loc, outer.loc);
 
