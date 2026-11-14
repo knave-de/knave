@@ -3,7 +3,7 @@
 Knave is the umbrella repository for the Knave Desktop Environment.
 
 Knave owns the user-facing configuration, settings, session lifecycle, build
-orchestration, public desktop contracts, compatibility policy, and coordinated builds of the Rust
+orchestration, private desktop messages, compatibility policy, and coordinated builds of the Rust
 Knave Shell/UI stack. The standalone Knave UI repository owns UI primitives and
 wgpu rendering; Knave Shell owns desktop surfaces and Wayland hosting. Villain owns compositor and window-manager behavior.
 Keep those responsibilities separate unless an explicit architecture decision
@@ -62,7 +62,7 @@ The intended boundaries are:
 
 - `knave-session`: session lifecycle and process supervision;
 - `knave-config`: typed configuration and settings operations;
-- `knave-desktop-api`: public runtime desktop contracts;
+- `knave-desktop-api`: private runtime desktop messages;
 - `knave-wayland`: Wayland client and layer-shell integration;
 - `knave-renderer`: wgpu rendering;
 - `knave-ui`: renderer-independent UI primitives;
@@ -286,3 +286,13 @@ compilation alone.
 Do not combine configuration migration, session supervision, public API
 creation, UI toolkit replacement, compositor behavior changes, build-system
 replacement, packaging, and old-binary removal into one unreviewable change.
+
+## Single executable and private IPC
+
+Only `knave` is a binary target. Session, Shell, control, and Villain crates are
+libraries; process isolation uses private `knave --internal ...` modes. Keep
+component ownership separate from executable packaging. Owned children launch
+the same executable, never a separately installed component binary.
+`knave-desktop-api` contains private coordinated-build messages, not a public
+Rust/wire API. External control uses the documented `knave` CLI; standard
+Wayland/D-Bus interfaces remain public. See ADR 0017.

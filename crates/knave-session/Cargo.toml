@@ -1,13 +1,11 @@
 [package]
+autobins = false
+publish = false
 name = "knave-session"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
 description = "Knave desktop session supervisor"
-
-[[bin]]
-name = "knave-session"
-path = "src/main.rs"
 
 [dependencies]
 knave-config.workspace = true

@@ -1,13 +1,11 @@
 [package]
+autobins = false
+publish = false
 name = "knavectl"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Control CLI for the Knave desktop environment"
-
-[[bin]]
-name = "knavectl"
-path = "src/main.rs"
+description = "Desktop control CLI adapter library for Knave"
 
 [dependencies]
 knave-desktop-api.workspace = true

@@ -41,21 +41,21 @@ mod xwayland;
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
 use state::Villain;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(args: impl IntoIterator<Item = String>) -> Result<(), Box<dyn std::error::Error>> {
     init_logging();
 
-    let args: Vec<_> = std::env::args().skip(1).collect();
+    let args: Vec<_> = args.into_iter().collect();
     let direct = match args.as_slice() {
         [] => backend_selection::default_is_direct(),
         [arg] if arg == "--tty" => true,
         [arg] if arg == "--winit" => false,
         [arg] if arg == "--help" => {
             println!(
-                "villain [--tty | --winit]\nDefault: Winit inside a desktop, DRM/KMS from a TTY."
+                "knave --internal compositor [--tty | --winit]\nDefault: Winit inside a desktop, DRM/KMS from a TTY."
             );
             return Ok(());
         }
-        _ => return Err("usage: villain [--tty | --winit]".into()),
+        _ => return Err("usage: knave --internal compositor [--tty | --winit]".into()),
     };
     tracing::info!(
         backend = if direct { "tty" } else { "winit" },

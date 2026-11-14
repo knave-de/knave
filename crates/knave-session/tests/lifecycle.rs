@@ -43,7 +43,7 @@ fn exercise(status: &str, restart: bool, launches: usize, success: bool) {
     let quoted = executable.to_str().unwrap().replace('\'', "'\\''");
     fs::write(
         &wrapper,
-        format!("#!/bin/sh\ncase \"$1\" in --supports-*) exit 0;; esac\nexport KNAVE_LIFECYCLE_TEST_ROLE=\"$1\"\nexec '{quoted}' --ignored --exact component --nocapture\n"),
+        format!("#!/bin/sh\nshift; [ \"$1\" = shell ] && shift\nexport KNAVE_LIFECYCLE_TEST_ROLE=\"$1\"\nexec '{quoted}' --ignored --exact component --nocapture\n"),
     )
     .unwrap();
     fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o700)).unwrap();
@@ -52,8 +52,7 @@ fn exercise(status: &str, restart: bool, launches: usize, success: bool) {
     fs::write(
         config_dir.join("config.toml"),
         format!(
-            "[session]\nbackend = \"tty\"\ncompositor_binary = {binary}\nshell_binary = {binary}\nrestart_on_failure = {restart}\n[shell]\nstart_overview_service = false\n[notifications]\nenabled = false\n",
-            binary = serde_json::to_string(wrapper.to_str().unwrap()).unwrap(),
+            "[session]\nbackend = \"tty\"\nrestart_on_failure = {restart}\n[shell]\nstart_overview_service = false\n[notifications]\nenabled = false\n",
         ),
     )
     .unwrap();
@@ -72,8 +71,9 @@ fn exercise(status: &str, restart: bool, launches: usize, success: bool) {
     )
     .unwrap();
     let mut session = Session(
-        Command::new(env!("CARGO_BIN_EXE_knave-session"))
-            .arg("start")
+        Command::new(env::current_exe().unwrap())
+            .args(["--ignored", "--exact", "supervisor", "--nocapture"])
+            .env("KNAVE_LIFECYCLE_TEST_EXECUTABLE", &wrapper)
             .env("DBUS_SESSION_BUS_ADDRESS", address.trim())
             .env("XDG_RUNTIME_DIR", root)
             .env("XDG_CONFIG_HOME", root)
@@ -161,5 +161,18 @@ fn component() {
             }
         }
         std::process::exit(status.parse().unwrap());
+    }
+}
+
+#[test]
+#[ignore = "subprocess supervisor fixture"]
+fn supervisor() {
+    let config = knave_config::ConfigDocument::at_default_path().unwrap();
+    let executable = env::var_os("KNAVE_LIFECYCLE_TEST_EXECUTABLE").unwrap();
+    if let Err(error) =
+        knave_session::run_with_executable(config.config().clone(), Path::new(&executable))
+    {
+        eprintln!("{error}");
+        std::process::exit(1);
     }
 }

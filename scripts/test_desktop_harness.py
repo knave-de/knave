@@ -28,7 +28,7 @@ class HarnessTests(unittest.TestCase):
         target = self.directory / 'run'
         target.mkdir()
         harness.write_config(target / 'config.toml', argparse.Namespace(config=config),
-                             {'villain': Path('/build/villain'), 'knave-shell': Path('/build/knave-shell')})
+                             {'knave': Path('/build/knave')})
         self.assertEqual(config.read_text(), source)
         return target, tomllib.loads((target / 'config.toml').read_text())
 

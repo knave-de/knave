@@ -32,10 +32,6 @@ pub enum SessionBackend {
 pub struct SessionConfig {
     #[serde(default)]
     pub backend: SessionBackend,
-    #[serde(default = "default_compositor_binary")]
-    pub compositor_binary: String,
-    #[serde(default = "default_shell_binary")]
-    pub shell_binary: String,
     #[serde(default = "default_true")]
     pub restart_on_failure: bool,
     #[serde(default)]
@@ -49,14 +45,6 @@ pub struct StartupCommand {
     pub command: Vec<String>,
 }
 
-fn default_compositor_binary() -> String {
-    "villain".into()
-}
-
-fn default_shell_binary() -> String {
-    "knave-shell".into()
-}
-
 fn default_true() -> bool {
     true
 }
@@ -65,8 +53,6 @@ impl Default for SessionConfig {
     fn default() -> Self {
         Self {
             backend: SessionBackend::default(),
-            compositor_binary: default_compositor_binary(),
-            shell_binary: default_shell_binary(),
             restart_on_failure: true,
             startup: Vec::new(),
         }
@@ -663,14 +649,6 @@ impl Config {
         {
             return Err(ConfigError::Invalid("portal appearance requires color_scheme 0..2 and three finite accent components in 0..1".into()));
         }
-        if self.session.compositor_binary.trim().is_empty() {
-            return Err(ConfigError::Invalid(
-                "session.compositor_binary is empty".into(),
-            ));
-        }
-        if self.session.shell_binary.trim().is_empty() {
-            return Err(ConfigError::Invalid("session.shell_binary is empty".into()));
-        }
         if self.session.startup.len() > 64 {
             return Err(ConfigError::Invalid(
                 "session.startup must contain at most 64 commands".into(),
@@ -1195,18 +1173,6 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
         "session",
         "backend",
         value(format!("{:?}", config.session.backend).to_lowercase()),
-    );
-    set_table_value(
-        document,
-        "session",
-        "compositor_binary",
-        value(config.session.compositor_binary.clone()),
-    );
-    set_table_value(
-        document,
-        "session",
-        "shell_binary",
-        value(config.session.shell_binary.clone()),
     );
     set_table_value(
         document,

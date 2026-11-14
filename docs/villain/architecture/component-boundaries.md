@@ -7,7 +7,7 @@ Villain owns compositor and window-manager behavior:
 - input policy and compositor-side interaction; and
 - the private compositor protocol used by Knave components.
 
-Knave owns session lifecycle, user-facing settings, the public desktop API, and
+Knave owns session lifecycle, user-facing settings, the private desktop IPC, and
 shell/UI presentation. Villain must consume explicit projections or protocol
 messages rather than reading Knave's private state or writing the user's
 canonical configuration.

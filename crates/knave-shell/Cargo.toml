@@ -1,13 +1,11 @@
 [package]
+autobins = false
+publish = false
 name = "knave-shell"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Rust/wgpu desktop shell for Knave"
-
-[[bin]]
-name = "knave-shell"
-path = "src/main.rs"
 
 [dependencies]
 knave-shell-ui.workspace = true

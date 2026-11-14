@@ -20,3 +20,11 @@ Build cleanup is not complete until the replacement path is exercised, the
 transitional path is no longer required, and removal has a separate reviewed
 change. Compilation alone does not prove Wayland, GPU, VT, or installed-binary
 startup.
+
+The workspace emits only `knave`. Component crates are libraries. Both Cargo
+profiles place the executable at `target/PROFILE/knave`; internal process modes
+re-execute that artifact instead of resolving component names through PATH.
+The installer installs only this executable and shared data. Old installed
+executables are not deleted automatically; no current launch path uses them.
+The separate XDG portal backend remains a service executable and must use the
+coordinated private dialog launch contract.
