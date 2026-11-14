@@ -241,15 +241,18 @@ impl Villain {
     }
 
     pub fn x11_grab_button_matches(&self, button: u32) -> bool {
+        let Some(start) = self.pointer.grab_start_data() else {
+            return false;
+        };
         let code = match button {
+            // Chromium/Electron omit the initiating button in this request.
+            0 => start.button,
             1 => 0x110,
             2 => 0x112,
             3 => 0x111,
             _ => return false,
         };
-        self.pointer
-            .grab_start_data()
-            .is_some_and(|start| start.button == code && self.pressed_buttons.contains(&code))
+        start.button == code && self.pressed_buttons.contains(&code)
     }
 
     pub fn start_window_grab(
