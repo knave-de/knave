@@ -15,21 +15,14 @@ ownership.
 
 ## Workspace selection for all edits
 
-Use the working directory supplied for the task, including an existing prepared
-worktree. An explicit user-selected path such as `./` takes precedence over the
-default isolation policy, even when it is the main checkout. Do not create or
-switch to another worktree merely because the selected directory already exists
-or already has a branch.
+The user manages worktree creation and selection. Work in the supplied working
+directory, or the current directory when none is specified. Do not create,
+remove, or switch worktrees unless the user explicitly asks.
 
-When no task directory is supplied, use an isolated feature worktree for edits
-and commits. Create it with plain Git and state its absolute path before editing:
-
-    git worktree add -b FEATURE ../knave-FEATURE master
-
-Keep edits, commits and checks in the selected directory. Give delegated agents
-the same path for work on the same feature; a prepared worktree satisfies
-isolation without creating another one. Preserve unrelated changes and branches.
-Do not edit a detached dependency worktree or silently move its pin.
+Keep edits, commits and checks in that directory. Give delegated agents the
+same path for the same feature; the user supplies any separate worktrees needed
+for independent work. Preserve unrelated changes and branches. Do not edit a
+detached dependency worktree or silently move its pin.
 
 For documentation-only edits, review the diff and run `git diff --check`; a
 binary rebuild is unnecessary. Keep existing verified bundles immutable and
@@ -146,9 +139,8 @@ reporting the worktree path and commit; do not claim the managed bundle steps
 were used.
 
 The development CLI creates workspaces and builds; it does not choose agent
-providers or spawn agents. When agents are explicitly delegated, keep work on
-the same feature in the selected directory. Use separate worktrees for independent features only when
-consistent with the user's selected workspace, and share the bounded build queue.
+providers or spawn agents. When agents are explicitly delegated, use only the
+user-supplied working directories and share the bounded build queue.
 
 The Knave stack is Rust/Cargo-first. Use Cargo for libraries, binaries, tests,
 and workspace orchestration across the environment. The Rust/wgpu shell is the
