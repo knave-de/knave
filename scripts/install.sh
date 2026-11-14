@@ -42,7 +42,7 @@ while (($# > 0)); do
 done
 
 root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
-cargo build --workspace --release --locked --manifest-path "$root/Cargo.toml"
+cargo build --release --locked --manifest-path "$root/Cargo.toml" -p knave -p knavectl -p knave-session
 
 install_cmd=(install)
 if [[ "$prefix" == /usr/* ]] && [[ "$(id -u)" -ne 0 ]]; then

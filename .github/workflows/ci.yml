@@ -15,6 +15,35 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Install native Wayland, compositor and GPU dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            dbus \
+            libdrm-dev \
+            libegl1-mesa-dev \
+            libgbm-dev \
+            libglib2.0-dev \
+            libgles2-mesa-dev \
+            libinput-dev \
+            libpolkit-agent-1-dev \
+            libpolkit-gobject-1-dev \
+            libseat-dev \
+            libudev-dev \
+            libwayland-dev \
+            libx11-xcb-dev \
+            libxcb-composite0-dev \
+            libxcb-damage0-dev \
+            libxcb-render0-dev \
+            libxcb-shm0-dev \
+            libxcb-xfixes0-dev \
+            libxcb-xinput-dev \
+            libxcb1-dev \
+            libxcursor-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            wayland-protocols
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -23,14 +52,16 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: Run development tooling and desktop harness regression tests
-        run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
-
       - name: Run clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Run tests
         run: cargo test --workspace --locked
 
+      - name: Test desktop harness
+        run: python3 scripts/test_desktop_harness.py
+
       - name: Build release artifacts
         run: cargo build --workspace --release --locked
+
+      # Legacy multi-repo dev tooling tests remain out of scope for the monorepo.

@@ -1,0 +1,11 @@
+[package]
+name = "knave-icons"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Freedesktop icon lookup and rasterization for the Knave shell"
+
+[dependencies]
+png.workspace = true
+resvg = { version = "0.48", default-features = false }
+thiserror.workspace = true

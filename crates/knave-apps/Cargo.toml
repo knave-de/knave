@@ -1,0 +1,9 @@
+[package]
+name = "knave-apps"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "XDG application catalog and search for the Knave shell"
+
+[dependencies]
+thiserror.workspace = true

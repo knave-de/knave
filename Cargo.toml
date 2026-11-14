@@ -1,12 +1,18 @@
 [workspace]
 members = [
-    "crates/knave-session",
-    "crates/knave-portal-api",
-    "crates/knave-capture-protocol",
     "crates/knave",
+    "crates/knave-apps",
+    "crates/knave-capture-protocol",
     "crates/knave-config",
-    "crates/knavectl",
     "crates/knave-desktop-api",
+    "crates/knave-icons",
+    "crates/knave-portal-api",
+    "crates/knave-session",
+    "crates/knave-shell",
+    "crates/knave-shell-ui",
+    "crates/knave-wayland",
+    "crates/knavectl",
+    "crates/villain",
 ]
 resolver = "3"
 
@@ -16,14 +22,33 @@ edition = "2024"
 license = "MIT"
 
 [workspace.dependencies]
-knave-session = { path = "crates/knave-session" }
-libc = "0.2"
+# In-tree desktop crates.
+knave-apps = { path = "crates/knave-apps" }
+knave-capture-protocol = { path = "crates/knave-capture-protocol" }
 knave-config = { path = "crates/knave-config" }
-knavectl = { path = "crates/knavectl" }
 knave-desktop-api = { path = "crates/knave-desktop-api" }
+knave-icons = { path = "crates/knave-icons" }
+knave-portal-api = { path = "crates/knave-portal-api" }
+knave-session = { path = "crates/knave-session" }
+knave-shell-ui = { path = "crates/knave-shell-ui" }
+knave-wayland = { path = "crates/knave-wayland" }
+knavectl = { path = "crates/knavectl" }
+
+# Standalone UI toolkit and renderer, released independently.
+knave-ui = { git = "https://github.com/knave-de/knave-ui.git", rev = "8cebd447b978708508d97c68f891fd432562736b" }
+knave-renderer = { git = "https://github.com/knave-de/knave-ui.git", rev = "8cebd447b978708508d97c68f891fd432562736b" }
+
+base64 = "0.22"
+libc = "0.2"
+png = "0.18"
+pollster = "1.0.1"
+regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-regex = "1"
+smithay-client-toolkit = { version = "0.21.1", default-features = false, features = ["calloop", "xkbcommon"] }
 thiserror = "2"
 toml = "0.9"
 toml_edit = { version = "0.23", features = ["serde"] }
+wayland-client = { version = "0.31.15", features = ["system"] }
+wgpu = "30.0.1"
+xkbcommon = "0.8"

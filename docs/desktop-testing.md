@@ -1,9 +1,11 @@
 # Desktop test harness
 
-For coordinated worktrees and testing frozen binaries from all five repositories,
-use the [development workflow](dev-workflow.md). `start --bundle /absolute/bundle`
-selects those artifacts instead of mutable workspace targets and adds a private
-portal activation/Settings check. `portal-check` repeats that assertion. This
+For testing binaries from a feature worktree, invoke `scripts/desktop-harness.py`
+from that worktree so it selects binaries from that worktree's `target/`. The legacy
+[development workflow](dev-workflow.md) describes the pre-monorepo bundle flow
+and is being replaced in phase 1. `start --bundle /absolute/bundle` selected
+frozen artifacts instead of mutable workspace targets and added a private
+portal activation/Settings check; `portal-check` repeats that assertion. This
 private bus never imports environment into the host user manager. Ordinary
 workspace mode below retains its existing portal-disabled behavior.
 
@@ -27,13 +29,11 @@ build or select installed copies from PATH:
 
 ```sh
 cargo build --workspace --release --locked
-(cd ../villain && cargo build --release --locked)
-(cd ../knaveshell && cargo build --workspace --release --locked)
 ```
 
-Use `start --profile debug` to select all three repositories' debug artifacts.
-Execute desktop commands outside the Codex filesystem/network sandbox, with the
-normal escalation mechanism. Python 3.11 or newer is required.
+Use `start --profile debug` to select the worktree's debug artifacts. Execute
+desktop commands outside the Codex filesystem/network sandbox, with the normal
+escalation mechanism. Python 3.11 or newer is required.
 
 ## Agent workflow
 
