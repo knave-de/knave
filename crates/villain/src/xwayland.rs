@@ -310,24 +310,8 @@ impl XwmHandler for Villain {
                 | WmWindowProperty::MotifHints
         ) && let Some(window) = self.window_for_x11_surface(&surface)
         {
-            let client_geometry = surface.geometry();
-            let was_floating = self.floating_geometry(&window);
             self.refresh_window_hints(&window);
             if property == WmWindowProperty::MotifHints {
-                if let Some(mut outer) = was_floating {
-                    let titlebar_height = if crate::workspaces::has_compositor_titlebar(&window) {
-                        crate::workspaces::TITLEBAR_HEIGHT
-                    } else {
-                        0
-                    };
-                    outer.loc.y = client_geometry.loc.y.saturating_sub(titlebar_height);
-                    outer.size = (
-                        client_geometry.size.w,
-                        client_geometry.size.h.saturating_add(titlebar_height),
-                    )
-                        .into();
-                    self.set_floating_geometry(&window, outer);
-                }
                 self.update_window_decoration(&window);
             }
         }
@@ -1396,5 +1380,99 @@ mod tests {
         );
         state.release_pointer_buttons();
         assert!(!state.pointer.is_grabbed());
+        let before_move = state.floating_geometry(&window).unwrap();
+        state.move_focused_directional(crate::dispatch::FocusDirection::Up);
+        assert_eq!(
+            state.floating_geometry(&window).unwrap().loc.y,
+            before_move.loc.y - 32
+        );
+
+        // Make this a resizable floating dialog so constraints cannot conceal
+        // client/outer-frame mistakes during decoration changes.
+        let window_type = conn
+            .intern_atom(false, b"_NET_WM_WINDOW_TYPE")
+            .unwrap()
+            .reply()
+            .unwrap()
+            .atom;
+        let dialog_type = conn
+            .intern_atom(false, b"_NET_WM_WINDOW_TYPE_DIALOG")
+            .unwrap()
+            .reply()
+            .unwrap()
+            .atom;
+        conn.change_property32(
+            PropMode::REPLACE,
+            id,
+            window_type,
+            AtomEnum::ATOM,
+            &[dialog_type],
+        )
+        .unwrap();
+        smithay::reexports::x11rb::properties::WmSizeHints {
+            min_size: Some((80, 60)),
+            ..Default::default()
+        }
+        .set_normal_hints(&conn, id)
+        .unwrap();
+        conn.flush().unwrap();
+        pump_until(&mut event_loop, &mut state, |_| {
+            window
+                .x11_surface()
+                .unwrap()
+                .min_size()
+                .is_some_and(|size| size.w == 80)
+        });
+        let frame = smithay::utils::Rectangle::new((180, 140).into(), (340, 260).into());
+        state.set_floating_geometry(&window, frame);
+        pump_until(&mut event_loop, &mut state, |_| {
+            conn.get_geometry(id).unwrap().reply().unwrap().height == 226
+        });
+        let motif = conn
+            .intern_atom(false, b"_MOTIF_WM_HINTS")
+            .unwrap()
+            .reply()
+            .unwrap()
+            .atom;
+        let window_id = state.window_id(&window).unwrap();
+        for mode in ["maximized", "fullscreen", "minimized"] {
+            state.focus_managed_window(&window);
+            match mode {
+                "maximized" => state.set_window_maximized(&window, true),
+                "fullscreen" => state.set_window_fullscreen(&window, true),
+                _ => {
+                    assert!(state.minimize_focused_window());
+                }
+            }
+            assert!(state.floating_geometry(&window).is_none());
+            conn.change_property32(PropMode::REPLACE, id, motif, motif, &[2, 0, 0, 0, 0])
+                .unwrap();
+            conn.flush().unwrap();
+            pump_until(&mut event_loop, &mut state, |_| {
+                window.x11_surface().unwrap().is_decorated()
+            });
+            match mode {
+                "maximized" => state.set_window_maximized(&window, false),
+                "fullscreen" => state.set_window_fullscreen(&window, false),
+                _ => {
+                    assert!(state.restore_window(window_id));
+                }
+            }
+            pump_until(&mut event_loop, &mut state, |_| {
+                conn.get_geometry(id).unwrap().reply().unwrap().height == 226
+            });
+            assert_eq!(
+                state.floating_geometry(&window).unwrap().size,
+                (340, 226).into(),
+                "{mode}"
+            );
+            conn.change_property32(PropMode::REPLACE, id, motif, motif, &[2, 0, 1, 0, 0])
+                .unwrap();
+            conn.flush().unwrap();
+            pump_until(&mut event_loop, &mut state, |_| {
+                !window.x11_surface().unwrap().is_decorated()
+            });
+            assert_eq!(state.floating_geometry(&window).unwrap(), frame, "{mode}");
+        }
     }
 }

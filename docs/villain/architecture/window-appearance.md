@@ -114,3 +114,8 @@ startup also initialized driver threads and buffers, so its first two seconds
 are startup measurements rather than a settled idle baseline. RSS excludes much
 GPU/driver texture storage. Resource growth, hardware presentation, physical
 input, direct-TTY/KMS, reboot and multi-monitor behavior remain unverified.
+
+X11 floating move/resize paths use outer-frame coordinates. Motif decoration
+changes adjust stored floating frames even while maximized, fullscreen, or
+minimized, preserving client dimensions when restored. The isolated XWayland
+regression covers those transitions as well as directional movement and resizing.

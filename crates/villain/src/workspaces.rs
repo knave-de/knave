@@ -54,6 +54,7 @@ struct WorkspaceWindow {
     center_override: Option<bool>,
     initial_rules_applied: bool,
     saved_floating: Option<Geometry>,
+    x11_titlebar: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -611,6 +612,27 @@ impl Villain {
             .iter_mut()
             .find(|entry| entry.window == *window)
             .unwrap();
+        if window.x11_surface().is_some() {
+            let titlebar = has_compositor_titlebar(window);
+            if titlebar != entry.x11_titlebar {
+                // Saved frames survive maximize/fullscreen/minimize; their client
+                // size must not be derived from the temporary visible geometry.
+                for frame in [&mut entry.floating, &mut entry.saved_floating]
+                    .into_iter()
+                    .flatten()
+                {
+                    let delta = if titlebar {
+                        TITLEBAR_HEIGHT
+                    } else {
+                        -TITLEBAR_HEIGHT
+                    };
+                    frame.loc.y = frame.loc.y.saturating_sub(delta);
+                    frame.size.h = frame.size.h.saturating_add(delta).max(1);
+                }
+                entry.x11_titlebar = titlebar;
+                changed = true;
+            }
+        }
         let parent_id = parent.map(|(_, id)| id);
         changed |= entry.parent != parent_id;
         entry.parent = parent_id;
@@ -1016,7 +1038,7 @@ impl Villain {
             .unwrap();
         entry.floating = Some(geometry);
         let mut client_geometry = self.floating_placement(geometry);
-        if window.toplevel().is_some_and(has_server_side_decoration) {
+        if has_compositor_titlebar(window) {
             let height = TITLEBAR_HEIGHT.min(client_geometry.size.h.saturating_sub(1).max(0));
             client_geometry.loc.y += height;
             client_geometry.size.h -= height;
@@ -1199,6 +1221,7 @@ impl Villain {
             center_override: None,
             initial_rules_applied: false,
             saved_floating: None,
+            x11_titlebar: window.x11_surface().is_some() && has_compositor_titlebar(&window),
         });
         self.trim_dynamic_workspaces();
         self.refresh_window_hints(&window);
@@ -1874,13 +1897,18 @@ impl Villain {
                 FocusDirection::Down => (0, 32),
             };
             let (min, max) = Self::window_constraints(&current);
+            let mut outer = *rect;
+            if let Some(bar) = titlebar_rect(&current, *rect, false) {
+                outer.loc = bar.loc;
+                outer.size.h = outer.size.h.saturating_add(bar.size.h);
+            }
             if let Some(entry) = self.workspaces[index]
                 .windows
                 .iter_mut()
                 .find(|entry| entry.window == current)
                 && let Some(mut saved) = entry.floating
             {
-                saved = move_floating_geometry(saved, *rect, self.output_size, min, max, (dx, dy));
+                saved = move_floating_geometry(saved, outer, self.output_size, min, max, (dx, dy));
                 entry.floating = Some(saved);
                 self.desktop_state_dirty = true;
                 self.relayout_active_workspace();
