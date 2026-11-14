@@ -33,6 +33,8 @@ knave-session = { path = "crates/knave-session" }
 knave-shell-ui = { path = "crates/knave-shell-ui" }
 knave-wayland = { path = "crates/knave-wayland" }
 knavectl = { path = "crates/knavectl" }
+knave-shell = { path = "crates/knave-shell" }
+villain = { path = "crates/villain" }
 
 # Standalone UI toolkit and renderer, released independently.
 knave-ui = { git = "https://github.com/knave-de/knave-ui.git", rev = "8cebd447b978708508d97c68f891fd432562736b" }

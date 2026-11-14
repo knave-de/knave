@@ -25,7 +25,7 @@ Before editing:
    exists.
 3. Inspect the complete owning module and search all of its consumers.
 4. Check `git status` and preserve unrelated changes.
-5. Classify whether the change affects UI, public desktop API, Wayland
+5. Classify whether the change affects UI, private desktop IPC, Wayland
    protocol, compositor IPC, configuration, build, packaging, or runtime behavior.
 6. Write a short impact summary before changing a shared contract.
 
@@ -35,8 +35,8 @@ been checked.
 ## Ownership and contracts
 
 Knave owns the user-facing configuration and settings model. This repository
-consumes Knave-owned settings only through typed APIs and public desktop
-contracts. It must not introduce another user configuration source.
+consumes Knave-owned settings only through typed APIs and private desktop
+messages. It must not introduce another user configuration source.
 
 Villain remains the source of truth for workspace, window, focus, and preview
 state. The shell consumes typed desktop contracts and must not duplicate
@@ -44,7 +44,7 @@ compositor policy.
 
 Treat these as contracts:
 
-- the Knave public desktop API payloads;
+- the Knave private desktop IPC payloads;
 - shell roles and layer-shell behavior;
 - workspace/window model fields;
 - configuration and runtime environment variables.
@@ -171,3 +171,13 @@ Wayland/GPU smoke tests separately and report direct-TTY coverage explicitly.
 
 Before completion, inspect the final diff, run `git diff --check`, check
 generated files, and report anything not tested.
+
+## Single executable and private IPC
+
+Only `knave` is a binary target. Session, Shell, control, and Villain crates are
+libraries; process isolation uses private `knave --internal ...` modes. Keep
+component ownership separate from executable packaging. Owned children launch
+the same executable, never a separately installed component binary.
+`knave-desktop-api` contains private coordinated-build messages, not a public
+Rust/wire API. External control uses the documented `knave` CLI; standard
+Wayland/D-Bus interfaces remain public. See ADR 0017.

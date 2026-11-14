@@ -643,6 +643,8 @@ async fn activate(
             std::env::current_exe().map_err(|e| zbus::Error::Failure(e.to_string()))?,
         )
         .args([
+            "--internal",
+            "shell",
             "tray-menu",
             &endpoint.owner,
             &endpoint.path,

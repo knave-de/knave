@@ -1,7 +1,7 @@
 # Desktop test harness
 
 For testing binaries from a feature worktree, invoke `scripts/desktop-harness.py`
-from that worktree so it selects binaries from that worktree's `target/`. The legacy
+from that worktree so it selects `knave` from that worktree's `target/`. The legacy
 [development workflow](dev-workflow.md) describes the pre-monorepo bundle flow
 and is being replaced in phase 1. `start --bundle /absolute/bundle` selected
 frozen artifacts instead of mutable workspace targets and added a private
@@ -61,7 +61,7 @@ the intended result. State and input commands fail if a required process exits.
 
 `start --config /path/to/config.toml` tests a private normalized copy of that
 configuration. All source values are retained except the session backend,
-binary paths, restart policy and portal enablement, which are forced for isolated
+restart policy and portal enablement, which are forced for isolated
 testing. Comments/formatting are not retained in the copy. Shell role settings
 are respected. The original file is never modified.
 Only an explicitly configured environment file is copied into the run directory;
@@ -185,3 +185,7 @@ Backend tests separately use a private UPower bus and temporary threshold files 
 verify preset-disable ordering and custom writes. Screenshots, an MP4, assertions
 and process resource samples are retained in the run directory. Firmware
 enforcement and real Polkit authentication require physical-device review.
+
+Workspace runs require only `target/PROFILE/knave`; all desktop process modes
+use that executable. Pre-monorepo bundles require their original tooling and
+are not a validation path for single-executable builds.

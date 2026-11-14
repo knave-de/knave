@@ -10,7 +10,7 @@ use std::{
     fs, io,
     os::unix::fs::FileTypeExt,
     path::{Path, PathBuf},
-    process::{Child, Command, ExitStatus, Stdio},
+    process::{Child, Command, ExitStatus},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -34,19 +34,12 @@ const SOCKET_WAIT: Duration = Duration::from_secs(10);
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 const MAX_RESTARTS: u32 = 3;
-const CAPABILITY_WAIT: Duration = Duration::from_secs(2);
 const XWAYLAND_WAIT: Duration = Duration::from_secs(5);
 
 static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Error)]
 pub enum SessionError {
-    #[error("{0} does not support Overview service mode; install a matching Knave Shell")]
-    UnsupportedOverviewService(String),
-    #[error("{0} does not support notification service mode; install a matching Knave Shell")]
-    UnsupportedNotificationService(String),
-    #[error("{0} does not support Polkit agent mode; install a matching Knave Shell")]
-    UnsupportedPolkitAgent(String),
     #[error("could not locate XDG_RUNTIME_DIR")]
     MissingRuntimeDirectory,
     #[error("could not read runtime directory {path}: {source}")]
@@ -78,6 +71,15 @@ pub fn run_default() -> Result<(), SessionError> {
 
 /// Start, supervise, and cleanly stop the compositor and shell processes.
 pub fn run(config: Config) -> Result<(), SessionError> {
+    let executable =
+        env::current_exe().map_err(|error| SessionError::Process(error.to_string()))?;
+    run_with_executable(config, &executable)
+}
+
+/// Run the supervisor with an explicitly supplied executable (also used by
+/// isolated lifecycle fixtures). Production always uses `current_exe`.
+#[doc(hidden)]
+pub fn run_with_executable(config: Config, executable: &Path) -> Result<(), SessionError> {
     SHUTDOWN_REQUESTED.store(false, Ordering::SeqCst);
     install_signal_handlers();
     let _notifications = if config.notifications.enabled {
@@ -95,8 +97,9 @@ pub fn run(config: Config) -> Result<(), SessionError> {
     let runtime = runtime_directory()?;
     let mut restarts = 0;
     let mut before = wayland_sockets(&runtime)?;
-    let slot = Arc::new(AssignmentSlot::new());
-    let (mut compositor, mut display, mut shells) = start_components(&config, &runtime, &before)?;
+    let slot = Arc::new(AssignmentSlot::new(executable.to_owned()));
+    let (mut compositor, mut display, mut shells) =
+        start_components(&config, &runtime, &before, executable)?;
     if let Err(error) = slot.reset(&config, &display) {
         terminate_children(&mut shells);
         terminate_child(&mut compositor);
@@ -151,7 +154,7 @@ pub fn run(config: Config) -> Result<(), SessionError> {
             thread::sleep(restart_delay(restarts));
             before = wayland_sockets(&runtime)?;
             let (new_compositor, new_display, new_shells) =
-                start_components(&config, &runtime, &before)?;
+                start_components(&config, &runtime, &before, executable)?;
             compositor = new_compositor;
             display = new_display;
             shells = new_shells;
@@ -212,7 +215,7 @@ pub fn run(config: Config) -> Result<(), SessionError> {
             {
                 continue;
             }
-            shells = match spawn_shells(&config, &display) {
+            shells = match spawn_shells(&config, &display, executable) {
                 Ok(shells) => shells,
                 Err(error) => {
                     terminate_startup_commands(&mut startup_commands);
@@ -328,8 +331,9 @@ fn start_components(
     config: &Config,
     runtime: &Path,
     before: &HashSet<OsString>,
+    executable: &Path,
 ) -> Result<(Child, String, Vec<ManagedChild>), SessionError> {
-    let mut compositor = spawn_compositor(config)?;
+    let mut compositor = spawn_compositor(config, executable)?;
     let display = match wait_for_wayland_socket(runtime, before, &mut compositor) {
         Ok(display) => display,
         Err(error) => {
@@ -337,7 +341,7 @@ fn start_components(
             return Err(error);
         }
     };
-    let shells = match spawn_shells(config, &display) {
+    let shells = match spawn_shells(config, &display, executable) {
         Ok(shells) => shells,
         Err(error) => {
             terminate_child(&mut compositor);
@@ -363,8 +367,9 @@ fn spawn_with_brief_retry(mut command: Command) -> io::Result<Child> {
     }
 }
 
-fn spawn_compositor(config: &Config) -> Result<Child, SessionError> {
-    let mut command = Command::new(&config.session.compositor_binary);
+fn spawn_compositor(config: &Config, executable: &Path) -> Result<Child, SessionError> {
+    let mut command = Command::new(executable);
+    command.args(["--internal", "compositor"]);
     match config.session.backend {
         SessionBackend::Auto => {}
         SessionBackend::Tty => {
@@ -382,83 +387,51 @@ fn spawn_compositor(config: &Config) -> Result<Child, SessionError> {
             "XDP_KNAVE_ENABLED",
             if config.portal.enabled { "1" } else { "0" },
         )
-        .env(
-            "XDP_KNAVE_SHELL_BINARY",
-            resolved_binary(&config.session.shell_binary),
-        );
+        .env("XDP_KNAVE_SHELL_BINARY", executable);
     spawn_with_brief_retry(command).map_err(|source| SessionError::Spawn {
         component: "villain".into(),
         source,
     })
 }
 
-fn resolved_binary(binary: &str) -> String {
-    if Path::new(binary).components().count() > 1 {
-        return fs::canonicalize(binary).map_or_else(
-            |_| binary.into(),
-            |path| path.to_string_lossy().into_owned(),
-        );
-    }
-    env::var_os("PATH")
-        .and_then(|path| {
-            env::split_paths(&path)
-                .map(|directory| directory.join(binary))
-                .find(|path| path.is_file())
-        })
-        .map_or_else(|| binary.into(), |path| path.to_string_lossy().into_owned())
-}
-
-fn spawn_shells(config: &Config, display: &str) -> Result<Vec<ManagedChild>, SessionError> {
-    if config.shell.start_overview_service {
-        check_overview_service(&config.session.shell_binary, CAPABILITY_WAIT)?;
-    }
-    if config.notifications.enabled {
-        check_notification_service(&config.session.shell_binary, CAPABILITY_WAIT)?;
-    }
+fn spawn_shells(
+    config: &Config,
+    display: &str,
+    executable: &Path,
+) -> Result<Vec<ManagedChild>, SessionError> {
     let inherited_display = ["DISPLAY", "WAYLAND_DISPLAY"]
         .iter()
         .any(|key| env::var_os(key).is_some_and(|value| !value.is_empty()));
     let start_polkit = polkit_session(&config.session.backend, inherited_display);
-    if start_polkit
-        && !check_capability(
-            &config.session.shell_binary,
-            "--supports-polkit-agent",
-            CAPABILITY_WAIT,
-        )?
-    {
-        return Err(SessionError::UnsupportedPolkitAgent(
-            config.session.shell_binary.clone(),
-        ));
-    }
     let mut shells = Vec::new();
     if start_polkit {
-        match spawn_shell(config, "polkit-agent", display) {
+        match spawn_shell(config, "polkit-agent", display, executable) {
             Ok(shell) => shells.push(shell),
             Err(error) => return Err(cleanup_shell_startup(shells, error)),
         }
     }
     if config.shell.start_bar || config.shell.start_overview_service {
         for role in ["quick-settings-service", "quick-settings"] {
-            match spawn_shell(config, role, display) {
+            match spawn_shell(config, role, display, executable) {
                 Ok(shell) => shells.push(shell),
                 Err(error) => return Err(cleanup_shell_startup(shells, error)),
             }
         }
     }
     if config.notifications.enabled {
-        match spawn_shell(config, "notifications", display) {
+        match spawn_shell(config, "notifications", display, executable) {
             Ok(shell) => shells.push(shell),
             Err(error) => return Err(cleanup_shell_startup(shells, error)),
         }
     }
     if config.shell.start_bar {
-        match spawn_shell(config, "bar", display) {
+        match spawn_shell(config, "bar", display, executable) {
             Ok(shell) => shells.push(shell),
             Err(error) => return Err(cleanup_shell_startup(shells, error)),
         }
     }
     if config.shell.start_overview_service {
-        match spawn_shell(config, "overview", display) {
+        match spawn_shell(config, "overview", display, executable) {
             Ok(shell) => shells.push(shell),
             Err(error) => return Err(cleanup_shell_startup(shells, error)),
         }
@@ -477,54 +450,6 @@ fn polkit_session(backend: &SessionBackend, inherited_display: bool) -> bool {
     }
 }
 
-fn check_overview_service(binary: &str, timeout: Duration) -> Result<(), SessionError> {
-    if check_capability(binary, "--supports-overview-service", timeout)? {
-        Ok(())
-    } else {
-        Err(SessionError::UnsupportedOverviewService(binary.into()))
-    }
-}
-fn check_notification_service(binary: &str, timeout: Duration) -> Result<(), SessionError> {
-    if check_capability(binary, "--supports-notifications-service", timeout)? {
-        Ok(())
-    } else {
-        Err(SessionError::UnsupportedNotificationService(binary.into()))
-    }
-}
-fn check_capability(binary: &str, flag: &str, timeout: Duration) -> Result<bool, SessionError> {
-    let mut command = Command::new(binary);
-    command
-        .arg(flag)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    let mut child = spawn_with_brief_retry(command).map_err(|source| SessionError::Spawn {
-        component: "knave-shell capability check".into(),
-        source,
-    })?;
-    let deadline = Instant::now() + timeout;
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) if status.success() => return Ok(true),
-            Ok(Some(_)) => break,
-            Ok(None) if Instant::now() < deadline => thread::sleep(POLL_INTERVAL),
-            Err(error) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(SessionError::Process(format!(
-                    "shell capability wait failed: {error}"
-                )));
-            }
-            Ok(None) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                break;
-            }
-        }
-    }
-    Ok(false)
-}
-
 fn cleanup_shell_startup(mut shells: Vec<ManagedChild>, error: SessionError) -> SessionError {
     terminate_children(&mut shells);
     error
@@ -534,16 +459,13 @@ pub(crate) fn spawn_shell(
     config: &Config,
     role: &'static str,
     display: &str,
+    executable: &Path,
 ) -> Result<ManagedChild, SessionError> {
-    let mut command = if role == "quick-settings-service" {
-        Command::new(
-            env::current_exe()
-                .map_err(|e| SessionError::Process(e.to_string()))?
-                .with_file_name("knave-session"),
-        )
-    } else {
-        Command::new(&config.session.shell_binary)
-    };
+    let mut command = Command::new(executable);
+    command.arg("--internal");
+    if role != "quick-settings-service" {
+        command.arg("shell");
+    }
     command
         .arg(role)
         .env("WAYLAND_DISPLAY", display)
@@ -691,7 +613,6 @@ fn install_signal_handlers() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
     use std::os::unix::net::UnixListener;
 
     #[test]
@@ -702,44 +623,6 @@ mod tests {
         assert!(polkit_session(&SessionBackend::Auto, false));
         assert!(polkit_session(&SessionBackend::Tty, true));
         assert!(polkit_session(&SessionBackend::Tty, false));
-    }
-
-    #[test]
-    fn overview_capability_rejects_old_and_hung_shells_before_starting_roles() {
-        let directory = tempfile::tempdir().unwrap();
-        let binary = directory.path().join("shell");
-        for (script, accepted) in [
-            (
-                "#!/bin/sh\n[ \"$1\" = --supports-overview-service ]\n",
-                true,
-            ),
-            ("#!/bin/sh\nexit 1\n", false),
-            ("#!/bin/sh\nexec sleep 10\n", false),
-        ] {
-            fs::write(&binary, script).unwrap();
-            fs::set_permissions(&binary, fs::Permissions::from_mode(0o700)).unwrap();
-            let started = Instant::now();
-            assert_eq!(
-                check_overview_service(binary.to_str().unwrap(), Duration::from_millis(100))
-                    .is_ok(),
-                accepted
-            );
-            assert!(started.elapsed() < Duration::from_secs(1));
-        }
-        fs::write(&binary, "#!/bin/sh\nexit 1\n").unwrap();
-        let mut config = Config::default();
-        config.session.shell_binary = binary.to_str().unwrap().into();
-        assert!(matches!(
-            spawn_shells(&config, "unused"),
-            Err(SessionError::UnsupportedOverviewService(_))
-        ));
-        config.session.backend = SessionBackend::Tty;
-        config.shell.start_overview_service = false;
-        config.notifications.enabled = false;
-        assert!(matches!(
-            spawn_shells(&config, "unused"),
-            Err(SessionError::UnsupportedPolkitAgent(_))
-        ));
     }
 
     #[test]

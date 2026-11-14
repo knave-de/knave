@@ -36,8 +36,8 @@ until the compositor event path has been inspected.
 
 ## Contracts and compatibility
 
-The desktop contract is owned by Knave's knave-desktop-api crate. knavectl is
-the public control client.
+The desktop contract is owned by Knave's knave-desktop-api crate. `knave` is
+the public control CLI.
 
 Review and test changes to:
 
@@ -179,3 +179,13 @@ parallel work.
 
 Compilation, unit tests, and a successful compositor start do not establish
 acceptable resource behavior.
+
+## Single executable and private IPC
+
+Only `knave` is a binary target. Session, Shell, control, and Villain crates are
+libraries; process isolation uses private `knave --internal ...` modes. Keep
+component ownership separate from executable packaging. Owned children launch
+the same executable, never a separately installed component binary.
+`knave-desktop-api` contains private coordinated-build messages, not a public
+Rust/wire API. External control uses the documented `knave` CLI; standard
+Wayland/D-Bus interfaces remain public. See ADR 0017.

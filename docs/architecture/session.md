@@ -8,7 +8,7 @@ rendering, or shell composition.
 
 1. Load and validate ~/.config/knave/config.toml through knave-config.
 2. Snapshot existing wayland-* Unix sockets in XDG_RUNTIME_DIR.
-3. Start the configured compositor binary with KNAVE_SESSION=1. The backend
+3. Start the running executable in its private compositor mode with KNAVE_SESSION=1. The backend
    field selects Villain's production TTY path or nested Winit path.
 4. Wait for a new compositor-owned wayland-* socket, while checking that the
    compositor has not exited.
@@ -27,8 +27,6 @@ production path.
 The [session] table is owned by Knave:
 
 - backend: auto, tty, or winit;
-- compositor_binary: executable used for Villain;
-- shell_binary: executable used for Knave Shell; and
 - restart_on_failure: whether failed components may be restarted.
 
 The [shell] table controls session-owned shell roles. `start_bar` is normally
@@ -38,9 +36,8 @@ visibility; it does not spawn Overview processes. Setting the option false
 disables that session service. Runtime state and socket identity are discovered
 at startup; they are not persisted in config.toml.
 
-The supervisor starts one `polkit-agent` shell role for direct sessions and probes
-`--supports-polkit-agent` before spawning shell children. It shares their bounded
-restart and cleanup policy. The native agent registers for the current logind
+The supervisor starts one `polkit-agent` Shell role for direct sessions. It
+shares the other roles' bounded restart and cleanup policy. The native agent registers for the current logind
 session; a missing system service or logind session is logged without ending
 the desktop. Winit sessions skip this role; Auto with an inherited display also
 skips it to protect the enclosing desktop. Select `backend = "tty"` explicitly
@@ -60,14 +57,14 @@ participate in the shell restart policy. Like the other session children, only
 the direct child is tracked. Configuration changes apply on the next session
 start.
 
-Before starting shell roles, the supervisor probes the configured binary with
-`--supports-overview-service`. A supported Shell returns exit status 0 without
-opening Wayland or GPU resources; unknown/unsupported flags return nonzero. A
-failed or two-second timed-out probe stops startup with an upgrade diagnostic
-and cleans up the compositor. The probe is repeated on shell restart, reaped
-on every path, and adds no ongoing worker. Disabling the Overview role skips
-the probe. Install the matching Shell before starting the new session manager;
-older Shell binaries are rejected instead of mapping an exclusive overlay.
+All owned children launch the same executable with private `--internal` modes.
+There are no Shell capability-probe processes or separately selected component
+binaries. Quick Settings service runs as another process mode; notification
+service remains owned by the supervisor. Tray dialogs and the privileged
+charge-limit helper also select modes of that executable. `--internal` is a
+launch detail, not an authorization boundary: Polkit still authorizes privilege.
+The matching portal backend launches consent dialogs through the same private
+Shell mode, preserving its standard external D-Bus interfaces.
 
 ## Failure and shutdown behavior
 
@@ -76,7 +73,7 @@ children before returning an error. SIGINT and SIGTERM set an atomic shutdown
 flag; the supervisor sends SIGTERM, waits up to two seconds, then force-kills
 and reaps any remaining direct child.
 
-A successful compositor exit (including `knavectl dispatch quit`) ends the
+A successful compositor exit (including `knave dispatch quit`) ends the
 session successfully, stops and reaps the shell roles and wallpaper, and never
 restarts the compositor, regardless of `restart_on_failure`.
 

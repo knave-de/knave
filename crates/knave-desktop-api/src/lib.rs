@@ -1,4 +1,5 @@
-//! Desktop contracts and transport client for the Knave desktop environment.
+//! Private process messages and transport for one coordinated Knave build.
+//! External tools use the `knave` CLI; these wire shapes are not a public API.
 
 pub mod notifications;
 pub mod quick_settings;

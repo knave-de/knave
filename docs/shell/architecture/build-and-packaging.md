@@ -1,6 +1,6 @@
 # Shell build and packaging
 
-The shell is Rust/Cargo-only. Cargo builds its libraries, binary, tests, and
+The shell is Rust/Cargo-only. Cargo builds its libraries, tests, and
 workspace targets; no Qt, CMake, or generated native plugin is part of the
 supported build. Cargo fetches `knave-ui` and `knave-renderer` from the standalone
 Knave UI repository at the same exact revision; no sibling source checkout is

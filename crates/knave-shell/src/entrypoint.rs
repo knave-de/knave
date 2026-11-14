@@ -2,7 +2,6 @@ use std::{
     fs::{File, OpenOptions},
     os::fd::AsRawFd,
     os::unix::fs::OpenOptionsExt,
-    process::ExitCode,
 };
 
 use knave_shell_ui::UiScene;
@@ -15,18 +14,18 @@ fn configured_settings() -> Result<knave_config::Config, String> {
 }
 
 fn configured_theme() -> Result<knave_ui::toolkit::Theme, String> {
-    Ok(knave_shell::toolkit_theme(
+    Ok(crate::toolkit_theme(
         configured_settings()?.appearance.theme,
     ))
 }
 
 fn usage() -> &'static str {
-    "usage: knave-shell [--check] [bar|overview|portal-picker|shortcut-assignment|background-permission|polkit-agent|polkit-cache]\n       knave-shell --supports-overview-service"
+    "usage: knave --internal shell [--check] [bar|overview|portal-picker|shortcut-assignment|background-permission|polkit-agent|polkit-cache]"
 }
 
 fn check(role: ShellRole) {
     if role == ShellRole::Overview {
-        knave_shell::overview::Overview::new()
+        crate::overview::Overview::new()
             .check([1920.0, 1080.0])
             .expect("valid overview composition");
         println!("knave-shell role=overview retained scene valid");
@@ -48,21 +47,18 @@ fn check(role: ShellRole) {
     );
 }
 
-fn run() -> Result<(), String> {
-    if std::env::args().skip(1).eq(["polkit-cache"]) {
-        return knave_shell::polkit::cache_status();
+pub fn run(args: &[String]) -> Result<(), String> {
+    if args.iter().map(String::as_str).eq(["polkit-cache"]) {
+        return crate::polkit::cache_status();
     }
-    if std::env::args().skip(1).eq(["--supports-polkit-agent"]) {
-        return Ok(());
+    if args.iter().map(String::as_str).eq(["polkit-agent"]) {
+        return crate::polkit::run_with_theme(configured_theme()?);
     }
-    if std::env::args().skip(1).eq(["polkit-agent"]) {
-        return knave_shell::polkit::run_with_theme(configured_theme()?);
+    if args.iter().map(String::as_str).eq(["quick-settings"]) {
+        return crate::quick_settings::run_with_theme(configured_theme()?);
     }
-    if std::env::args().skip(1).eq(["quick-settings"]) {
-        return knave_shell::quick_settings::run_with_theme(configured_theme()?);
-    }
-    if std::env::args().nth(1).as_deref() == Some("tray-menu") {
-        let args: Vec<_> = std::env::args().skip(2).collect();
+    if args.first().map(String::as_str) == Some("tray-menu") {
+        let args: Vec<_> = args.iter().skip(1).cloned().collect();
         if args.len() != 6 {
             return Err("invalid internal tray menu arguments".into());
         }
@@ -76,40 +72,36 @@ fn run() -> Result<(), String> {
             configured_theme()?,
         );
     }
-    if std::env::args().skip(1).eq(["notifications"]) {
-        return knave_shell::notifications::run_with_theme(configured_theme()?);
+    if args.iter().map(String::as_str).eq(["notifications"]) {
+        return crate::notifications::run_with_theme(configured_theme()?);
     }
-    if std::env::args().nth(1).as_deref() == Some("wallpaper") {
-        let args: Vec<_> = std::env::args().skip(2).collect();
+    if args.first().map(String::as_str) == Some("wallpaper") {
+        let args: Vec<_> = args.iter().skip(1).cloned().collect();
         if args.len() != 2 {
             return Err(
-                "usage: knave-shell wallpaper ABSOLUTE_PNG_PATH cover|contain|stretch".into(),
+                "usage: knave --internal shell wallpaper ABSOLUTE_PNG_PATH cover|contain|stretch"
+                    .into(),
             );
         }
-        return knave_shell::wallpaper::run(&args[0], &args[1]);
+        return crate::wallpaper::run(&args[0], &args[1]);
     }
-    if std::env::args()
-        .skip(1)
-        .eq(["--supports-notifications-service"])
+    if args.iter().map(String::as_str).eq(["portal-picker"]) {
+        return crate::portal::run_with_theme(configured_theme()?);
+    }
+    if args.iter().map(String::as_str).eq(["shortcut-assignment"]) {
+        return crate::shortcut_assignment::run_with_theme(configured_theme()?);
+    }
+    if args
+        .iter()
+        .map(String::as_str)
+        .eq(["background-permission"])
     {
-        return Ok(());
-    }
-    if std::env::args().skip(1).eq(["portal-picker"]) {
-        return knave_shell::portal::run_with_theme(configured_theme()?);
-    }
-    if std::env::args().skip(1).eq(["shortcut-assignment"]) {
-        return knave_shell::shortcut_assignment::run_with_theme(configured_theme()?);
-    }
-    if std::env::args().skip(1).eq(["background-permission"]) {
-        return knave_shell::background_permission::run_with_theme(configured_theme()?);
-    }
-    if std::env::args().skip(1).eq(["--supports-overview-service"]) {
-        return Ok(());
+        return crate::background_permission::run_with_theme(configured_theme()?);
     }
     let mut check_only = false;
     let mut role = ShellRole::Bar;
 
-    for argument in std::env::args().skip(1) {
+    for argument in args {
         match argument.as_str() {
             "--check" => check_only = true,
             "--help" | "-h" => {
@@ -128,7 +120,7 @@ fn run() -> Result<(), String> {
     if role == ShellRole::Overview {
         if std::env::var_os("KNAVE_OVERVIEW_SERVICE").as_deref() != Some(std::ffi::OsStr::new("1"))
         {
-            return Err("overview is managed by knave-session".into());
+            return Err("overview is managed by the Knave session supervisor".into());
         }
         let _overview_lock = overview_lock()?;
         let settings = configured_settings()?;
@@ -139,10 +131,8 @@ fn run() -> Result<(), String> {
                 namespace: "knave-shell-overview".into(),
                 ..Default::default()
             },
-            knave_shell::overview::Overview::with_theme(knave_shell::toolkit_theme(
-                settings.appearance.theme,
-            ))
-            .with_pinned_apps(settings.shell.pinned_apps),
+            crate::overview::Overview::with_theme(crate::toolkit_theme(settings.appearance.theme))
+                .with_pinned_apps(settings.shell.pinned_apps),
         )
         .map_err(|error| error.to_string())
     } else {
@@ -179,15 +169,5 @@ fn overview_lock() -> Result<File, String> {
         Err(format!(
             "another overview is active for this Wayland session: {error}"
         ))
-    }
-}
-
-fn main() -> ExitCode {
-    match run() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("knave-shell: {error}\n\n{}", usage());
-            ExitCode::FAILURE
-        }
     }
 }

@@ -361,7 +361,7 @@ pub async fn set_charge(name: &str, percent: u8) -> Result<u8, String> {
     let executable = std::env::current_exe().map_err(|e| e.to_string())?;
     let mut child = Command::new("pkexec")
         .arg(executable)
-        .args(["charge-limit", name, &percent.to_string()])
+        .args(["--internal", "charge-limit", name, &percent.to_string()])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())

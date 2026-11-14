@@ -3,7 +3,7 @@ name = "knave"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Knave desktop environment control CLI"
+description = "Knave desktop environment executable"
 
 [[bin]]
 name = "knave"
@@ -13,3 +13,9 @@ path = "src/main.rs"
 knave-config.workspace = true
 knave-session.workspace = true
 knave-desktop-api.workspace = true
+knave-shell.workspace = true
+villain.workspace = true
+knavectl.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

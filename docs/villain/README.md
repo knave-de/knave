@@ -15,8 +15,8 @@ independent desktop runtime.
 
 ## Runtime backends
 
-    villain --tty
-    villain --winit
+    knave --internal compositor --tty
+    knave --internal compositor --winit
 
 With no option, backend selection follows the repository's safe environment
 policy. The TTY path requires a real local VT/seat and performs DRM/KMS setup.
@@ -47,30 +47,30 @@ staging prefix:
     scripts/villain/install.sh --system
     scripts/villain/install.sh --prefix "$PWD/stage"
 
-The installer installs villain only. knavectl is installed by the Knave
-repository because it is the public control CLI for the complete desktop.
+The installer installs the single `knave` executable, including Villain, Shell,
+session, and control process modes.
 
 ## Knave desktop IPC
 
-Villain serves Knave's JSON-lines desktop contract at:
+Villain serves Knave's private internal JSON-lines messages at:
 
     $XDG_RUNTIME_DIR/knave/desktop-$WAYLAND_DISPLAY.sock
 
 The socket is mode 0600 and the containing directory is mode 0700. KNAVE_SOCKET
 overrides the derived path for isolated tests. The wire types and client live
-in Knave's knave-desktop-api crate; Villain must not create a competing public
-protocol.
+in the non-published `knave-desktop-api` crate. This socket is an implementation
+detail; external tools use the CLI and standard Wayland/D-Bus interfaces.
 
-Control commands are issued through knavectl:
+Control commands are issued through `knave`:
 
-    knavectl version
-    knavectl snapshot
-    knavectl windows
-    knavectl workspaces
-    knavectl dispatch workspace 2
-    knavectl dispatch focus-window 1
-    knavectl dispatch minimize
-    knavectl dispatch exec kitty
+    knave version
+    knave snapshot
+    knave windows
+    knave workspaces
+    knave dispatch workspace 2
+    knave dispatch focus-window 1
+    knave dispatch minimize
+    knave dispatch exec kitty
 
 ## Configuration
 
@@ -98,7 +98,7 @@ workspace active when a new window is placed elsewhere.
 | Area | Owner |
 | --- | --- |
 | Session lifecycle and process supervision | Knave |
-| Persistent settings and public desktop API | Knave |
+| Persistent settings and private desktop IPC | Knave |
 | Wayland compositor, focus, input, layout, and rendering | Villain |
 | Shell presentation and interaction | Knave Shell |
 
@@ -202,7 +202,7 @@ workspace again preserves history; before the first switch this shortcut does
 nothing. History lasts for the compositor session. `MOD+Left/Right` still navigate
 in workspace order.
 
-Override the shortcut in `~/.config/knave/config.toml`, then run `knavectl reload`:
+Override the shortcut in `~/.config/knave/config.toml`, then run `knave reload`:
 
 ```toml
 [[compositor.bind]]
@@ -229,9 +229,9 @@ restores tiled placement or saved floating geometry; minimize/restore retains
 the maximized state. Explicitly focusing an unrelated hidden window restores
 the normal layout. Child dialogs remain visible above their maximized parent.
 
-    knavectl dispatch maximize
-    knavectl dispatch unmaximize
-    knavectl dispatch toggle-maximize
+    knave dispatch maximize
+    knave dispatch unmaximize
+    knave dispatch toggle-maximize
 
 Custom bindings override the default with the same key combination; other
 defaults stay active. Add this to the existing canonical Knave configuration
@@ -281,7 +281,7 @@ keys = "MOD+CTRL+R"
 dispatch = "reset-master"
 ```
 
-Run `knavectl reload` after editing. Resizing is per workspace and lasts
+Run `knave reload` after editing. Resizing is per workspace and lasts
 until reset or restart; reload preserves manual overrides. The percentage is
 clamped to 10–90%. Resize actions do nothing with fewer than two tiled windows
 or while a maximized/fullscreen window covers the layout. These are Villain keybinding actions,
@@ -311,7 +311,7 @@ args = ["pointer"]
 ```
 
 `move-window`, `resize-window` and `toggle-floating` are binding actions and
-`knavectl dispatch` commands. Keyboard/CLI move and resize default to the focused
+`knave dispatch` commands. Keyboard/CLI move and resize default to the focused
 window and enter a modal interaction: move the pointer, left click or Enter to
 commit, Escape to cancel. CLI selectors are `--target pointer` or `--window ID`;
 `resize-window --edge top-left` selects a floating edge/corner explicitly. Resize
@@ -348,7 +348,7 @@ Configure independent window gap edges, border widths and colors, corner radii,
 focus opacity, per-side shadows and background blur through Knave's
 `[compositor.appearance]` settings. Maximized effects are individually opt-in;
 fullscreen always bypasses effects. Validate with `knave config check` and reload
-with `knavectl reload` after deploying the matching compositor. See
+with `knave reload` after deploying the matching compositor. See
 [window appearance](architecture/window-appearance.md) for implementation,
 compatibility, rollout and resource behavior; the full TOML reference belongs to Knave.
 
@@ -383,7 +383,7 @@ Panels and the cursor stay stationary. See the
 [Knave gesture contract](../architecture/decisions/0010-workspace-swipes.md).
 Override entries under `[[compositor.gesture.bind]]` by fingers and direction;
 `action = "none"` disables the matching compositor gesture. These are Villain
-actions, not knavectl commands. Reload applies validated changes atomically.
+actions, not knave commands. Reload applies validated changes atomically.
 
 Other libinput pointer gestures pass through to the focused client: pinch
 forwards scale, center movement and rotation, while hold forwards begin/end.

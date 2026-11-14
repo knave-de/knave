@@ -61,8 +61,6 @@ def write_config(path, args, binaries):
             shutil.copyfile(source, path.parent / 'environment')
             projection['environment_file'] = 'environment'
     config['session'] = dict(config.get('session', {}), backend='winit',
-                             compositor_binary=str(binaries['villain']),
-                             shell_binary=str(binaries['knave-shell']),
                              restart_on_failure=False)
     config['portal'] = dict(config.get('portal', {}), enabled=False)
     path.write_text('\n'.join(json.dumps(k) + ' = ' + toml_value(v)
@@ -162,9 +160,6 @@ class Harness:
         target = ROOT / 'target' / args.profile
         self.binaries = {
             'knave': target / 'knave',
-            'knavectl': target / 'knavectl',
-            'villain': target / 'villain',
-            'knave-shell': target / 'knave-shell',
         }
         self.bundle_manifest = None
         if args.bundle:
@@ -256,7 +251,7 @@ class Harness:
         windows = run(['xdotool', 'search', '--name', '.'], env=self.env).splitlines()
         run(['xdotool', 'windowsize', windows[0], *self.args.size.split('x')], env=self.env)
         run(['xdotool', 'windowfocus', windows[0]], env=self.env)
-        run([str(self.binaries['knavectl']), 'snapshot'], env=self.env)
+        run([str(self.binaries['knave']), 'snapshot'], env=self.env)
         effective = tomllib.loads((self.directory / 'config.toml').read_text())
         shell_config = effective.get('shell', {})
         roles = {'bar'} if shell_config.get('start_bar', True) else set()
@@ -272,7 +267,7 @@ class Harness:
         if self.bundle_manifest:
             # Update only this private bus, without --systemd or host imports.
             run(['dbus-update-activation-environment', 'WAYLAND_DISPLAY', 'KNAVE_CONFIG',
-                 'XDP_KNAVE_SHELL_BINARY=' + str(self.binaries['knave-shell']),
+                 'XDP_KNAVE_SHELL_BINARY=' + str(self.binaries['knave']),
                  'XDP_KNAVE_ENABLED=1'], env=self.env)
             self.portal_check()
         if self.args.vnc_port:
@@ -435,7 +430,7 @@ class Harness:
                 raise RuntimeError(response['error'])
             return response
         elif command == 'snapshot':
-            return json.loads(run([str(self.binaries['knavectl']), 'snapshot'], env=self.env))
+            return json.loads(run([str(self.binaries['knave']), 'snapshot'], env=self.env))
         elif command == 'portal-check':
             return self.portal_check()
         elif command == 'record-start':

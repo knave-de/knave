@@ -2,7 +2,7 @@
 
 > This document was imported from the standalone `knaveshell` repository. The
 > crate now lives at `crates/knave-shell` in the Knave monorepo; the build and
-> harness commands below still assume a separate checkout.
+> harness runs from the monorepo root.
 
 Knave Shell is the Rust/wgpu user-facing shell for the independent Knave
 Desktop Environment. It owns presentation and interaction surfaces while
@@ -20,8 +20,7 @@ watcher and is inactive during normal sessions. Build this Shell revision before
 running the matching harness; older Shell builds fail the harness readiness timeout.
 Marker I/O failures propagate as typed runtime errors and a nonzero Shell exit.
 
-    knave-shell bar
-    knave-shell --supports-overview-service
+    knave --internal shell bar
 
 The bar is a top layer with a 36-pixel exclusive zone. Its left edge carries the
 icon-only bundled Knave mark; clicking it toggles Overview. Overview fills the
@@ -96,7 +95,7 @@ window textures during normal output frames. The shell does not request,
 decode, or upload PNGs for this overview. A legacy non-application overview host retains its preview worker.
 
 The shell does not own persistent settings. It receives the compositor's
-workspace/window state from Villain through Knave's public contract and sends
+workspace/window state from Villain through Knave's private internal messages and sends
 user actions back through that same contract.
 
 ## Install
@@ -132,11 +131,11 @@ for coordinated library/consumer changes.
 
 ### Native portal controls
 
-`knave-shell shortcut-assignment` is launched by the global-shortcuts portal
+`knave --internal shell shortcut-assignment` is launched by the global-shortcuts portal
 when an application requests `ConfigureShortcuts`. It captures a modified XKB key
 and returns the selected action and XDG trigger to the portal backend.
 
-`knave-shell portal-picker` uses the existing retained UI toolkit and wgpu renderer
+`knave --internal shell portal-picker` uses the existing retained UI toolkit and wgpu renderer
 for source previews, explicit consent, cancellation and Stop sharing. The backend
 launches it with the bounded JSON contract in `knave-portal-api`; it is
 not a user-facing general CLI. No source is selected initially. For a single-screen
@@ -157,7 +156,7 @@ previous wallpaper. Remove `image` for the black compositor background.
 
 ### Notifications
 
-Knave Session starts `knave-shell notifications` alongside the bar. The bar bell
+Knave Session starts `knave --internal shell notifications` alongside the bar. The bar bell
 has a top-right unread badge, capped at 99+, and a DND marker. Click it for
 scrollable, application-grouped history, actions, per-app banner muting, Do not
 disturb and clear/read controls. Escape or an outside click closes the center.
@@ -221,7 +220,7 @@ Knave, Shell and Villain revisions; see Knave ADR 0013.
 
 ### Authentication
 
-Knave Session supervises `knave-shell polkit-agent` in direct desktop sessions. It registers
+Knave Session supervises `knave --internal shell polkit-agent` in direct desktop sessions. It registers
 with the system Polkit authority for the current logind session, and shows an
 compact password prompt only during authentication. The current account is
 selected automatically when Polkit allows it. If policy requires another account,
@@ -239,7 +238,7 @@ Knave saves no password or authorization cache. Polkit owns temporary
 authorizations and decides their lifetime from system policy. Inspect actual
 cached authorizations and their expiration without opening a dialog:
 
-    knave-shell polkit-cache
+    knave --internal shell polkit-cache
 
 An empty cache prints `No cached authorizations.` Read failures are errors,
 not an empty cache. The dialog shows retention information only when Polkit

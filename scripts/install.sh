@@ -5,8 +5,8 @@ usage() {
     cat <<'EOF'
 Usage: scripts/install.sh [--user|--system|--prefix PATH]
 
-Builds and installs Knave's CLI, public desktop control client, and session
-supervisor. --user installs to ~/.local, --system installs to /usr/local using
+Builds and installs the single Knave executable (CLI, session, compositor, and
+shell process modes). --user installs to ~/.local, --system installs to /usr/local using
 sudo when needed, and --prefix selects an explicit staging prefix.
 EOF
 }
@@ -42,7 +42,7 @@ while (($# > 0)); do
 done
 
 root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
-cargo build --release --locked --manifest-path "$root/Cargo.toml" -p knave -p knavectl -p knave-session
+cargo build --release --locked --manifest-path "$root/Cargo.toml" -p knave
 
 install_cmd=(install)
 if [[ "$prefix" == /usr/* ]] && [[ "$(id -u)" -ne 0 ]]; then
@@ -50,7 +50,6 @@ if [[ "$prefix" == /usr/* ]] && [[ "$(id -u)" -ne 0 ]]; then
 fi
 
 "${install_cmd[@]}" -Dm755 "$root/target/release/knave" "$prefix/bin/knave"
-"${install_cmd[@]}" -Dm755 "$root/target/release/knavectl" "$prefix/bin/knavectl"
-"${install_cmd[@]}" -Dm755 "$root/target/release/knave-session" "$prefix/bin/knave-session"
+"${install_cmd[@]}" -Dm644 "$root/crates/villain/share/xdg-desktop-portal/villain-portals.conf" "$prefix/share/xdg-desktop-portal/villain-portals.conf"
 "${install_cmd[@]}" -Dm644 "$root/README.md" "$prefix/share/doc/knave/README.md"
-printf 'installed Knave binaries to %s/bin\n' "$prefix"
+printf 'installed knave to %s/bin\n' "$prefix"

@@ -21,51 +21,53 @@ Use `KNAVE_CONFIG` for an isolated file. Otherwise Knave resolves
 `$XDG_CONFIG_HOME/knave/config.toml`, falling back to
 `~/.config/knave/config.toml`.
 
-The compatibility binary `knave-session` provides `start` and `check` for
-scripts that need a dedicated session executable. It uses the same
-`knave-session` library and configuration path as `knave session ...`.
-
 ## Desktop control CLI
 
-`knavectl` sends one request to the active Knave desktop socket and prints the
-JSON response. `KNAVE_SOCKET` overrides socket discovery; when `WAYLAND_DISPLAY`
+Desktop-control invocations of `knave` send one request to the active desktop
+and print the JSON response. `KNAVE_SOCKET` overrides socket discovery; when `WAYLAND_DISPLAY`
 is absent, it discovers the socket if exactly one live Knave session is present.
 If multiple sessions are live, set `WAYLAND_DISPLAY` or `KNAVE_SOCKET` to select one.
 
 | Command | Request |
 | --- | --- |
-| `knavectl reload` | Reload compositor-owned settings. |
-| `knavectl dispatch reload` | Explicit dispatch spelling for reloading compositor-owned settings. |
-| `knavectl snapshot` | Print the complete desktop snapshot. |
-| `knavectl windows` | List window summaries. |
-| `knavectl workspaces` | List workspace summaries. |
-| `knavectl devices` | List input devices with their enabled state, capabilities, and matched `[[compositor.device]]` rule index. |
-| `knavectl active-window` | Print the focused window, if any. |
-| `knavectl active-workspace` | Print the active workspace. |
-| `knavectl version` | Query the compositor package identity and version. |
-| `knavectl dispatch move-window [--target TARGET] [--window ID]` | Begin interactive movement/rearrangement; target selectors are mutually exclusive. |
-| `knavectl dispatch resize-window [--target TARGET] [--window ID] [--edge EDGE]` | Begin floating resize or tiled master split adjustment. |
-| `knavectl dispatch toggle-floating` | Toggle the focused window between tiled and floating. |
-| `knavectl dispatch close` | Close the focused window. |
-| `knavectl dispatch maximize` | Maximize the focused window within the usable workspace area. |
-| `knavectl dispatch unmaximize` | Restore its underlying tiled/floating layout without changing fullscreen or minimization. |
-| `knavectl dispatch toggle-maximize` | Toggle the focused window's saved maximization state. |
-| `knavectl dispatch minimize` | Minimize the focused window. |
-| `knavectl dispatch restore-minimized` | Restore the most recently minimized window. |
-| `knavectl dispatch workspace <1-10>` | Focus a workspace. |
-| `knavectl dispatch focus-window <id>` | Focus a non-minimized window. |
-| `knavectl dispatch restore-window <id>` | Restore and focus a window. |
-| `knavectl dispatch exec <program> [args...]` | Spawn a compositor-managed process. |
-| `knavectl dispatch quit` | Ask the compositor to shut down. |
+| `knave reload` | Reload compositor-owned settings. |
+| `knave dispatch reload` | Explicit dispatch spelling for reloading compositor-owned settings. |
+| `knave snapshot` | Print the complete desktop snapshot. |
+| `knave windows` | List window summaries. |
+| `knave workspaces` | List workspace summaries. |
+| `knave desktop-version` | Query the running compositor package identity and version. |
+| `knave devices` | List input devices with their enabled state, capabilities, and matched `[[compositor.device]]` rule index. |
+| `knave active-window` | Print the focused window, if any. |
+| `knave active-workspace` | Print the active workspace. |
+| `knave dispatch move-window [--target TARGET] [--window ID]` | Begin interactive movement/rearrangement; target selectors are mutually exclusive. |
+| `knave dispatch resize-window [--target TARGET] [--window ID] [--edge EDGE]` | Begin floating resize or tiled master split adjustment. |
+| `knave dispatch toggle-floating` | Toggle the focused window between tiled and floating. |
+| `knave dispatch close` | Close the focused window. |
+| `knave dispatch maximize` | Maximize the focused window within the usable workspace area. |
+| `knave dispatch unmaximize` | Restore its underlying tiled/floating layout without changing fullscreen or minimization. |
+| `knave dispatch toggle-maximize` | Toggle the focused window's saved maximization state. |
+| `knave dispatch minimize` | Minimize the focused window. |
+| `knave dispatch restore-minimized` | Restore the most recently minimized window. |
+| `knave dispatch workspace <1-10>` | Focus a workspace. |
+| `knave dispatch focus-window <id>` | Focus a non-minimized window. |
+| `knave dispatch restore-window <id>` | Restore and focus a window. |
+| `knave dispatch exec <program> [args...]` | Spawn a compositor-managed process. |
+| `knave dispatch quit` | Ask the compositor to shut down. |
 
 The `dispatch reload` spelling remains accepted as an explicit dispatch form;
-`knavectl reload` is the short form. Unknown commands, missing arguments, trailing arguments for fixed-arity commands,
+`knave reload` is the short form. Unknown commands, missing arguments, trailing arguments for fixed-arity commands,
 invalid numeric IDs, and workspace IDs outside 1-10 return a non-zero exit status
 and a usage diagnostic.
 
-## Compatibility policy
+## Internal transport boundary
 
-Shared command and payload changes require consumer discovery, coordinated
+CLI commands and their documented output are the external control interface.
+The Unix-socket requests, subscriptions, service messages, and `--internal`
+process modes are private implementation details, updated together. The crate
+name `knave-desktop-api` is internal and does not promise a public Rust/wire API.
+Standard Wayland and D-Bus interfaces retain their external contracts.
+
+Internal payload changes require consumer discovery, coordinated
 updates in Knave, Villain, Shell, and portal components that use them, and tests
 for the resulting package set.
 

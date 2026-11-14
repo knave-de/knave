@@ -17,7 +17,6 @@ The top-level sections are owned by Knave:
 The session fields are:
 
 - backend: auto, tty, or winit;
-- compositor_binary and shell_binary: the supervised executables;
 - restart_on_failure: whether bounded component restart is enabled; and
 - `[[session.startup]]` entries: optional commands launched after the shell
   roles have been started.
@@ -51,7 +50,7 @@ writes preserve custom bindings.
 
 `[compositor] scale` sets the global logical-to-buffer scale from 1.0 through
 4.0, defaulting to 1.0. Villain rounds the value to the nearest 1/120th for
-Wayland fractional-scale negotiation. `knavectl reload` applies the new scale to
+Wayland fractional-scale negotiation. `knave reload` applies the new scale to
 the current output and sends updated preferred scales to connected clients. The
 shell renders scaled buffers while keeping layout and pointer coordinates in
 logical pixels. Clients without fractional-scale and viewporter support keep
@@ -186,10 +185,10 @@ The supported fields are:
 - `click_method`: `button_areas` or `clickfinger`.
 
 Villain applies these rules when a device is added and re-applies them on
-`knavectl reload`, so editing a rule and reloading enables, disables, or
-re-tunes the device in the running session. `knavectl devices` lists the detected devices, whether each is currently
+`knave reload`, so editing a rule and reloading enables, disables, or
+re-tunes the device in the running session. `knave devices` lists the detected devices, whether each is currently
 enabled, its libinput capabilities, and which rule index matched.
-Device names are not written to configuration; use `knavectl devices` to
+Device names are not written to configuration; use `knave devices` to
 discover the exact name of the hardware you want to match. Writes are typed, so
 unknown keys inside a rewritten `[[compositor.device]]` rule are dropped when
 settings writes persist the projection, matching the existing
@@ -215,7 +214,7 @@ fit = "cover"
 with black bars; `stretch` fills the screen and may distort it. PNG is supported;
 convert other formats first. Omit `image` to return to black. Wallpaper
 changes — a new assignment, a cleared one, and image or fit changes — apply
-on `knavectl reload` without a session restart; the session spawns or stops
+on `knave reload` without a session restart; the session spawns or stops
 the wallpaper process as part of the assignment. See
 [ownership and limits](decisions/0008-static-wallpaper.md).
 
@@ -266,7 +265,7 @@ three-finger horizontal workspace default. `none` passes that gesture to clients
 Unknown source fields survive settings writes; unknown enum values reject the
 configuration. A successful reload cancels any active swipe before replacing
 bindings; failed validation leaves the running configuration intact.
-These are Villain actions, not knavectl commands. See the
+These are Villain actions, not knave commands. See the
 [gesture decision](decisions/0010-workspace-swipes.md).
 
 ## Workspace cycling
@@ -294,3 +293,7 @@ in an intervening slot do not change an in-progress preview. Reversal selects a
 new target in the other direction. If the previewed workspace becomes empty,
 the gesture is cancelled and its remaining events are consumed.
 See [the decision](decisions/0011-skip-empty-workspaces.md).
+
+Session components always use the running `knave` executable. Component binary
+paths are not configuration settings. Unknown source data remains preserved by
+settings writes; it cannot select a different component build.

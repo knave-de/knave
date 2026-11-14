@@ -19,11 +19,11 @@ The Cargo workspace contains:
 
 | Crate | Responsibility |
 | --- | --- |
-| knave-desktop-api | Versioned desktop IDs, snapshots, requests, events, and errors |
+| knave-desktop-api | Private desktop IDs, snapshots, requests, events, and errors |
 | knave-config | Typed schema, validation, preservation-aware TOML writes |
 | knave-session | Compositor and shell startup, supervision, restart, and cleanup |
 | knave | Configuration and environment control CLI |
-| knavectl | Public compositor control client |
+| knavectl | Desktop control client library |
 | knave-portal-api | Portal-facing IPC types |
 | knave-capture-protocol | Screenshot and screen-cast protocol types |
 | knave-apps | XDG application catalog and search |
@@ -32,6 +32,13 @@ The Cargo workspace contains:
 | knave-wayland | Wayland client and layer-shell integration |
 | knave-shell | Desktop surfaces and application integration |
 | villain | Wayland compositor and window manager |
+
+The workspace emits one executable: `target/{debug,release}/knave`.
+Session, compositor, Shell, services, and helpers run as separate processes of
+that executable. Component crates retain their ownership boundaries. Install
+with `scripts/install.sh --user` or an explicit `--prefix PATH`.
+Knave's internal IPC is private; external tools use the `knave` CLI or standard
+Wayland/D-Bus interfaces. See [the consolidation decision](docs/architecture/decisions/0017-single-executable.md).
 
 `knave-ui` and `knave-renderer` are consumed from the standalone Knave UI
 repository at a pinned revision.
@@ -67,27 +74,27 @@ The CLI exposes configuration and session operations:
     cargo run -p knave -- config check
     cargo run -p knave -- config print
 
-The public compositor control client is a separate installed binary:
+The same executable provides desktop control:
 
-    cargo run -p knavectl -- --help
+    cargo run -p knave -- --help
 
 After `knave session start`, query and control the running desktop with:
 
-    knavectl snapshot
-    knavectl workspaces
-    knavectl dispatch workspace 2
-    knavectl dispatch reload
+    knave snapshot
+    knave workspaces
+    knave dispatch workspace 2
+    knave dispatch reload
 
-session start loads ~/.config/knave/config.toml, starts the configured Villain
-binary, waits for a newly-created wayland-* socket, and starts the configured
-shell roles followed by any `[[session.startup]]` commands. Startup commands
+`knave session start` loads ~/.config/knave/config.toml, starts its own
+compositor process mode, waits for a newly-created wayland-* socket, and starts
+its own Shell process modes followed by any `[[session.startup]]` commands. Startup commands
 are argument arrays and run without a shell; failed commands are logged and do
 not stop the session. SIGINT and SIGTERM stop tracked children with a bounded
 grace period.
 Failed components are restarted with capped exponential backoff when
 restart_on_failure is enabled; the current supervisor permits at most three
 restart attempts per session. A successful compositor exit, including
-`knavectl dispatch quit`, stops the session without restarting it.
+`knave dispatch quit`, stops the session without restarting it.
 
 ## Configuration
 
@@ -113,14 +120,14 @@ See [config.example.toml](config.example.toml) and
 
 ## Installation
 
-The installer builds and installs the release CLI, public control client, and
-session supervisor. It supports all three requested modes:
+The installer builds and installs the release `knave` executable and desktop
+data. Choose a user, system, or explicit prefix:
 
     scripts/install.sh --user
     scripts/install.sh --system
     scripts/install.sh --prefix /chosen/prefix
 
-User installation places knave, knavectl, and knave-session in ~/.local/bin.
+User installation places only `knave` in `~/.local/bin`.
 System installation uses /usr/local/bin and requests sudo when necessary.
 Installation is explicit and never writes to /usr/local without --system.
 
@@ -177,7 +184,7 @@ keys = "MOD+CTRL+R"
 dispatch = "reset-master"
 ```
 
-Run `knavectl reload` after editing. Resizing is per workspace and lasts
+Run `knave reload` after editing. Resizing is per workspace and lasts
 until reset or restart; reload preserves manual overrides. The percentage is
 clamped to 10–90%. Resize actions do nothing with fewer than two tiled windows
 or while a maximized/fullscreen window covers the layout. Floating windows and
@@ -190,7 +197,7 @@ Configure independent gap/border edges, corner radii, focused/unfocused opacity,
 border colors, per-side shadows and background blur in `[compositor.appearance]`.
 Maximized effects are individually opt-in; fullscreen always bypasses effects.
 See the [configuration reference and example](docs/architecture/window-appearance.md).
-Validate with `knave config check`, then apply with `knavectl reload` on the matching
+Validate with `knave config check`, then apply with `knave reload` on the matching
 Villain build. Initial compositor deployment requires a session restart.
 
 ### Desktop portals
@@ -214,7 +221,7 @@ Panels and the cursor stay stationary. See the
 [gesture contract](docs/architecture/decisions/0010-workspace-swipes.md).
 Override entries under `[[compositor.gesture.bind]]` by fingers and direction;
 `action = "none"` disables the matching compositor gesture. These are Villain
-actions, not knavectl commands. Reload applies validated changes atomically.
+actions, not knave commands. Reload applies validated changes atomically.
 
 To skip empty slots when cycling with next/previous shortcuts or swipes, set
 `skip_empty = true` under `[compositor.workspace]` and reload. It defaults to

@@ -42,3 +42,6 @@ mod theme_tests {
         );
     }
 }
+
+#[doc(hidden)]
+pub mod entrypoint;

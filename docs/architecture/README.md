@@ -17,7 +17,7 @@ package versions, build, and change-impact policy.
 These documents describe the Rust/Cargo-first environment. Knave is an
 independent desktop environment; host desktop integration is out of scope.
 The supported shell path is the Rust/wgpu implementation, and public control
-commands belong to Knave's `knavectl` contract.
+commands belong to Knave's `knave` contract.
 
 - [ADR 0004: Overview service lifecycle](decisions/0004-overview-service-lifecycle.md)
 
@@ -32,3 +32,5 @@ commands belong to Knave's `knavectl` contract.
 
 - [ADR 0015: native Polkit agent](decisions/0015-native-polkit-agent.md)
 - [ADR 0016: XWayland environment for startup commands](decisions/0016-startup-xwayland-environment.md)
+
+- [ADR 0017: single executable and private internal IPC](decisions/0017-single-executable.md)

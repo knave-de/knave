@@ -38,8 +38,8 @@ pub(super) struct Assignment {
 /// The session-owned wallpaper child. Spawning and stopping serialize
 /// through the slot so the supervisor loop, the assignment thread, and
 /// shutdown always agree on the live process.
-#[derive(Default)]
 pub(super) struct AssignmentSlot {
+    executable: PathBuf,
     child: Mutex<Option<Child>>,
     cancel: Mutex<Option<SubscriptionCancel>>,
     stopped: AtomicBool,
@@ -47,8 +47,9 @@ pub(super) struct AssignmentSlot {
 }
 
 impl AssignmentSlot {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(executable: PathBuf) -> Self {
         Self {
+            executable,
             child: Mutex::new(None),
             cancel: Mutex::new(None),
             stopped: AtomicBool::new(false),
@@ -76,7 +77,7 @@ impl AssignmentSlot {
         }
         self.stop_child();
         if config.shell.wallpaper.image.is_some() {
-            let child = crate::spawn_shell(config, "wallpaper", display)?;
+            let child = crate::spawn_shell(config, "wallpaper", display, &self.executable)?;
             *self.child.lock().unwrap() = Some(child.child);
         }
         Ok(())
@@ -105,7 +106,10 @@ impl AssignmentSlot {
                 let mut spawn_config = config.clone();
                 spawn_config.shell.wallpaper.image = Some(request.image.clone());
                 spawn_config.shell.wallpaper.fit = request.fit;
-                *assigned = Some(crate::spawn_shell(&spawn_config, "wallpaper", display)?.child);
+                *assigned = Some(
+                    crate::spawn_shell(&spawn_config, "wallpaper", display, &self.executable)?
+                        .child,
+                );
                 Ok(())
             }
             None if assigned.is_none() => Ok(()),
@@ -307,9 +311,8 @@ mod tests {
         binary.to_string_lossy().into_owned()
     }
 
-    fn config_with(binary: &str, image: Option<String>) -> Config {
+    fn config_with(image: Option<String>) -> Config {
         let mut config = Config::default();
-        config.session.shell_binary = binary.to_owned();
         config.shell.wallpaper.image = image;
         config
     }
@@ -330,11 +333,8 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let image = directory.path().join("assigned.png");
         fs::write(&image, b"png").unwrap();
-        let slot = AssignmentSlot::new();
-        let config = config_with(
-            &long_running_stub(directory.path()),
-            Some(image.to_string_lossy().into_owned()),
-        );
+        let slot = AssignmentSlot::new(long_running_stub(directory.path()).into());
+        let config = config_with(Some(image.to_string_lossy().into_owned()));
 
         slot.apply(
             &config,
@@ -358,11 +358,8 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let image = directory.path().join("assigned.png");
         fs::write(&image, b"png").unwrap();
-        let slot = AssignmentSlot::new();
-        let config = config_with(
-            &long_running_stub(directory.path()),
-            Some(image.to_string_lossy().into_owned()),
-        );
+        let slot = AssignmentSlot::new(long_running_stub(directory.path()).into());
+        let config = config_with(Some(image.to_string_lossy().into_owned()));
 
         slot.apply(
             &config,
@@ -393,11 +390,8 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let image = directory.path().join("assigned.png");
         fs::write(&image, b"png").unwrap();
-        let slot = AssignmentSlot::new();
-        let config = config_with(
-            &long_running_stub(directory.path()),
-            Some(image.to_string_lossy().into_owned()),
-        );
+        let slot = AssignmentSlot::new(long_running_stub(directory.path()).into());
+        let config = config_with(Some(image.to_string_lossy().into_owned()));
 
         slot.apply(
             &config,
@@ -425,8 +419,8 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let image = directory.path().join("assigned.png");
         fs::write(&image, b"png").unwrap();
-        let slot = AssignmentSlot::new();
-        let config = config_with("./definitely-not-a-shell-binary", None);
+        let slot = AssignmentSlot::new("./definitely-not-a-shell-binary".into());
+        let config = config_with(None);
 
         let error = slot
             .apply(
@@ -449,11 +443,8 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let image = directory.path().join("assigned.png");
         fs::write(&image, b"png").unwrap();
-        let slot = AssignmentSlot::new();
-        let config = config_with(
-            &long_running_stub(directory.path()),
-            Some(image.to_string_lossy().into_owned()),
-        );
+        let slot = AssignmentSlot::new(long_running_stub(directory.path()).into());
+        let config = config_with(Some(image.to_string_lossy().into_owned()));
 
         slot.shutdown();
         slot.apply(

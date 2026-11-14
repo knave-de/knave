@@ -1,5 +1,3 @@
-use std::process::ExitCode;
-
 use knave_desktop_api::{
     DesktopClient, DesktopCommand, DesktopQuery, DesktopRequest, DesktopResponse, ResizeEdge,
     WindowId, WindowTarget, WorkspaceId,
@@ -7,29 +5,29 @@ use knave_desktop_api::{
 
 fn usage() -> &'static str {
     "usage:
-  knavectl reload
-  knavectl dispatch reload
-  knavectl snapshot
-  knavectl dispatch move-window [--target focused|pointer | --window <id>]
-  knavectl dispatch resize-window [--target focused|pointer | --window <id>] [--edge <edge>]
-  knavectl dispatch toggle-floating
-  knavectl dispatch close
-  knavectl dispatch minimize
-  knavectl dispatch maximize
-  knavectl dispatch unmaximize
-  knavectl dispatch toggle-maximize
-  knavectl dispatch restore-minimized
-  knavectl dispatch workspace <1-10>
-  knavectl dispatch focus-window <id>
-  knavectl dispatch restore-window <id>
-  knavectl dispatch exec <program> [args...]
-  knavectl dispatch quit
-  knavectl windows
-  knavectl workspaces
-  knavectl devices
-  knavectl active-window
-  knavectl active-workspace
-  knavectl version"
+  knave reload
+  knave dispatch reload
+  knave snapshot
+  knave dispatch move-window [--target focused|pointer | --window <id>]
+  knave dispatch resize-window [--target focused|pointer | --window <id>] [--edge <edge>]
+  knave dispatch toggle-floating
+  knave dispatch close
+  knave dispatch minimize
+  knave dispatch maximize
+  knave dispatch unmaximize
+  knave dispatch toggle-maximize
+  knave dispatch restore-minimized
+  knave dispatch workspace <1-10>
+  knave dispatch focus-window <id>
+  knave dispatch restore-window <id>
+  knave dispatch exec <program> [args...]
+  knave dispatch quit
+  knave windows
+  knave workspaces
+  knave devices
+  knave active-window
+  knave active-workspace
+  knave desktop-version"
 }
 
 fn parse_number<T: std::str::FromStr>(value: Option<String>, name: &str) -> Result<T, String> {
@@ -204,8 +202,8 @@ fn parse_request(mut args: impl Iterator<Item = String>) -> Result<DesktopReques
             ensure_no_args(&mut args, "active-workspace")?;
             Ok(DesktopRequest::Query(DesktopQuery::ActiveWorkspace))
         }
-        Some("version") => {
-            ensure_no_args(&mut args, "version")?;
+        Some("desktop-version") => {
+            ensure_no_args(&mut args, "desktop-version")?;
             Ok(DesktopRequest::Query(DesktopQuery::Version))
         }
         Some(command) => Err(format!("unknown command: {command}")),
@@ -221,29 +219,17 @@ fn print_response(response: &DesktopResponse) -> Result<(), String> {
     Ok(())
 }
 
-fn run() -> Result<(), String> {
-    let mut args = std::env::args().skip(1);
-    if matches!(args.next().as_deref(), Some("--help" | "-h")) {
+pub fn run(args: &[String]) -> Result<(), String> {
+    if matches!(args.first().map(String::as_str), Some("--help" | "-h")) {
         println!("{}", usage());
         return Ok(());
     }
-
-    let request = parse_request(std::env::args().skip(1))?;
+    let request = parse_request(args.iter().cloned())?;
     let mut client = DesktopClient::connect().map_err(|error| error.to_string())?;
     let response = client
         .request(&request)
         .map_err(|error| error.to_string())?;
     print_response(&response)
-}
-
-fn main() -> ExitCode {
-    match run() {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            eprintln!("knavectl: {error}\n\n{}", usage());
-            ExitCode::FAILURE
-        }
-    }
 }
 
 #[cfg(test)]

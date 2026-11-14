@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 import time
 
-BINARY = Path(__file__).resolve().parents[2] / "target/release/villain"
+BINARY = Path(__file__).resolve().parents[2] / "target/release/knave"
 DURATION = 5.0
 
 
@@ -52,7 +52,7 @@ def session(mode):
         display = host_display if host_display.is_absolute() else host_runtime / host_display
         env = dict(os.environ, XDG_RUNTIME_DIR=str(runtime), XDG_CONFIG_HOME=str(Path(root) / "config"), WAYLAND_DISPLAY=str(display))
         with (Path(root) / "villain.log").open("w") as log:
-            proc = subprocess.Popen([str(BINARY), "--winit"], env=env, stdout=log, stderr=log)
+            proc = subprocess.Popen([str(BINARY), "--internal", "compositor", "--winit"], env=env, stdout=log, stderr=log)
             sockets = []
             try:
                 deadline = time.monotonic() + 10
