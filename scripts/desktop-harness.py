@@ -159,12 +159,11 @@ class Harness:
             self.env[key] = str(self.directory / directory)
         if args.gesture_test:
             self.env['VILLAIN_GESTURE_TEST'] = '1'
-        target = ROOT / 'target' / args.profile
         self.binaries = {
-            'knave': target / 'knave',
-            'knavectl': target / 'knavectl',
-            'villain': target / 'villain',
-            'knave-shell': target / 'knave-shell',
+            'knave': ROOT / 'target' / args.profile / 'knave',
+            'knavectl': ROOT / 'target' / args.profile / 'knavectl',
+            'villain': ROOT.parent / 'villain' / 'target' / args.profile / 'villain',
+            'knave-shell': ROOT.parent / 'knaveshell' / 'target' / args.profile / 'knave-shell',
         }
         self.bundle_manifest = None
         if args.bundle:
@@ -313,9 +312,10 @@ class Harness:
             manifest['bundle'] = str(self.args.bundle)
             manifest['bundle_sha256'] = hashlib.sha256((self.args.bundle / 'bundle.json').read_bytes()).hexdigest()
         else:
-            manifest['repositories'][ROOT.name] = {
-                'commit': run(['git', '-C', str(ROOT), 'rev-parse', 'HEAD']),
-                'status': run(['git', '-C', str(ROOT), 'status', '--short'])}
+            for repo in (ROOT, ROOT.parent / 'villain', ROOT.parent / 'knaveshell'):
+                manifest['repositories'][repo.name] = {
+                    'commit': run(['git', '-C', str(repo), 'rev-parse', 'HEAD']),
+                    'status': run(['git', '-C', str(repo), 'status', '--short'])}
         (self.directory / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
 
     def start_bundle_bus(self):

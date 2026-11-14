@@ -9,34 +9,28 @@ wgpu rendering; Knave Shell owns desktop surfaces and Wayland hosting. Villain o
 Keep those responsibilities separate unless an explicit architecture decision
 changes the boundary.
 
-Shell and Villain now live in this repository (`crates/knave-shell`,
-`crates/villain`); sharing a workspace does not merge their component
-ownership.
-
 ## Required workspace flow for all edits
 
 All repository changes, including code, configuration, scripts, tests,
-documentation and `AGENTS.md` edits, belong in an isolated Git worktree.
-Read-only investigation may use the source checkouts; edits and commits belong
-in feature worktrees. Creating a branch in a source checkout does not satisfy
-this requirement.
+documentation and `AGENTS.md` edits, must use the managed
+[development workspace flow](docs/dev-workflow.md). Read-only investigation may
+use the source checkouts; edits and commits belong in feature worktrees.
+Creating a branch in a source checkout does not satisfy this requirement.
 
-Create a worktree from this repository with plain Git:
+Before the first edit, create a workspace from the Knave checkout with
+`./knave-dev create FEATURE --change REPO`, repeating `--change` for every
+repository you intend to edit. An existing managed workspace may be reused
+only when its manifest selects all affected repositories for changes. Check
+`workspace.json`, the current branches and Git status before editing. If an
+additional repository is needed, create a new workspace with that repository
+selected; do not edit a detached dependency worktree or silently move its pin.
+Preserve the source checkouts, their branches and unrelated work.
 
-    git worktree add -b FEATURE ../knave-FEATURE master
-
-Preserve the source checkouts, their branches and unrelated work. Do not edit a
-detached dependency worktree or silently move its pin.
-
-Edit, commit and run checks inside the feature worktree. For documentation-only
-edits, review the diff and run `git diff --check`; a binary rebuild is
-unnecessary. Keep existing verified bundles immutable and leave running user
-sessions alone.
-
-The former `knave-dev` managed workspace, bundle and session tooling still lives
-under `scripts/` and `docs/dev-workflow.md`. It assumes the pre-monorepo
-multi-repository layout and is being replaced by monorepo tooling in phase 1;
-do not rely on it for new work until that lands.
+Edit, commit and run checks inside the selected feature worktrees. For runtime
+or coordinated component changes, use the managed build, frozen bundle, nested
+test and verification steps before handoff. For documentation-only edits,
+review the diff and run `git diff --check`; a binary rebuild is unnecessary.
+Keep existing verified bundles immutable and leave running user sessions alone.
 
 ## Mandatory startup
 
@@ -131,21 +125,22 @@ passes tests.
 
 ## Build policy
 
-For coordinated feature work, build and test the affected packages from the
-workspace, then run the nested test against those artifacts. A failed
-coordinated build is a revision/contract failure to resolve, not a reason to use
-installed binaries or skip a consumer. Report the identity and evidence of what
-was tested. Use the dedicated-account TTY path for human hardware review; do not
+For coordinated feature work, use `scripts/knave-dev.py` and
+`docs/dev-workflow.md`. Create matching worktrees with explicit affected
+repositories, commit the component changes, then build, freeze a bundle, and
+run the nested test against that bundle. A failed coordinated build is a
+revision/contract failure to resolve, not a reason to use installed binaries or
+skip a consumer. Keep the tested bundle immutable and report its identity and
+evidence. Use the dedicated-account TTY path for human hardware review; do not
 install development binaries into the contributor's normal desktop implicitly.
-
-The former `knave-dev` bundle workflow is pre-monorepo tooling. Until monorepo
-tooling lands in phase 1, prepare a handoff by building from the worktree and
-reporting the worktree path and commit; do not claim the managed bundle steps
-were used.
+Prepare the verified feature bundle and archive as agent work. Hand the human
+one launch command: `./knave-dev session FEATURE` for an available feature, or
+`./knave-dev session ARCHIVE` for an exported handoff. Account setup is a one-time
+prerequisite; bundle lookup, import, selection and startup belong to the tool.
 
 The development CLI creates workspaces and builds; it does not choose agent
 providers or spawn agents. When agents are explicitly delegated, give each
-independent feature its own worktree and share the bounded build queue.
+independent feature its own managed workspace and share the bounded build queue.
 
 The Knave stack is Rust/Cargo-first. Use Cargo for libraries, binaries, tests,
 and workspace orchestration across the environment. The Rust/wgpu shell is the

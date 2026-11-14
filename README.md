@@ -4,18 +4,19 @@ Knave is the umbrella project for an independent Linux desktop environment.
 This repository owns the desktop-wide contracts, configuration, session
 lifecycle, and the long-term Rust/Cargo-first environment.
 
-Shell, Villain, and the desktop contracts share this repository and Cargo
-workspace. Only the following remain separate:
+The environment is developed across five repositories:
 
 | Repository | Responsibility |
 | --- | --- |
-| Knave (this repository) | Desktop API, configuration, session, CLI, shell, compositor |
+| Knave | Settings, session supervisor, public desktop API, protocol, CLI |
 | [Knave UI](https://github.com/knave-de/knave-ui) | Renderer-independent UI toolkit, assets, wgpu renderer |
-| [xdg-desktop-portal-knave](https://github.com/knave-de/xdg-desktop-portal-knave) | Desktop portal backend |
+| Knave Shell | Desktop surfaces, application integration, Wayland client |
+| Villain | Wayland compositor and window manager |
+| xdg-desktop-portal-knave | Desktop portal backend |
 
 ## Workspace
 
-The Cargo workspace contains:
+The current Knave Cargo workspace contains:
 
 | Crate | Responsibility |
 | --- | --- |
@@ -23,18 +24,6 @@ The Cargo workspace contains:
 | knave-config | Typed schema, validation, preservation-aware TOML writes |
 | knave-session | Compositor and shell startup, supervision, restart, and cleanup |
 | knave | Configuration and environment control CLI |
-| knavectl | Public compositor control client |
-| knave-portal-api | Portal-facing IPC types |
-| knave-capture-protocol | Screenshot and screen-cast protocol types |
-| knave-apps | XDG application catalog and search |
-| knave-icons | Freedesktop icon lookup and rasterization |
-| knave-shell-ui | Shell widgets and layout |
-| knave-wayland | Wayland client and layer-shell integration |
-| knave-shell | Desktop surfaces and application integration |
-| villain | Wayland compositor and window manager |
-
-`knave-ui` and `knave-renderer` are consumed from the standalone Knave UI
-repository at a pinned revision.
 
 Build and test it with:
 
@@ -43,19 +32,22 @@ Build and test it with:
     cargo clippy --workspace --all-targets -- -D warnings
     cargo build --workspace --release --locked
 
-## Development workflow
-
-Isolate changes in a plain Git worktree; the source checkout stays untouched:
-
-    git worktree add -b my-change ../knave-my-change master
-
-The former `knave-dev` managed workspace and bundle tooling is still present
-under `scripts/` but is being replaced; prefer worktrees for branch isolation
-until the phase 1 tooling lands. For agent-controlled feature testing, MP4
-demonstrations, and interactive testing over an SSH/VNC connection, see the
-[desktop test harness](docs/desktop-testing.md).
-
 ## CLI
+
+For isolated feature worktrees, coordinated builds, verified desktop bundles,
+draft PRs and dedicated-account TTY testing, see the
+[development workflow](docs/dev-workflow.md).
+
+To start a prepared feature from your test account's local TTY:
+
+    ./knave-dev session overview-animations
+
+You can also pass a feature archive; import and selection are handled automatically:
+
+    ./knave-dev session /path/to/overview-animations.tar.gz
+
+For agent-controlled feature testing, MP4 demonstrations, and interactive testing
+over an SSH/VNC connection, see the [desktop test harness](docs/desktop-testing.md).
 
 The CLI exposes configuration and session operations:
 
