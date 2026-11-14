@@ -404,10 +404,7 @@ impl SeatHandler for Villain {
         led_state: smithay::input::keyboard::LedState,
     ) {
         if let Some(tty) = self.tty.as_mut() {
-            let leds = smithay::reexports::input::Led::from(led_state);
-            for device in &mut tty.input_devices {
-                device.led_update(leds);
-            }
+            tty.update_keyboard_leds(smithay::reexports::input::Led::from(led_state));
         }
     }
 

@@ -46,6 +46,14 @@ pub struct Tty {
 }
 
 impl Tty {
+    pub(crate) fn update_keyboard_leds(&mut self, leds: smithay::reexports::input::Led) {
+        for device in &mut self.input_devices {
+            if device.has_capability(smithay::reexports::input::DeviceCapability::Keyboard) {
+                device.led_update(leds);
+            }
+        }
+    }
+
     pub(crate) fn set_scale(
         &mut self,
         scale: f64,
@@ -335,11 +343,7 @@ impl Villain {
     pub(crate) fn sync_keyboard_leds(&mut self) {
         let leds = smithay::reexports::input::Led::from(self.keyboard.led_state());
         if let Some(tty) = self.tty.as_mut() {
-            for device in &mut tty.input_devices {
-                if device.has_capability(smithay::reexports::input::DeviceCapability::Keyboard) {
-                    device.led_update(leds);
-                }
-            }
+            tty.update_keyboard_leds(leds);
         }
     }
 }
