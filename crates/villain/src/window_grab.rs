@@ -187,6 +187,10 @@ impl Villain {
             }
             if let Some(bar) = crate::workspaces::titlebar_rect(&window, rect, fullscreen)
                 && bar.to_f64().contains(self.pointer_location)
+                && {
+                    let (_, _, frame, inner_radii) = self.input_shape(&window, rect);
+                    crate::appearance::rounded_contains(frame, inner_radii, self.pointer_location)
+                }
             {
                 hit = Some((window, bar, maximized));
                 break;
@@ -466,6 +470,7 @@ impl Villain {
             return None;
         }
         let hit_window = self.input_window_at_pointer().map(|hit| hit.0);
+        let layout = self.workspace_layout(self.active_workspace);
         for window in self.space.elements().rev() {
             let Some(rect) = self.floating_geometry(window) else {
                 // A visible higher window occludes resize handles below it.
@@ -474,7 +479,14 @@ impl Villain {
                 }
                 continue;
             };
-            let (outer, _, _) = self.input_shape(window, rect);
+            let Some(client_rect) = layout
+                .iter()
+                .find(|entry| entry.0 == *window && entry.5)
+                .map(|entry| entry.1)
+            else {
+                continue;
+            };
+            let (outer, _, _, _) = self.input_shape(window, client_rect);
             let hit = Geometry::new(
                 outer.loc - Point::from((5, 5)),
                 (outer.size.w + 10, outer.size.h + 10).into(),

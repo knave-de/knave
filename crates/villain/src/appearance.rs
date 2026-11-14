@@ -78,6 +78,35 @@ pub(crate) fn client_rect(
         rect
     }
 }
+
+/// Return the full server-decorated frame expanded by the reserved border.
+pub(crate) fn frame_rect(client: Geometry, titlebar: Option<Geometry>) -> Geometry {
+    if let Some(titlebar) = titlebar {
+        Geometry::new(
+            (client.loc.x, titlebar.loc.y).into(),
+            (client.size.w, client.size.h + titlebar.size.h).into(),
+        )
+    } else {
+        client
+    }
+}
+
+pub(crate) fn outer_rect(client: Geometry, titlebar: Option<Geometry>, width: Edges) -> Geometry {
+    let frame = frame_rect(client, titlebar);
+    Geometry::new(
+        (
+            frame.loc.x - i32::from(width.left),
+            frame.loc.y - i32::from(width.top),
+        )
+            .into(),
+        (
+            frame.size.w + i32::from(width.left) + i32::from(width.right),
+            frame.size.h + i32::from(width.top) + i32::from(width.bottom),
+        )
+            .into(),
+    )
+}
+
 pub(crate) fn constrain_floating(
     mut rect: Geometry,
     bounds: Geometry,
@@ -130,6 +159,29 @@ mod tests {
             assert_eq!(tiny.size, (1, 1).into());
             assert!(tiny.loc.x < width);
         }
+    }
+
+    #[test]
+    fn server_titlebar_is_inside_the_border_frame() {
+        let client = Rectangle::new((20, 70).into(), (100, 80).into());
+        let titlebar = Rectangle::new((20, 36).into(), (100, 34).into());
+        let width = Edges {
+            top: 4,
+            right: 3,
+            bottom: 5,
+            left: 2,
+        };
+        assert_eq!(
+            outer_rect(client, Some(titlebar), width),
+            Rectangle::new((18, 32).into(), (105, 123).into())
+        );
+        assert_eq!(
+            frame_rect(client, Some(titlebar)),
+            Rectangle::new((20, 36).into(), (100, 114).into())
+        );
+        let frame = Rectangle::from_size((200, 100).into());
+        assert!(!rounded_contains(frame, [50.0; 4], (0.5, 34.5).into(),));
+        assert!(rounded_contains(frame, [50.0; 4], (4.5, 34.5).into()));
     }
 }
 pub(crate) mod render;

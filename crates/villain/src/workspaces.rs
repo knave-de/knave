@@ -2338,8 +2338,8 @@ impl Villain {
         &self,
         window: &Window,
         rect: Geometry,
-    ) -> (Geometry, [f32; 4], [f32; 4]) {
-        let view = self
+    ) -> (Geometry, [f32; 4], Geometry, [f32; 4]) {
+        let (fullscreen, view) = self
             .workspaces
             .iter()
             .find_map(|workspace| {
@@ -2348,7 +2348,8 @@ impl Villain {
                     .iter()
                     .find(|entry| entry.window == *window)?;
                 let appearance = &self.config.appearance;
-                Some(if workspace.fullscreen == Some(entry.id) {
+                let fullscreen = workspace.fullscreen == Some(entry.id);
+                let view = if fullscreen {
                     knave_config::appearance::ViewEffects::NONE
                 } else if workspace.maximized == Some(entry.id) {
                     appearance.views.maximized
@@ -2356,26 +2357,18 @@ impl Villain {
                     appearance.views.floating
                 } else {
                     appearance.views.tiled
-                })
+                };
+                Some((fullscreen, view))
             })
-            .unwrap_or(knave_config::appearance::ViewEffects::NONE);
+            .unwrap_or((false, knave_config::appearance::ViewEffects::NONE));
         let width = if view.borders {
             self.config.appearance.border.width
         } else {
             Default::default()
         };
-        let outer = Geometry::new(
-            (
-                rect.loc.x - i32::from(width.left),
-                rect.loc.y - i32::from(width.top),
-            )
-                .into(),
-            (
-                rect.size.w + i32::from(width.left) + i32::from(width.right),
-                rect.size.h + i32::from(width.top) + i32::from(width.bottom),
-            )
-                .into(),
-        );
+        let titlebar = titlebar_rect(window, rect, fullscreen);
+        let frame = crate::appearance::frame_rect(rect, titlebar);
+        let outer = crate::appearance::outer_rect(rect, titlebar, width);
         let radii = crate::appearance::render::normalized_radii(
             if view.radius {
                 self.config.appearance.border.radius
@@ -2390,7 +2383,7 @@ impl Villain {
             (radii[2] - f32::from(width.bottom.max(width.right))).max(0.0),
             (radii[3] - f32::from(width.bottom.max(width.left))).max(0.0),
         ];
-        (outer, radii, inner)
+        (outer, radii, frame, inner)
     }
 
     pub(crate) fn input_window_at_pointer(
@@ -2419,8 +2412,8 @@ impl Villain {
                 std::iter::successors(Some(surface), smithay::wayland::compositor::get_parent)
                     .last();
             if root == Self::window_surface(window) {
-                let (_, _, radii) = self.input_shape(window, rect);
-                if !crate::appearance::rounded_contains(rect, radii, self.pointer_location) {
+                let (_, _, frame, radii) = self.input_shape(window, rect);
+                if !crate::appearance::rounded_contains(frame, radii, self.pointer_location) {
                     continue;
                 }
             }
@@ -2441,7 +2434,7 @@ impl Villain {
                 .find(|entry| entry.0 == *window && (entry.2 || entry.3 || entry.4))
                 .map(|entry| entry.1)
                 .unwrap_or_else(|| Geometry::new(location, window.geometry().size));
-            let (outer, radii, _) = self.input_shape(window, rect);
+            let (outer, radii, _, _) = self.input_shape(window, rect);
             if !rect.to_f64().contains(self.pointer_location)
                 && crate::appearance::rounded_contains(outer, radii, self.pointer_location)
             {

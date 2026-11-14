@@ -1358,6 +1358,22 @@ mod tests {
         assert_eq!(bar.size.w, client.size.w);
         assert_eq!(client.size, (300, 200).into());
         assert_eq!(bar.loc.y + crate::workspaces::TITLEBAR_HEIGHT, client.loc.y);
+        let previous_floating_borders = state.config.appearance.views.floating.borders;
+        let previous_border_width = state.config.appearance.border.width;
+        state.config.appearance.views.floating.borders = true;
+        state.config.appearance.border.width = knave_config::appearance::Edges {
+            top: 3,
+            right: 4,
+            bottom: 5,
+            left: 2,
+        };
+        let (outer, _, frame, _) = state.input_shape(&window, client);
+        assert_eq!(frame.loc, bar.loc, "X11 titlebar begins at the frame's top");
+        assert_eq!(frame.size.h, bar.size.h + client.size.h);
+        assert_eq!(outer.loc, (frame.loc.x - 2, frame.loc.y - 3).into());
+        assert_eq!(outer.size, (frame.size.w + 6, frame.size.h + 8).into());
+        state.config.appearance.views.floating.borders = previous_floating_borders;
+        state.config.appearance.border.width = previous_border_width;
         let outer = state.floating_geometry(&window).unwrap();
         assert_eq!(bar.loc, outer.loc);
 
@@ -1423,11 +1439,60 @@ mod tests {
                 .min_size()
                 .is_some_and(|size| size.w == 80)
         });
+        state.config.appearance.views.floating.borders = true;
+        state.config.appearance.border.width = knave_config::appearance::Edges {
+            top: 3,
+            right: 4,
+            bottom: 5,
+            left: 2,
+        };
         let frame = smithay::utils::Rectangle::new((180, 140).into(), (340, 260).into());
         state.set_floating_geometry(&window, frame);
         pump_until(&mut event_loop, &mut state, |_| {
             conn.get_geometry(id).unwrap().reply().unwrap().height == 226
         });
+        let floating = state.floating_geometry(&window).unwrap();
+        let client = state
+            .workspace_layout(state.active_workspace)
+            .into_iter()
+            .find(|entry| entry.0 == window && entry.5)
+            .unwrap()
+            .1;
+        assert_eq!(
+            client.loc.y,
+            floating.loc.y + crate::workspaces::TITLEBAR_HEIGHT
+        );
+
+        state.host_focused = true;
+        state.pointer_location = (
+            f64::from(floating.loc.x + floating.size.w / 2),
+            f64::from(floating.loc.y - 10),
+        )
+            .into();
+        assert!(
+            state.floating_edge_under_pointer().is_none(),
+            "resize hit testing must not add the titlebar twice"
+        );
+        assert!(!state.handle_compositor_button(
+            0x110,
+            smithay::backend::input::ButtonState::Pressed,
+            1
+        ));
+        assert!(state.interaction.is_none());
+        state.handle_compositor_button(0x110, smithay::backend::input::ButtonState::Released, 2);
+
+        state.pointer_location = (
+            f64::from(floating.loc.x - 1),
+            f64::from(floating.loc.y + 50),
+        )
+            .into();
+        assert!(state.handle_compositor_button(
+            0x110,
+            smithay::backend::input::ButtonState::Pressed,
+            3
+        ));
+        assert!(state.interaction.is_some(), "the real border still resizes");
+        state.release_pointer_buttons();
         let motif = conn
             .intern_atom(false, b"_MOTIF_WM_HINTS")
             .unwrap()

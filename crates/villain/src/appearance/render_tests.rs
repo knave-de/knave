@@ -47,7 +47,7 @@ fn gpu_pixels_prove_borders_rounding_opacity_directional_shadows_and_blur() {
         bottom: "#0000ffff".into(),
         left: "#ffff00ff".into(),
     };
-    let border = border(
+    let border_element = border(
         shape_program,
         rect,
         Edges {
@@ -59,7 +59,8 @@ fn gpu_pixels_prove_borders_rounding_opacity_directional_shadows_and_blur() {
         [12.0, 4.0, 16.0, 0.0],
         &colors,
     );
-    let mut texture = render_texture(&mut renderer, rect.size, &[border], [0.0; 4]).unwrap();
+    let mut texture =
+        render_texture(&mut renderer, rect.size, &[border_element], [0.0; 4]).unwrap();
     let data = pixels(&mut renderer, &mut texture);
     assert_eq!(
         sample(&data, 32, 32, 64),
@@ -75,6 +76,91 @@ fn gpu_pixels_prove_borders_rounding_opacity_directional_shadows_and_blur() {
         sample(&data, 0, 0, 64)[3],
         0,
         "rounded corner must be clear"
+    );
+    let client = Rectangle::new((20, 40).into(), (24, 20).into());
+    let titlebar = Rectangle::new((20, 6).into(), (24, 34).into());
+    let frame = crate::appearance::outer_rect(
+        client,
+        Some(titlebar),
+        Edges {
+            top: 2,
+            right: 2,
+            bottom: 2,
+            left: 2,
+        },
+    );
+    assert_eq!(frame, Rectangle::new((18, 4).into(), (28, 58).into()));
+    let frame_border = border(
+        shape_program,
+        frame,
+        Edges {
+            top: 2,
+            right: 2,
+            bottom: 2,
+            left: 2,
+        },
+        [0.0; 4],
+        &colors,
+    );
+    let mut texture =
+        render_texture(&mut renderer, (64, 64).into(), &[frame_border], [0.0; 4]).unwrap();
+    let data = pixels(&mut renderer, &mut texture);
+    assert_eq!(
+        sample(&data, 32, 4, 64),
+        [255, 0, 0, 255],
+        "the top border must surround the titlebar instead of crossing its lower edge"
+    );
+    assert_eq!(sample(&data, 32, 7, 64)[3], 0);
+    let bar_buffer = smithay::backend::renderer::element::solid::SolidColorBuffer::new(
+        (200, 34),
+        [1.0, 0.0, 0.0, 1.0],
+    );
+    let bar_source =
+        SolidColorRenderElement::from_buffer(&bar_buffer, (0, 0), 1.0, 1.0, Kind::Unspecified);
+    let client_buffer = smithay::backend::renderer::element::solid::SolidColorBuffer::new(
+        (200, 66),
+        [0.0, 1.0, 0.0, 1.0],
+    );
+    let client_source =
+        SolidColorRenderElement::from_buffer(&client_buffer, (0, 0), 1.0, 1.0, Kind::Unspecified);
+    let bar_texture =
+        render_texture(&mut renderer, (200, 34).into(), &[bar_source], [0.0; 4]).unwrap();
+    let client_texture =
+        render_texture(&mut renderer, (200, 66).into(), &[client_source], [0.0; 4]).unwrap();
+    let frame_radii = [50.0; 4];
+    let bar = filtered_with_mask(
+        &renderer,
+        bar_texture,
+        texture_program,
+        (0, 0).into(),
+        frame_radii,
+        1.0,
+        (0.0, 0.0),
+        0.0,
+        [0.0, 0.0, 200.0, 100.0],
+    );
+    let client = filtered_with_mask(
+        &renderer,
+        client_texture,
+        texture_program,
+        (0, 34).into(),
+        frame_radii,
+        1.0,
+        (0.0, 0.0),
+        0.0,
+        [0.0, -34.0, 200.0, 100.0],
+    );
+    let mut texture =
+        render_texture(&mut renderer, (200, 100).into(), &[bar, client], [0.0; 4]).unwrap();
+    let data = pixels(&mut renderer, &mut texture);
+    assert_eq!(
+        sample(&data, 0, 34, 200)[3],
+        0,
+        "rounded input/render contour continues below titlebar"
+    );
+    assert!(
+        sample(&data, 4, 34, 200)[1] > 200,
+        "client pixels remain visible just inside the curved seam"
     );
     let source =
         render_texture::<EffectElement>(&mut renderer, rect.size, &[], [1.0, 0.0, 0.0, 1.0])

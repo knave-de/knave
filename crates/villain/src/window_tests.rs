@@ -1799,7 +1799,49 @@ fn xdg_decoration_negotiation_and_geometry() {
             let bar = crate::workspaces::titlebar_rect(window, *rect, *fullscreen).unwrap();
             assert_eq!(bar.size.h, 34);
             assert_eq!(bar.loc.y + bar.size.h, rect.loc.y);
+            state.config.appearance.border.width = knave_config::appearance::Edges {
+                top: 3,
+                right: 4,
+                bottom: 5,
+                left: 2,
+            };
+            state.config.appearance.border.radius.top_left = 12;
+            state.config.appearance.border.radius.top_right = 12;
+            let (outer, radii, frame, inner_radii) = state.input_shape(window, *rect);
+            assert_eq!(outer.loc.y, bar.loc.y - 3);
+            assert_eq!(outer.size.h, bar.size.h + rect.size.h + 8);
+            assert_eq!(frame.loc.y, bar.loc.y);
+            assert_eq!(inner_radii[..2], [9.0, 8.0]);
+            assert!(!crate::appearance::rounded_contains(
+                outer,
+                radii,
+                (f64::from(outer.loc.x) + 0.5, f64::from(outer.loc.y) + 0.5).into(),
+            ));
+            assert!(crate::appearance::rounded_contains(
+                outer,
+                radii,
+                (
+                    f64::from(bar.loc.x + bar.size.w / 2),
+                    f64::from(bar.loc.y + 17)
+                )
+                    .into(),
+            ));
             state.host_focused = true;
+            state.pointer_location = (f64::from(bar.loc.x + 2), f64::from(bar.loc.y + 2)).into();
+            assert!(
+                !state.handle_compositor_button(
+                    0x110,
+                    smithay::backend::input::ButtonState::Pressed,
+                    1
+                ),
+                "a rounded titlebar border corner must not start a titlebar drag"
+            );
+            assert!(state.interaction.is_none());
+            state.handle_compositor_button(
+                0x110,
+                smithay::backend::input::ButtonState::Released,
+                2,
+            );
             state.pointer_location = (
                 f64::from(bar.loc.x + bar.size.w - 36),
                 f64::from(bar.loc.y + 17),

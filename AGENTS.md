@@ -13,31 +13,6 @@ Shell and Villain now live in this repository (`crates/knave-shell`,
 `crates/villain`); sharing a workspace does not merge their component
 ownership.
 
-## Required workspace flow for all edits
-
-All repository changes, including code, configuration, scripts, tests,
-documentation and `AGENTS.md` edits, belong in an isolated Git worktree.
-Read-only investigation may use the source checkouts; edits and commits belong
-in feature worktrees. Creating a branch in a source checkout does not satisfy
-this requirement.
-
-Create a worktree from this repository with plain Git:
-
-    git worktree add -b FEATURE ../knave-FEATURE master
-
-Preserve the source checkouts, their branches and unrelated work. Do not edit a
-detached dependency worktree or silently move its pin.
-
-Edit, commit and run checks inside the feature worktree. For documentation-only
-edits, review the diff and run `git diff --check`; a binary rebuild is
-unnecessary. Keep existing verified bundles immutable and leave running user
-sessions alone.
-
-The former `knave-dev` managed workspace, bundle and session tooling still lives
-under `scripts/` and `docs/dev-workflow.md`. It assumes the pre-monorepo
-multi-repository layout and is being replaced by monorepo tooling in phase 1;
-do not rely on it for new work until that lands.
-
 ## Mandatory startup
 
 Before editing:
@@ -144,8 +119,8 @@ reporting the worktree path and commit; do not claim the managed bundle steps
 were used.
 
 The development CLI creates workspaces and builds; it does not choose agent
-providers or spawn agents. When agents are explicitly delegated, give each
-independent feature its own worktree and share the bounded build queue.
+providers or spawn agents. When agents are explicitly delegated, use only the
+user-supplied working directories and share the bounded build queue.
 
 The Knave stack is Rust/Cargo-first. Use Cargo for libraries, binaries, tests,
 and workspace orchestration across the environment. The Rust/wgpu shell is the
