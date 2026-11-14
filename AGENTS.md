@@ -13,26 +13,6 @@ Shell and Villain now live in this repository (`crates/knave-shell`,
 `crates/villain`); sharing a workspace does not merge their component
 ownership.
 
-## Workspace selection for all edits
-
-The user manages worktree creation and selection. Work in the supplied working
-directory, or the current directory when none is specified. Do not create,
-remove, or switch worktrees unless the user explicitly asks.
-
-Keep edits, commits and checks in that directory. Give delegated agents the
-same path for the same feature; the user supplies any separate worktrees needed
-for independent work. Preserve unrelated changes and branches. Do not edit a
-detached dependency worktree or silently move its pin.
-
-For documentation-only edits, review the diff and run `git diff --check`; a
-binary rebuild is unnecessary. Keep existing verified bundles immutable and
-leave running user sessions alone.
-
-The former `knave-dev` managed workspace, bundle and session tooling still lives
-under `scripts/` and `docs/dev-workflow.md`. It assumes the pre-monorepo
-multi-repository layout and is being replaced by monorepo tooling in phase 1;
-do not rely on it for new work until that lands.
-
 ## Mandatory startup
 
 Before editing:
