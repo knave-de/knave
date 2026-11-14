@@ -161,18 +161,20 @@ impl Titlebars {
         state: TitlebarState,
     ) -> Option<&MemoryRenderBuffer> {
         let width = width.clamp(1, 8192);
-        let title = window
-            .toplevel()
-            .map(|surface| {
-                smithay::wayland::compositor::with_states(surface.wl_surface(), |states| {
-                    states
-                        .data_map
-                        .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
-                        .and_then(|data| data.lock().ok().and_then(|a| a.title.clone()))
-                        .unwrap_or_default()
-                })
+        let title = if let Some(surface) = window.toplevel() {
+            smithay::wayland::compositor::with_states(surface.wl_surface(), |states| {
+                states
+                    .data_map
+                    .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                    .and_then(|data| data.lock().ok().and_then(|a| a.title.clone()))
+                    .unwrap_or_default()
             })
-            .unwrap_or_default();
+        } else {
+            window
+                .x11_surface()
+                .map(smithay::xwayland::X11Surface::title)
+                .unwrap_or_default()
+        };
         if let Some(index) = self.entries.iter().position(|entry| {
             entry.window_id == window_id
                 && entry.title == title

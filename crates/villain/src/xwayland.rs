@@ -223,6 +223,7 @@ impl XwmHandler for Villain {
         self.remove_x11_window(&window);
     }
 
+    /// Translate X11 client geometry into the compositor's outer-frame geometry.
     fn configure_request(
         &mut self,
         _xwm: XwmId,
@@ -237,13 +238,21 @@ impl XwmHandler for Villain {
             && let Some(managed) = self.window_for_x11_surface(&window)
         {
             if let Some(mut geometry) = self.floating_geometry(&managed) {
+                let titlebar_height = if crate::workspaces::has_compositor_titlebar(&managed) {
+                    crate::workspaces::TITLEBAR_HEIGHT
+                } else {
+                    0
+                };
                 geometry.loc.x = x.unwrap_or(geometry.loc.x);
-                geometry.loc.y = y.unwrap_or(geometry.loc.y);
+                geometry.loc.y = y
+                    .map(|value| value.saturating_sub(titlebar_height))
+                    .unwrap_or(geometry.loc.y);
                 geometry.size.w = width
                     .and_then(|value| i32::try_from(value).ok())
                     .unwrap_or(geometry.size.w);
                 geometry.size.h = height
                     .and_then(|value| i32::try_from(value).ok())
+                    .map(|value| value.saturating_add(titlebar_height))
                     .unwrap_or(geometry.size.h);
                 self.set_floating_geometry(&managed, geometry);
             }
@@ -290,6 +299,7 @@ impl XwmHandler for Villain {
         }
     }
 
+    /// Refresh managed-window hints and decoration after relevant X11 properties change.
     fn property_notify(&mut self, _xwm: XwmId, surface: X11Surface, property: WmWindowProperty) {
         self.desktop_state_dirty = true;
         if matches!(
@@ -297,9 +307,35 @@ impl XwmHandler for Villain {
             WmWindowProperty::NormalHints
                 | WmWindowProperty::TransientFor
                 | WmWindowProperty::WindowType
+                | WmWindowProperty::MotifHints
         ) && let Some(window) = self.window_for_x11_surface(&surface)
         {
+            let client_geometry = surface.geometry();
+            let was_floating = self.floating_geometry(&window);
             self.refresh_window_hints(&window);
+            if property == WmWindowProperty::MotifHints {
+                if let Some(mut outer) = was_floating {
+                    let titlebar_height = if crate::workspaces::has_compositor_titlebar(&window) {
+                        crate::workspaces::TITLEBAR_HEIGHT
+                    } else {
+                        0
+                    };
+                    outer.loc.y = client_geometry.loc.y.saturating_sub(titlebar_height);
+                    outer.size = (
+                        client_geometry.size.w,
+                        client_geometry.size.h.saturating_add(titlebar_height),
+                    )
+                        .into();
+                    self.set_floating_geometry(&window, outer);
+                }
+                self.update_window_decoration(&window);
+            }
+        }
+        if matches!(
+            property,
+            WmWindowProperty::Title | WmWindowProperty::MotifHints
+        ) {
+            self.request_repaint();
         }
     }
 

@@ -38,9 +38,13 @@ side decoration and follows the client's negotiated mode; a client that
 requests client-side decoration keeps its own chrome and receives no Villain
 titlebar. Destroying the decoration object returns the toplevel to client-side
 mode at its next surface commit. The titlebar is outside the client's
-configured content rectangle and is not shown for fullscreen windows. XWayland
-windows do not use this xdg-toplevel
-negotiation and do not receive these titlebars.
+configured content rectangle and is not shown for fullscreen windows.
+
+XWayland clients do not negotiate `xdg-decoration`. A managed X11 window gets
+the same titlebar when it relies on the window manager for decorations, as
+indicated by `_MOTIF_WM_HINTS`. Client-decorated windows keep their own chrome
+and move or resize through `_NET_WM_MOVERESIZE`. Changes to Motif hints update
+the titlebar and client geometry; unmanaged X11 surfaces are unaffected.
 
 The titlebar controls from right to left are close, maximize/restore, toggle
 floating, and minimize. Double-clicking an empty titlebar toggles maximize;

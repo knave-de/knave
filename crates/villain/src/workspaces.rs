@@ -215,12 +215,57 @@ pub(crate) fn has_server_side_decoration(surface: &ToplevelSurface) -> bool {
     })
 }
 
+/// Whether a managed window uses compositor supplied titlebar decoration.
+pub(crate) fn has_compositor_titlebar(window: &Window) -> bool {
+    if let Some(toplevel) = window.toplevel() {
+        return has_server_side_decoration(toplevel);
+    }
+    window
+        .x11_surface()
+        .is_some_and(|surface| !surface.is_override_redirect() && !surface.is_decorated())
+}
+
+fn outer_frame_constraints(
+    window: &Window,
+    min: Size<i32, smithay::utils::Logical>,
+    max: Size<i32, smithay::utils::Logical>,
+) -> (
+    Size<i32, smithay::utils::Logical>,
+    Size<i32, smithay::utils::Logical>,
+) {
+    let height = if has_compositor_titlebar(window) {
+        TITLEBAR_HEIGHT
+    } else {
+        0
+    };
+    (
+        (
+            min.w,
+            if min.h > 0 {
+                min.h.saturating_add(height)
+            } else {
+                0
+            },
+        )
+            .into(),
+        (
+            max.w,
+            if max.h > 0 {
+                max.h.saturating_add(height)
+            } else {
+                0
+            },
+        )
+            .into(),
+    )
+}
+
 pub(crate) fn titlebar_rect(
     window: &Window,
     client: Geometry,
     fullscreen: bool,
 ) -> Option<Geometry> {
-    if fullscreen || !window.toplevel().is_some_and(has_server_side_decoration) {
+    if fullscreen || !has_compositor_titlebar(window) {
         return None;
     }
     Some(Rectangle::new(
@@ -328,7 +373,7 @@ impl Villain {
         window: &Window,
         location: Point<i32, smithay::utils::Logical>,
     ) -> Point<i32, smithay::utils::Logical> {
-        if window.toplevel().is_some_and(has_server_side_decoration) {
+        if has_compositor_titlebar(window) {
             location
         } else {
             location - window.geometry().loc
@@ -461,7 +506,7 @@ impl Villain {
         Size<i32, smithay::utils::Logical>,
         Size<i32, smithay::utils::Logical>,
     ) {
-        if let Some(surface) = window.toplevel() {
+        let (min, max) = if let Some(surface) = window.toplevel() {
             smithay::wayland::compositor::with_states(surface.wl_surface(), |states| {
                 let mut guard = states
                     .cached_state
@@ -476,7 +521,8 @@ impl Villain {
             )
         } else {
             (Size::default(), Size::default())
-        }
+        };
+        outer_frame_constraints(window, min, max)
     }
 
     /// Apply client hints on map and when committed hints/parent relationships change.
@@ -575,9 +621,27 @@ impl Villain {
                 let size = if fixed_size(min, max) {
                     min
                 } else if natural.w > 0 && natural.h > 0 {
-                    natural
+                    (
+                        natural.w,
+                        natural
+                            .h
+                            .saturating_add(if has_compositor_titlebar(window) {
+                                TITLEBAR_HEIGHT
+                            } else {
+                                0
+                            }),
+                    )
+                        .into()
                 } else {
-                    (600, 400).into()
+                    (
+                        600,
+                        400 + if has_compositor_titlebar(window) {
+                            TITLEBAR_HEIGHT
+                        } else {
+                            0
+                        },
+                    )
+                        .into()
                 };
                 let size =
                     constrain_geometry(Rectangle::from_size(size), self.output_size, min, max).size;
@@ -702,12 +766,7 @@ impl Villain {
                 }
             };
             let mut rect = rect;
-            if !is_fullscreen
-                && entry
-                    .window
-                    .toplevel()
-                    .is_some_and(has_server_side_decoration)
-            {
+            if !is_fullscreen && has_compositor_titlebar(&entry.window) {
                 let height = TITLEBAR_HEIGHT.min(rect.size.h.saturating_sub(1).max(0));
                 rect.loc.y += height;
                 rect.size.h -= height;
