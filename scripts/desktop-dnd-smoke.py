@@ -105,7 +105,7 @@ def main():
         manifest = json.loads((directory / 'manifest.json').read_text())
         runtime = Path(manifest['runtime'])
         env = dict(os.environ, XDG_RUNTIME_DIR=str(runtime), GDK_BACKEND='wayland',
-                   WAYLAND_DISPLAY=next(runtime.glob('wayland-*')).name,
+                   WAYLAND_DISPLAY=next(p for p in runtime.glob('wayland-*') if p.is_socket()).name,
                    DISPLAY=f':{args.display}', XAUTHORITY=str(directory / 'Xauthority'))
         env.pop('DBUS_SESSION_BUS_ADDRESS', None)
         (directory / 'payload.txt').write_text('KNAVE_DND_OK\n')
@@ -222,12 +222,18 @@ def main():
         (directory / 'dnd-result.json').write_text(json.dumps(report, indent=2) + '\n')
         print(json.dumps(report, indent=2))
     finally:
-        for child in children:
-            if child.poll() is None:
-                child.terminate()
-            child.wait(timeout=10)
-        if started:
-            call('stop')
+        try:
+            for child in children:
+                if child.poll() is None:
+                    child.terminate()
+                try:
+                    child.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait()
+        finally:
+            if started:
+                call('stop')
 
 
 if __name__ == '__main__':
