@@ -17,7 +17,7 @@ catalog. Reopening selects the current active workspace. The catalog, icon
 cache, loader, desktop snapshot, and in-flight action bookkeeping remain owned
 by the service; ordinary visible snapshot updates preserve the current search.
 Disconnection also resets the view. This is private Shell behavior with no
-protocol or configuration change and no added background activity.
+protocol or configuration change.
 
 The shell computes one selected card and up to two neighboring cards from the
 current logical output size and the active workspace in each desktop snapshot.
@@ -49,18 +49,31 @@ spec's size rule. Knave has no icon-theme setting and the shell reads no other
 desktop's settings, so lookup tries `hicolor`, then every other installed theme by
 name, then `pixmaps`.
 
-Catalog and icon loading run on one worker owned by the `Overview`, started on
-the first typed character or when a snapshot first shows minimized windows, so
-their icons can resolve before any query. The input and frame paths never read
-the filesystem. The job queue holds 32 jobs; icon requests are limited to
+Catalog and icon loading run on one worker owned by the `Overview`, started
+when Overview first opens or needs the catalog. The input and frame paths never
+read the filesystem. The job queue holds 32 jobs; icon requests are limited to
 visible rows and tray pages and deduplicated, and finished icons live in a
 128-entry cache. The worker wakes the host through `Application::set_waker`, and
 `needs_frame` reports delivered results, so there is no polling. A scan examines
 at most 16,384 directory entries and keeps at most 4,096 applications; reaching
 a limit marks the catalog incomplete and logs it. Only regular files are opened,
-so a FIFO cannot block the worker. The queue closes and the worker is detached
-when the session ends. Enter pressed before the catalog arrives launches the top
-result when it does. Minimized tray icons resolve a window's `app_id` to a
+so a FIFO cannot block the worker.
+
+After the first catalog request, a native filesystem watcher monitors XDG
+application directories and their ancestors. Directory watches are nonrecursive;
+subdirectories use the catalog's depth and entry bounds. Ancestor events are
+filtered to application paths, so missing or replaced directories can recover
+without watching unrelated subtrees. Read/access events are ignored. Changes
+rescan on the existing loader after 150 ms of quiet, capped at one second per
+burst. Search and All Applications share the replacement catalog; the query is
+preserved, pagination resets, and app-row focus clears because indexes may have
+changed. The previous catalog remains usable during loading or a failed refresh.
+Only the newest undelivered catalog is retained, including while hidden. The
+watcher adds one native notification thread and no idle polling timer. Dropping
+the loader signals its worker, which releases watches after its current job;
+a blocked filesystem job is detached rather than blocking shutdown.
+
+Enter pressed before the catalog arrives launches the top result when it does. Minimized tray icons resolve a window's `app_id` to a
 desktop entry icon; unmatched or unavailable applications reuse the generic
 executable icon, and every tray entry stays a button that names its exact
 window.
