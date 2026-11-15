@@ -31,6 +31,22 @@ button.overview-dock-app:focus {
     text-align: center;
 }
 .overview-card-selected { background-color: var(--surface-selected); }
+.overview-tray {
+    background-color: transparent;
+}
+button.overview-window-icon {
+    background-color: var(--surface-raised);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+}
+button.overview-window-icon:hover,
+button.overview-window-icon:focus {
+    background-color: var(--surface-selected);
+    border-color: var(--border-strong);
+}
+.overview-tray-divider {
+    background-color: var(--border-strong);
+}
 .overview-workspace-indicator-rail {
     background-color: var(--surface-raised);
     border: 1px solid var(--border-strong);

@@ -225,7 +225,7 @@ fn minimized_shelf_is_workspace_scoped_and_paginated() {
 }
 
 #[test]
-fn single_icon_tray_uses_only_the_visible_icon_width() {
+fn single_icon_tray_keeps_room_for_its_heading() {
     let mut app = app();
     let mut next = app.snapshot().unwrap().clone();
     for window in &mut next.windows {
@@ -237,7 +237,7 @@ fn single_icon_tray_uses_only_the_visible_icon_width() {
     let tray = app.scene.bounds(tray_id(2)).unwrap();
     let icon = app.scene.bounds(app.window_ids[&WindowId(2)]).unwrap();
     assert!(
-        tray.width <= icon.width + 13.0,
+        tray.width >= icon.width + 50.0,
         "tray: {tray:?}, icon: {icon:?}"
     );
 }
@@ -253,7 +253,7 @@ fn tooltip_visible(app: &Overview, label: &str) -> bool {
     })
 }
 #[test]
-fn the_minimized_tray_is_icon_only_in_the_lower_left_of_the_selected_card() {
+fn the_minimized_tray_is_a_separate_shelf_below_the_selected_card() {
     let mut app = app();
     settle(&mut app, [1200.0, 800.0]);
     let card = app
@@ -264,11 +264,11 @@ fn the_minimized_tray_is_icon_only_in_the_lower_left_of_the_selected_card() {
         .scene
         .bounds(tray_id(2))
         .expect("tray on the selected card");
-    assert!(tray.height <= 50.0 && tray.height >= 30.0);
+    assert!(tray.height <= 45.0 && tray.height >= 35.0);
     assert!(tray.width < card.width);
     assert!((tray.x - (card.x + 12.0)).abs() < 1.0);
-    assert!(((card.y + card.height) - (tray.y + tray.height) - 12.0).abs() < 1.0);
-    // Entries are small icon buttons inside the tray, not heading/chip cards.
+    assert!((tray.y - (card.y + card.height + 12.0)).abs() < 1.0);
+    // A compact count and icon-only buttons share the separate shelf.
     let icon = app.scene.bounds(app.window_ids[&WindowId(2)]).unwrap();
     assert!(icon.width <= 40.0 && icon.height <= 40.0);
     assert!(icon.x >= tray.x && icon.y >= tray.y);
@@ -289,10 +289,14 @@ fn the_minimized_tray_is_icon_only_in_the_lower_left_of_the_selected_card() {
                 && bounds.y + bounds.height <= tray.y + tray.height
                 && clip.is_some()
     )));
-    // No heading, no app id or window title subtitles, no empty-shelf note.
+    assert!(
+        app.scene
+            .bounds(ElementId(0x100_0000_0000 + 2 * 32 + 4))
+            .is_some()
+    );
+    // Window titles remain on hover instead of cluttering the shelf.
     for command in &list.commands {
         if let knave_ui::DisplayCommand::Text { text, .. } = command {
-            assert!(!text.contains("Minimized"), "{text:?}");
             assert!(!text.contains("Editor"), "{text:?}");
         }
     }
@@ -305,10 +309,14 @@ fn tray_icons_name_the_exact_window_on_hover() {
         [r.x + r.width / 2.0, r.y + r.height / 2.0]
     };
     for id in 2..=6 {
-        app.input(Input::PointerMove(point(
-            &app,
-            app.window_ids[&WindowId(id)],
-        )));
+        let point = point(&app, app.window_ids[&WindowId(id)]);
+        assert_eq!(
+            app.scene.hit_test(point),
+            Some(app.window_ids[&WindowId(id)]),
+            "point {point:?}, bounds {:?}",
+            app.scene.bounds(app.window_ids[&WindowId(id)])
+        );
+        app.input(Input::PointerMove(point));
         app.frame([1200.0, 800.0], &mut Metrics);
         // Same-application windows are still told apart.
         assert!(
@@ -1678,17 +1686,19 @@ fn quick_settings_hides_overview_before_transferring_focus() {
 }
 
 #[test]
-fn the_workspace_stage_keeps_a_compact_band_under_the_strip() {
+fn the_workspace_stage_reserves_space_for_the_minimized_shelf() {
     let mut app = app();
     app.frame([1200.0, 800.0], &mut Metrics);
-    // The reduced stage margins leave more room for the preview.
+    // The shelf occupies a reserved band below a substantial preview.
     let search = app.scene.bounds(SEARCH).unwrap();
     let card = app
         .scene
         .bounds(ElementId(0x100_0000_0000 + 2 * 32))
         .unwrap();
     assert!(search.y >= STATUS_BAR_HEIGHT);
-    assert!(card.height >= 550.0);
+    let shelf = app.scene.bounds(tray_id(2)).unwrap();
+    assert!(card.height >= 400.0);
+    assert!(shelf.y + shelf.height <= 800.0 - STATUS_BAR_HEIGHT);
     // The overview no longer renders its redundant workspace dot row.
     assert!(app.scene.bounds(ElementId(0x200_0000_0000 + 2)).is_none());
 }
