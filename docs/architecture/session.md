@@ -7,7 +7,8 @@ rendering, or shell composition.
 ## Startup
 
 1. Load and validate ~/.config/knave/config.toml through knave-config.
-2. Snapshot existing wayland-* Unix sockets in XDG_RUNTIME_DIR.
+2. Prepare the session-local locked dconf window-button policy, then snapshot
+   existing wayland-* Unix sockets in XDG_RUNTIME_DIR.
 3. Start the running executable in its private compositor mode with KNAVE_SESSION=1. The backend
    field selects Villain's production TTY path or nested Winit path.
 4. Wait for a new compositor-owned wayland-* socket, while checking that the
@@ -17,6 +18,12 @@ rendering, or shell composition.
    are configured.
 7. Start each configured `session.startup` command with the session displays.
 8. Supervise session components until shutdown or a bounded failure policy is reached.
+
+Session startup requires `dconf` and forces the GSettings window-button layout
+to `':'` inside the Knave process/activation environment without rewriting the
+user's saved preference. The policy survives component restarts and is removed
+on normal session shutdown. See [the window-control policy](decisions/0019-session-window-controls-policy.md)
+for dependency failures, activation cleanup, nested isolation, and rollback.
 
 The supervisor does not attach to GNOME, KDE, Qt, or another host desktop.
 Winit is a nested development and test backend; direct TTY/DRM is the

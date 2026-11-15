@@ -35,7 +35,8 @@ The compositor supports the same standard GTK profile for other app IDs without
 code changes. Install the matching `gtk.css` adapter and `settings.ini` in the
 session's `XDG_CONFIG_HOME/gtk-3.0/` and `gtk-4.0/` respectively. Preserve existing
 user CSS/settings when integrating these fragments. Hide app-drawn buttons with
-`gtk-decoration-layout=:` and the corresponding desktop `button-layout` preference.
+`gtk-decoration-layout=:`. Knave Session locks the corresponding desktop
+`button-layout` GSettings preference to `':'`; see [the session policy](0019-session-window-controls-policy.md).
 These adapters affect standard headers in their GTK session; enable rules only
 alongside a verified reservation. Production-wide automatic integration remains
 future work. Transient, fullscreen, server-decorated, and undersized windows are

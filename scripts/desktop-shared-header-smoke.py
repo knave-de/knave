@@ -100,7 +100,14 @@ def main():
             gtk.mkdir(exist_ok=True)
             for filename in ('gtk.css', 'settings.ini'):
                 (gtk / filename).write_bytes((ROOT / 'scripts/fixtures/shared-header' / version / filename).read_bytes())
-        subprocess.run(['gsettings', 'set', 'org.gnome.desktop.wm.preferences', 'button-layout', ':'], env=app_env, check=True, timeout=15)
+        policy_profile = Path(app_env['DCONF_PROFILE'])
+        setting = ['org.gnome.desktop.wm.preferences', 'button-layout']
+        value = subprocess.run(['gsettings', 'get', *setting], env=app_env, check=True,
+                               capture_output=True, text=True, timeout=15)
+        check(value.stdout.strip() == "':'", 'session policy supplies the empty button layout')
+        attempted = subprocess.run(['gsettings', 'set', *setting, ':close'], env=app_env,
+                                   capture_output=True, text=True, timeout=15)
+        check(attempted.returncode != 0, 'session policy rejects re-enabling app titlebar buttons')
         log = (run / 'evince.log').open('ab')
         def launch(document):
             apps.append(subprocess.Popen(['evince', document], env=app_env, stdout=log,
@@ -227,6 +234,8 @@ def main():
             log.close()
         if started:
             call('stop')
+            if 'policy_profile' in locals():
+                wait(lambda: not policy_profile.exists(), 'session policy cleanup')
         setup.cleanup()
 
 
