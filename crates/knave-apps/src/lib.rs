@@ -91,6 +91,13 @@ pub struct App {
     fields: Fields,
 }
 
+#[derive(Clone, Debug)]
+struct RunningApp {
+    id: String,
+    name: String,
+    icon: Option<String>,
+}
+
 /// Lowercased search text, prepared once at load time.
 #[derive(Clone, Debug)]
 struct Fields {
@@ -103,6 +110,7 @@ struct Fields {
 #[derive(Debug, Default)]
 pub struct Catalog {
     apps: Vec<App>,
+    running_apps: Vec<RunningApp>,
     truncated: bool,
 }
 
@@ -111,6 +119,7 @@ struct Scan<'a> {
     env: &'a Environment,
     seen: HashSet<String>,
     apps: Vec<App>,
+    running_apps: Vec<RunningApp>,
     entries: usize,
     truncated: bool,
 }
@@ -125,6 +134,7 @@ impl Catalog {
             env,
             seen: HashSet::new(),
             apps: Vec::new(),
+            running_apps: Vec::new(),
             entries: 0,
             truncated: false,
         };
@@ -143,6 +153,7 @@ impl Catalog {
         }
         Ok(Self {
             apps: scan.apps,
+            running_apps: scan.running_apps,
             truncated: scan.truncated,
         })
     }
@@ -160,6 +171,44 @@ impl Catalog {
     }
     pub fn get(&self, index: usize) -> Option<&App> {
         self.apps.get(index)
+    }
+
+    /// Icon for a running window identity, including launcher-hidden entries.
+    /// `Hidden=true` entries are omitted because they mask deleted desktop IDs.
+    pub fn running_icon(&self, app_id: &str) -> Option<&str> {
+        let key = app_id
+            .strip_suffix(".desktop")
+            .unwrap_or(app_id)
+            .to_lowercase();
+        let matches = |id: &str| {
+            id.strip_suffix(".desktop")
+                .unwrap_or(id)
+                .eq_ignore_ascii_case(&key)
+        };
+        if let Some(app) = self
+            .apps
+            .iter()
+            .find(|app| matches(&app.id))
+            .map(|app| app.icon.as_deref())
+            .or_else(|| {
+                self.running_apps
+                    .iter()
+                    .find(|app| matches(&app.id))
+                    .map(|app| app.icon.as_deref())
+            })
+        {
+            return app;
+        }
+        self.apps
+            .iter()
+            .find(|app| app.name.eq_ignore_ascii_case(app_id))
+            .and_then(|app| app.icon.as_deref())
+            .or_else(|| {
+                self.running_apps
+                    .iter()
+                    .find(|app| app.name.eq_ignore_ascii_case(app_id))
+                    .and_then(|app| app.icon.as_deref())
+            })
     }
 
     /// Indexes of matching applications, best first. Every query term must match.
@@ -240,7 +289,7 @@ impl Scan<'_> {
         // Stable order keeps duplicate resolution and ties deterministic.
         entries.sort_by_key(|e| e.file_name());
         for item in entries {
-            if self.apps.len() >= self.env.limits.apps {
+            if self.apps.len() + self.running_apps.len() >= self.env.limits.apps {
                 self.truncated = true;
                 break;
             }
@@ -265,7 +314,15 @@ impl Scan<'_> {
             let Some(text) = read_bounded(&item.path()) else {
                 continue;
             };
-            if let Some(app) = build(id, &text, self.env) {
+            let parsed = entry::parse(&text, &self.env.locales);
+            if parsed.is_application && parsed.no_display && !parsed.deleted {
+                self.running_apps.push(RunningApp {
+                    id: id.clone(),
+                    name: parsed.name.clone(),
+                    icon: parsed.icon.clone(),
+                });
+            }
+            if let Some(app) = build(id, parsed, self.env) {
                 self.apps.push(app);
             }
         }
@@ -290,8 +347,7 @@ fn read_bounded(path: &Path) -> Option<String> {
         .flatten()
 }
 
-fn build(id: String, text: &str, env: &Environment) -> Option<App> {
-    let entry = entry::parse(text, &env.locales);
+fn build(id: String, entry: entry::Entry, env: &Environment) -> Option<App> {
     let listed = |names: &[String]| names.iter().any(|n| env.desktops.contains(n));
     if !entry.is_application
         || entry.deleted
