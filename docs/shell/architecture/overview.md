@@ -34,6 +34,9 @@ Search lists installed applications, not windows. `knave-apps` reads XDG
 `TryExec`/`OnlyShowIn` are skipped. Launching sends the existing `Spawn { argv }`
 desktop command, so Villain starts the process with the session environment and
 the overview hides only after it acknowledges.
+`NoDisplay` entries remain out of search but their icon metadata is retained in
+the same bounded catalog for matching running-window identities. `Hidden=true`
+entries remain excluded and mask lower-priority desktop files.
 
 The bottom dock keeps the configured `shell.pinned_apps` in order, followed by
 distinct apps with windows on the active workspace. A running pinned app appears
@@ -56,7 +59,8 @@ visible rows and tray pages and deduplicated, and finished icons live in a
 128-entry cache. The worker wakes the host through `Application::set_waker`, and
 `needs_frame` reports delivered results, so there is no polling. A scan examines
 at most 16,384 directory entries and keeps at most 4,096 applications; reaching
-a limit marks the catalog incomplete and logs it. Only regular files are opened,
+a limit marks the catalog incomplete and logs it. The application limit counts
+both launcher entries and retained running-window icon records. Only regular files are opened,
 so a FIFO cannot block the worker.
 
 After the first catalog request, a native filesystem watcher monitors XDG

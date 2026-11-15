@@ -59,26 +59,6 @@ fn desktop_id_key(id: &str) -> String {
     id.strip_suffix(".desktop").unwrap_or(id).to_lowercase()
 }
 
-/// Icon theme name for a window's `app_id`, resolved from the loaded catalog.
-/// Wayland app ids may be the desktop file id with or without its suffix, or
-/// the displayed application name; the caller supplies a generic icon if no
-/// entry or icon matches.
-fn catalog_icon(catalog: &Catalog, app_id: &str) -> Option<String> {
-    let key = app_id.to_lowercase();
-    let file_id = |id: &str| id.strip_suffix(".desktop").unwrap_or(id).to_lowercase();
-    let mut named = None;
-    for index in 0..catalog.len() {
-        let app = catalog.get(index)?;
-        if file_id(&app.id) == key {
-            return app.icon.clone();
-        }
-        if named.is_none() && app.name.to_lowercase() == key {
-            named = app.icon.clone();
-        }
-    }
-    named
-}
-
 fn catalog_index(catalog: &Catalog, app_id: &str) -> Option<usize> {
     let key = desktop_id_key(app_id);
     let mut named = None;
@@ -334,15 +314,25 @@ impl Overview {
                     item_index
                 } else {
                     let (name, icon) = match (&self.apps, matched) {
-                        (Apps::Ready(catalog), Some(index)) => catalog
-                            .get(index)
-                            .map(|app| {
+                        (Apps::Ready(catalog), Some(index)) => catalog.get(index).map_or_else(
+                            || (window.app_id.clone(), icons::FALLBACK.into()),
+                            |app| {
                                 (
                                     app.name.clone(),
-                                    app.icon.clone().unwrap_or_else(|| icons::FALLBACK.into()),
+                                    catalog
+                                        .running_icon(&window.app_id)
+                                        .unwrap_or(icons::FALLBACK)
+                                        .to_owned(),
                                 )
-                            })
-                            .unwrap_or_else(|| (window.app_id.clone(), icons::FALLBACK.into())),
+                            },
+                        ),
+                        (Apps::Ready(catalog), None) => (
+                            window.app_id.clone(),
+                            catalog
+                                .running_icon(&window.app_id)
+                                .unwrap_or(icons::FALLBACK)
+                                .to_owned(),
+                        ),
                         _ => (window.app_id.clone(), icons::FALLBACK.into()),
                     };
                     let item_index = items.len();
@@ -535,7 +525,7 @@ impl Overview {
     /// executable icon, with a built-in glyph if theme lookup also fails.
     fn window_icon_name(&self, app_id: &str) -> String {
         match &self.apps {
-            Apps::Ready(catalog) => catalog_icon(catalog, app_id),
+            Apps::Ready(catalog) => catalog.running_icon(app_id).map(str::to_owned),
             _ => None,
         }
         .unwrap_or_else(|| icons::FALLBACK.to_owned())

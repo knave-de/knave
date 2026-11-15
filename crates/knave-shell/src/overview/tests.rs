@@ -795,6 +795,38 @@ fn dock_keeps_pins_in_order_and_adds_only_unpinned_apps_from_the_active_workspac
 }
 
 #[test]
+fn dock_loads_no_display_window_icon_without_listing_it_in_search() {
+    let root = apps_root();
+    let icon = root.join("no-display.png");
+    std::fs::write(&icon, png_bytes([180, 40, 190, 255])).unwrap();
+    let apps = root.join("applications");
+    std::fs::write(
+        apps.join("com.t3tools.T3Code.desktop"),
+        format!(
+            "[Desktop Entry]\nType=Application\nName=T3 Code\nExec=t3code\nIcon={}\nNoDisplay=true\n",
+            icon.display()
+        ),
+    )
+    .unwrap();
+    let catalog = knave_apps::Catalog::load_with(&knave_apps::Environment {
+        data_dirs: vec![root],
+        ..Default::default()
+    })
+    .unwrap();
+    assert!(catalog.search("T3", 10).is_empty());
+
+    let mut desktop = snapshot();
+    desktop.windows.retain(|window| window.id == WindowId(1));
+    desktop.windows[0].app_id = "com.t3tools.T3Code".into();
+    let mut app = Overview::new()
+        .with_catalog(catalog)
+        .with_icon_lookup(icon_lookup(true));
+    app.desktop_snapshot(&desktop);
+    settle(&mut app, [1200.0, 800.0]);
+    assert!(app.icons.get(icon.to_str().unwrap()).is_some());
+}
+
+#[test]
 fn dock_launches_idle_pins() {
     let mut app = dock_app();
     click(&mut app, ElementId(DOCK_ELEMENT_ID_BASE + 1));
