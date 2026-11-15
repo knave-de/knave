@@ -151,7 +151,9 @@ impl Overview {
                 .position(|w| w.workspace == ws)
                 .unwrap_or(0);
             let top = search_rect.y + search_rect.height + 28.0f32.min(height * 0.04);
-            let bottom_room = 104.0f32.min(height * 0.2);
+            // Keep the separate minimized shelf inside the overview's clipped
+            // scene area, below the selected preview.
+            let bottom_room = 140.0f32.min(height * 0.24);
             let available_h = (height - top - bottom_room).max(40.0);
             let preview_width = ((width * 0.82).min(available_h * 16.0 / 9.0)).max(1.0);
             let preview_height = (preview_width * 9.0 / 16.0).min(available_h);
@@ -186,6 +188,9 @@ impl Overview {
                 ));
             }
             root.children.push(self.workspace_card(ws, rect, true));
+            if let Some(shelf) = self.minimized_shelf(ws, rect) {
+                root.children.push(shelf);
+            }
             let prev = index
                 .checked_sub(1)
                 .and_then(|i| self.snapshot.as_ref()?.workspaces.get(i))
@@ -564,111 +569,127 @@ impl Overview {
                 height: (rect.height - 4.0).round() as u32,
             });
         }
-        if selected && !self.minimized(ws).is_empty() {
-            let min: Vec<_> = self.minimized(ws).into_iter().cloned().collect();
-            let tray_h = 50.0f32.min(rect.height * 0.35);
-            let icon_size = (tray_h - 12.0).max(16.0);
-            let pitch = icon_size + 5.0;
-            let max_width = (rect.width - 24.0).max(0.0);
-            // Room for two paging controls when several pages exist.
-            let paging_w = 2.0 * 28.0 + 6.0;
-            let capacity =
-                (((max_width - 12.0 - paging_w) / pitch).floor() as usize).clamp(1, PAGE_SIZE);
-            self.page = self.page.min(min.len().saturating_sub(1) / capacity);
-            let first = self.page * capacity;
-            let shown = min.len().saturating_sub(first).min(capacity);
-            let span = (shown as f32 - 1.0) * pitch + icon_size;
-            let tray_w = if min.len() > capacity {
-                12.0 + span + paging_w
-            } else {
-                12.0 + span
-            }
-            .min(max_width);
-            let mut tray = panel(
-                id + 3,
-                Rect::new(12.0, (rect.height - tray_h - 12.0).max(0.0), tray_w, tray_h),
-            );
-            tray.classes.push("overview-tray".into());
-            tray.style.background = Some(ShapePaint::fill(Color::rgba(0, 0, 0, 0)));
-            tray.layout.clip = ClipMode::Bounds;
-            for (n, window) in min.iter().skip(first).take(shown).enumerate() {
-                let wid = self.window_ids[&window.id];
-                let title = if window.title.is_empty() {
-                    window.app_id.as_str()
-                } else {
-                    window.title.as_str()
-                };
-                let icon_name = self.window_icon_name(&window.app_id);
-                // Failed submits retry on the next frame, which the worker's results trigger.
-                if self.icons.needs_request(&icon_name)
-                    && self.loader().submit(loader::Job::Icon(icon_name.clone()))
-                {
-                    self.icons.requested(&icon_name);
-                }
-                let mut icon = placed(
-                    Element::new(wid.0, Widget::Button(String::new())),
-                    Rect::new(6.0 + n as f32 * pitch, 6.0, icon_size, icon_size),
-                );
-                icon.style.background = Some(ShapePaint::fill(Color::rgba(0, 0, 0, 0)));
-                icon.classes.push("overview-window-icon".into());
-                // Hover and accessibility name the exact window, not its application.
-                icon.tooltip = Some(format!("Restore {}", short(title, 120)));
-                icon.enabled = !self.pending;
-                if let Some(image) = self.icons.get(&icon_name).cloned() {
-                    let side = (icon_size - 8.0).max(10.0);
-                    let inset = (icon_size - side) / 2.0;
-                    icon.children.push(placed(
-                        Element::new(
-                            TRAY_ICON_ELEMENT_BASE + wid.0,
-                            Widget::Image(
-                                image,
-                                ImageStyle {
-                                    fit: ImageFit::Contain,
-                                    ..Default::default()
-                                },
-                            ),
-                        ),
-                        Rect::new(inset, inset, side, side),
-                    ));
-                } else {
-                    let mut fallback = text(
-                        TRAY_ICON_ELEMENT_BASE + wid.0,
-                        "▣",
-                        Rect::new(0.0, 0.0, icon_size, icon_size),
-                        icon_size * 0.72,
-                        "overview-muted",
-                    );
-                    fallback.style.text.align = TextAlign::Center;
-                    icon.children.push(fallback);
-                }
-                self.targets.insert(wid, Target::Window(window.id));
-                tray.children.push(icon);
-            }
-            if min.len() > capacity {
-                for (bid, label, next, bx) in [(30, "‹", false, 6.0), (31, "›", true, 34.0)] {
-                    let mut b = control(
-                        bid,
-                        label,
-                        Rect::new(
-                            (tray_w - 6.0 - paging_w + bx).max(0.0),
-                            (tray_h - 23.0) / 2.0,
-                            28.0,
-                            23.0,
-                        ),
-                    );
-                    b.layout.padding_edges = Some(Insets::symmetric(1.0, 8.0));
-                    b.enabled = if next {
-                        first + capacity < min.len()
-                    } else {
-                        self.page > 0
-                    };
-                    self.targets.insert(ElementId(bid), Target::Page(next));
-                    tray.children.push(b);
-                }
-            }
-            card.children.push(tray);
-        }
+
         card
+    }
+    fn minimized_shelf(&mut self, ws: WorkspaceId, rect: Rect) -> Option<Element> {
+        let min: Vec<_> = self.minimized(ws).into_iter().cloned().collect();
+        if min.is_empty() {
+            return None;
+        }
+        let id = 0x100_0000_0000 + u64::from(ws.0) * 32;
+        let tray_h = 42.0f32.min(rect.height * 0.35);
+        let icon_size = (tray_h - 10.0).max(16.0);
+        let pitch = icon_size + 4.0;
+        let max_width = (rect.width - 24.0).max(0.0);
+        // Room for two paging controls when several pages exist.
+        let paging_w = 2.0 * 28.0 + 6.0;
+        let leading_w = 64.0;
+        let capacity =
+            (((max_width - leading_w - paging_w) / pitch).floor() as usize).clamp(1, PAGE_SIZE);
+        self.page = self.page.min(min.len().saturating_sub(1) / capacity);
+        let first = self.page * capacity;
+        let shown = min.len().saturating_sub(first).min(capacity);
+        let span = (shown as f32 - 1.0) * pitch + icon_size;
+        let tray_w = if min.len() > capacity {
+            leading_w + span + paging_w
+        } else {
+            leading_w + span
+        }
+        .min(max_width);
+        let mut tray = panel(
+            id + 3,
+            Rect::new(rect.x + 12.0, rect.y + rect.height + 12.0, tray_w, tray_h),
+        );
+        tray.classes.push("overview-tray".into());
+        tray.style.background = Some(ShapePaint::fill(Color::rgba(0, 0, 0, 0)));
+        tray.layout.clip = ClipMode::Bounds;
+        tray.children.push(text(
+            id + 4,
+            format!("▣ {}", min.len()),
+            Rect::new(4.0, 5.0, 42.0, 30.0),
+            13.0,
+            "overview-muted",
+        ));
+        let mut divider = panel(id + 5, Rect::new(51.0, 6.0, 1.0, 30.0));
+        divider.classes.push("overview-tray-divider".into());
+        tray.children.push(divider);
+        for (n, window) in min.iter().skip(first).take(shown).enumerate() {
+            let wid = self.window_ids[&window.id];
+            let title = if window.title.is_empty() {
+                window.app_id.as_str()
+            } else {
+                window.title.as_str()
+            };
+            let icon_name = self.window_icon_name(&window.app_id);
+            // Failed submits retry on the next frame, which the worker's results trigger.
+            if self.icons.needs_request(&icon_name)
+                && self.loader().submit(loader::Job::Icon(icon_name.clone()))
+            {
+                self.icons.requested(&icon_name);
+            }
+            let mut icon = placed(
+                Element::new(wid.0, Widget::Button(String::new())),
+                Rect::new(60.0 + n as f32 * pitch, 5.0, icon_size, icon_size),
+            );
+            icon.style.background = Some(ShapePaint::fill(Color::rgba(0, 0, 0, 0)));
+            icon.classes.push("overview-window-icon".into());
+            // Hover and accessibility name the exact window, not its application.
+            icon.tooltip = Some(format!("Restore {}", short(title, 120)));
+            icon.enabled = !self.pending;
+            if let Some(image) = self.icons.get(&icon_name).cloned() {
+                let side = (icon_size - 8.0).max(10.0);
+                let inset = (icon_size - side) / 2.0;
+                icon.children.push(placed(
+                    Element::new(
+                        TRAY_ICON_ELEMENT_BASE + wid.0,
+                        Widget::Image(
+                            image,
+                            ImageStyle {
+                                fit: ImageFit::Contain,
+                                ..Default::default()
+                            },
+                        ),
+                    ),
+                    Rect::new(inset, inset, side, side),
+                ));
+            } else {
+                let mut fallback = text(
+                    TRAY_ICON_ELEMENT_BASE + wid.0,
+                    "▣",
+                    Rect::new(0.0, 0.0, icon_size, icon_size),
+                    icon_size * 0.72,
+                    "overview-muted",
+                );
+                fallback.style.text.align = TextAlign::Center;
+                icon.children.push(fallback);
+            }
+            self.targets.insert(wid, Target::Window(window.id));
+            tray.children.push(icon);
+        }
+        if min.len() > capacity {
+            for (bid, label, next, bx) in [(30, "‹", false, 6.0), (31, "›", true, 34.0)] {
+                let mut b = control(
+                    bid,
+                    label,
+                    Rect::new(
+                        (tray_w - 6.0 - paging_w + bx).max(0.0),
+                        (tray_h - 23.0) / 2.0,
+                        28.0,
+                        23.0,
+                    ),
+                );
+                b.layout.padding_edges = Some(Insets::symmetric(1.0, 8.0));
+                b.enabled = if next {
+                    first + capacity < min.len()
+                } else {
+                    self.page > 0
+                };
+                self.targets.insert(ElementId(bid), Target::Page(next));
+                tray.children.push(b);
+            }
+        }
+        Some(tray)
     }
     fn search_results(&mut self, search: Rect) -> Element {
         let matches = self.search();
