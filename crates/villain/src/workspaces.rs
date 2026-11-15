@@ -2584,12 +2584,15 @@ impl Villain {
 
     pub fn refresh_pointer_surface(&mut self, time: u32) {
         let hit = self.input_window_at_pointer();
+        let controls_own_pointer = hit
+            .as_ref()
+            .is_some_and(|(window, _)| crate::shared_header::owns_pointer(self, window));
         let focus = if self.host_focused {
             self.layer_under_pointer(true)
                 .map(|(surface, origin, _)| (surface, origin))
                 .or_else(|| {
                     hit.and_then(|(window, origin)| {
-                        if crate::shared_header::owns_pointer(self, &window) {
+                        if controls_own_pointer {
                             return None;
                         }
                         window
@@ -2603,8 +2606,12 @@ impl Villain {
                     })
                 })
                 .or_else(|| {
-                    self.layer_under_pointer(false)
-                        .map(|(surface, origin, _)| (surface, origin))
+                    if controls_own_pointer {
+                        None
+                    } else {
+                        self.layer_under_pointer(false)
+                            .map(|(surface, origin, _)| (surface, origin))
+                    }
                 })
         } else {
             None

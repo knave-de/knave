@@ -187,13 +187,12 @@ impl Villain {
             }
             let shared =
                 crate::shared_header::controls_rect(&window, rect, fullscreen, &self.config);
-            if shared.is_some()
-                && window
-                    .surface_under(
-                        self.pointer_location - (rect.loc - window.geometry().loc).to_f64(),
-                        smithay::desktop::WindowSurfaceType::POPUP,
-                    )
-                    .is_some()
+            if window
+                .surface_under(
+                    self.pointer_location - (rect.loc - window.geometry().loc).to_f64(),
+                    smithay::desktop::WindowSurfaceType::POPUP,
+                )
+                .is_some()
             {
                 return false;
             }

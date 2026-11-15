@@ -179,9 +179,16 @@ def main():
                                check=True, capture_output=True, timeout=15)
             reload_config(original_config.replace('"gtk"', '"off"'))
             call('screenshot', 'rules-disabled')
+            call('click', 1220, 59, 1)
+            time.sleep(.5)
+            check(not windows()[0]['floating'], 'disabled shared controls do not float the existing window')
             reload_config(original_config)
             call('screenshot', 'rules-restored')
-            check(True, 'shared-header rule changes reload successfully for existing windows')
+            call('click', 1220, 59, 1)
+            wait(lambda: windows()[0]['floating'], 'restored shared control handles click')
+            call('click', 1006, 186, 1)
+            wait(lambda: not windows()[0]['floating'], 'restored shared control tiles again')
+            check(True, 'shared-header reload changes existing-window control behavior')
             # GTK4/libadwaita uses the same reserved header and compositor actions.
             apps.append(subprocess.Popen(['foliate'], env=app_env, stdout=log,
                                          stderr=log, start_new_session=True))
