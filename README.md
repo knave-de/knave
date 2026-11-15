@@ -43,6 +43,10 @@ Wayland/D-Bus interfaces. See [the consolidation decision](docs/architecture/dec
 `knave-ui` and `knave-renderer` are consumed from the standalone Knave UI
 repository at a pinned revision.
 
+Session startup requires the `dconf` command to compile Knave's session-local
+window-button policy. On Arch Linux it is provided by the `dconf` package.
+GTK apps also bring the GLib schemas they use; Knave does not require GNOME Shell.
+
 Build and test it with:
 
     cargo fmt --all -- --check

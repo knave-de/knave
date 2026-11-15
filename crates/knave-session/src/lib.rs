@@ -28,6 +28,7 @@ use thiserror::Error;
 
 use crate::wallpaper_assignment::AssignmentSlot;
 
+mod gtk_settings;
 mod wallpaper_assignment;
 
 const SOCKET_WAIT: Duration = Duration::from_secs(10);
@@ -58,6 +59,11 @@ pub enum SessionError {
     SocketTimeout(PathBuf),
     #[error("could not inspect {path}: {source}")]
     SocketMetadata { path: PathBuf, source: io::Error },
+    #[error("GTK settings policy {step}: {source}")]
+    SettingsPolicy {
+        step: &'static str,
+        source: io::Error,
+    },
     #[error("session process failed: {0}")]
     Process(String),
 }
@@ -82,6 +88,9 @@ pub fn run(config: Config) -> Result<(), SessionError> {
 pub fn run_with_executable(config: Config, executable: &Path) -> Result<(), SessionError> {
     SHUTDOWN_REQUESTED.store(false, Ordering::SeqCst);
     install_signal_handlers();
+    let runtime = runtime_directory()?;
+    let settings = gtk_settings::Policy::start(&runtime)?;
+    let profile = Some(settings.profile());
     let _notifications = if config.notifications.enabled {
         match notifications::NotificationService::start(config.clone()) {
             Ok(service) => Some(service),
@@ -94,12 +103,14 @@ pub fn run_with_executable(config: Config, executable: &Path) -> Result<(), Sess
         None
     };
 
-    let runtime = runtime_directory()?;
     let mut restarts = 0;
     let mut before = wayland_sockets(&runtime)?;
-    let slot = Arc::new(AssignmentSlot::new(executable.to_owned()));
+    let slot = Arc::new(AssignmentSlot::new(
+        executable.to_owned(),
+        Some(settings.profile().to_owned()),
+    ));
     let (mut compositor, mut display, mut shells) =
-        start_components(&config, &runtime, &before, executable)?;
+        start_components(&config, &runtime, &before, executable, profile)?;
     if let Err(error) = slot.reset(&config, &display) {
         terminate_children(&mut shells);
         terminate_child(&mut compositor);
@@ -116,6 +127,7 @@ pub fn run_with_executable(config: Config, executable: &Path) -> Result<(), Sess
         &config.session.startup,
         &display,
         xwayland_display.as_deref(),
+        profile,
     );
 
     loop {
@@ -154,7 +166,7 @@ pub fn run_with_executable(config: Config, executable: &Path) -> Result<(), Sess
             thread::sleep(restart_delay(restarts));
             before = wayland_sockets(&runtime)?;
             let (new_compositor, new_display, new_shells) =
-                start_components(&config, &runtime, &before, executable)?;
+                start_components(&config, &runtime, &before, executable, profile)?;
             compositor = new_compositor;
             display = new_display;
             shells = new_shells;
@@ -175,6 +187,7 @@ pub fn run_with_executable(config: Config, executable: &Path) -> Result<(), Sess
                 &config.session.startup,
                 &display,
                 xwayland_display.as_deref(),
+                profile,
             );
         }
 
@@ -215,7 +228,7 @@ pub fn run_with_executable(config: Config, executable: &Path) -> Result<(), Sess
             {
                 continue;
             }
-            shells = match spawn_shells(&config, &display, executable) {
+            shells = match spawn_shells(&config, &display, executable, profile) {
                 Ok(shells) => shells,
                 Err(error) => {
                     terminate_startup_commands(&mut startup_commands);
@@ -276,10 +289,12 @@ fn start_startup_commands(
     commands: &[StartupCommand],
     display: &str,
     xwayland_display: Option<&str>,
+    profile: Option<&Path>,
 ) -> Vec<Child> {
     let mut children = Vec::with_capacity(commands.len());
     for (index, startup) in commands.iter().enumerate() {
         let mut command = Command::new(&startup.command[0]);
+        gtk_settings::configure(&mut command, profile);
         command
             .args(&startup.command[1..])
             .env_remove("DISPLAY")
@@ -332,8 +347,9 @@ fn start_components(
     runtime: &Path,
     before: &HashSet<OsString>,
     executable: &Path,
+    profile: Option<&Path>,
 ) -> Result<(Child, String, Vec<ManagedChild>), SessionError> {
-    let mut compositor = spawn_compositor(config, executable)?;
+    let mut compositor = spawn_compositor(config, executable, profile)?;
     let display = match wait_for_wayland_socket(runtime, before, &mut compositor) {
         Ok(display) => display,
         Err(error) => {
@@ -341,7 +357,7 @@ fn start_components(
             return Err(error);
         }
     };
-    let shells = match spawn_shells(config, &display, executable) {
+    let shells = match spawn_shells(config, &display, executable, profile) {
         Ok(shells) => shells,
         Err(error) => {
             terminate_child(&mut compositor);
@@ -367,8 +383,13 @@ fn spawn_with_brief_retry(mut command: Command) -> io::Result<Child> {
     }
 }
 
-fn spawn_compositor(config: &Config, executable: &Path) -> Result<Child, SessionError> {
+fn spawn_compositor(
+    config: &Config,
+    executable: &Path,
+    profile: Option<&Path>,
+) -> Result<Child, SessionError> {
     let mut command = Command::new(executable);
+    gtk_settings::configure(&mut command, profile);
     command.args(["--internal", "compositor"]);
     match config.session.backend {
         SessionBackend::Auto => {}
@@ -398,6 +419,7 @@ fn spawn_shells(
     config: &Config,
     display: &str,
     executable: &Path,
+    profile: Option<&Path>,
 ) -> Result<Vec<ManagedChild>, SessionError> {
     let inherited_display = ["DISPLAY", "WAYLAND_DISPLAY"]
         .iter()
@@ -405,33 +427,33 @@ fn spawn_shells(
     let start_polkit = polkit_session(&config.session.backend, inherited_display);
     let mut shells = Vec::new();
     if start_polkit {
-        match spawn_shell(config, "polkit-agent", display, executable) {
+        match spawn_shell(config, "polkit-agent", display, executable, profile) {
             Ok(shell) => shells.push(shell),
             Err(error) => return Err(cleanup_shell_startup(shells, error)),
         }
     }
     if config.shell.start_bar || config.shell.start_overview_service {
         for role in ["quick-settings-service", "quick-settings"] {
-            match spawn_shell(config, role, display, executable) {
+            match spawn_shell(config, role, display, executable, profile) {
                 Ok(shell) => shells.push(shell),
                 Err(error) => return Err(cleanup_shell_startup(shells, error)),
             }
         }
     }
     if config.notifications.enabled {
-        match spawn_shell(config, "notifications", display, executable) {
+        match spawn_shell(config, "notifications", display, executable, profile) {
             Ok(shell) => shells.push(shell),
             Err(error) => return Err(cleanup_shell_startup(shells, error)),
         }
     }
     if config.shell.start_bar {
-        match spawn_shell(config, "bar", display, executable) {
+        match spawn_shell(config, "bar", display, executable, profile) {
             Ok(shell) => shells.push(shell),
             Err(error) => return Err(cleanup_shell_startup(shells, error)),
         }
     }
     if config.shell.start_overview_service {
-        match spawn_shell(config, "overview", display, executable) {
+        match spawn_shell(config, "overview", display, executable, profile) {
             Ok(shell) => shells.push(shell),
             Err(error) => return Err(cleanup_shell_startup(shells, error)),
         }
@@ -460,8 +482,10 @@ pub(crate) fn spawn_shell(
     role: &'static str,
     display: &str,
     executable: &Path,
+    profile: Option<&Path>,
 ) -> Result<ManagedChild, SessionError> {
     let mut command = Command::new(executable);
+    gtk_settings::configure(&mut command, profile);
     command.arg("--internal");
     if role != "quick-settings-service" {
         command.arg("shell");
@@ -645,7 +669,7 @@ mod tests {
                 output.to_string_lossy().into_owned(),
             ],
         };
-        let mut children = start_startup_commands(&[command], "wayland-test", Some(":42"));
+        let mut children = start_startup_commands(&[command], "wayland-test", Some(":42"), None);
         assert_eq!(children.len(), 1);
         assert!(children[0].wait().unwrap().success());
         assert_eq!(fs::read_to_string(output).unwrap().trim(), ":42");

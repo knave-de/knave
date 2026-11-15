@@ -27,6 +27,8 @@ const ACTIVATION_KEYS: &[&str] = &[
     "PATH",
     "XDP_KNAVE_SHELL_BINARY",
     "XDP_KNAVE_ENABLED",
+    "DCONF_PROFILE",
+    "GSETTINGS_BACKEND",
 ];
 /// Removes the Wayland socket owned by one Villain process on every exit path.
 pub struct SocketCleanup {
@@ -70,7 +72,13 @@ pub fn prepare_environment(state: &mut Villain) {
             .config
             .environment
             .insert("XDG_SESSION_DESKTOP".into(), "knave".into());
-        for key in ["PATH", "XDP_KNAVE_SHELL_BINARY", "XDP_KNAVE_ENABLED"] {
+        for key in [
+            "PATH",
+            "XDP_KNAVE_SHELL_BINARY",
+            "XDP_KNAVE_ENABLED",
+            "DCONF_PROFILE",
+            "GSETTINGS_BACKEND",
+        ] {
             if let Ok(value) = std::env::var(key) {
                 state.config.environment.insert(key.into(), value);
             }
@@ -227,9 +235,18 @@ impl Drop for ActivationWorker {
 /// This is only called for the TTY backend. A nested development compositor
 /// must not replace the host desktop's activation environment.
 pub fn activate(state: &mut Villain, restart_portal: bool) {
-    state
-        .activation
-        .submit(activation_environment(state), restart_portal);
+    let mut environment = activation_environment(state);
+    if let Some(profile) = std::env::var_os("KNAVE_GTK_SETTINGS_PROFILE")
+        && environment.get("DCONF_PROFILE").map(OsStr::new) == Some(profile.as_os_str())
+    {
+        let marker = Path::new(&profile).with_extension("activated");
+        if let Err(error) = fs::write(marker, "") {
+            tracing::warn!(%error, "could not register GTK policy activation cleanup");
+            environment.remove("DCONF_PROFILE");
+            environment.remove("GSETTINGS_BACKEND");
+        }
+    }
+    state.activation.submit(environment, restart_portal);
 }
 
 fn activate_in_background(

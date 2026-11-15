@@ -89,6 +89,11 @@ fn exercise(status: &str, restart: bool, launches: usize, success: bool) {
     wait_until(|| root.join("polkit-agent-started").exists());
     fs::write(root.join("quit"), "").unwrap();
     assert_eq!(session.wait().success(), success);
+    let policy = fs::read_to_string(root.join("settings-profile")).unwrap();
+    assert!(
+        !Path::new(&policy).exists(),
+        "session settings policy survived shutdown"
+    );
     let compositors = fs::read_to_string(root.join("compositors")).unwrap();
     assert_eq!(compositors.lines().count(), launches);
     for pid in fs::read_to_string(root.join("shells")).unwrap().lines() {
@@ -131,6 +136,14 @@ fn component() {
     let root = env::var_os("KNAVE_LIFECYCLE_TEST_ROOT").unwrap();
     let root = Path::new(&root);
     let pid = std::process::id();
+    let policy =
+        Path::new(&env::var_os("DCONF_PROFILE").expect("session settings policy")).to_owned();
+    assert!(policy.is_file());
+    assert_eq!(
+        env::var_os("KNAVE_GTK_SETTINGS_PROFILE").as_deref(),
+        Some(policy.as_os_str())
+    );
+    assert_eq!(env::var("GSETTINGS_BACKEND").as_deref(), Ok("dconf"));
     let shell = env::var_os("WAYLAND_DISPLAY");
     let log = if shell.is_some() {
         "shells"
@@ -143,6 +156,13 @@ fn component() {
         .open(root.join(log))
         .unwrap();
     file.write_all(format!("{pid}\n").as_bytes()).unwrap();
+    if shell.is_none() {
+        fs::write(
+            root.join("settings-profile"),
+            policy.to_string_lossy().as_bytes(),
+        )
+        .unwrap();
+    }
     if let Some(display) = shell {
         if env::var("KNAVE_LIFECYCLE_TEST_ROLE").as_deref() == Ok("polkit-agent") {
             fs::write(root.join("polkit-agent-started"), pid.to_string()).unwrap();

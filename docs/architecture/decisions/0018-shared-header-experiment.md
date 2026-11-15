@@ -35,7 +35,8 @@ The compositor supports the same standard GTK profile for other app IDs without
 code changes. Install the matching `gtk.css` adapter and `settings.ini` in the
 session's `XDG_CONFIG_HOME/gtk-3.0/` and `gtk-4.0/` respectively. Preserve existing
 user CSS/settings when integrating these fragments. Hide app-drawn buttons with
-`gtk-decoration-layout=:` and the corresponding desktop `button-layout` preference.
+`gtk-decoration-layout=:`. Knave Session locks the corresponding desktop
+`button-layout` GSettings preference to `':'`; see [the session policy](0019-session-window-controls-policy.md).
 These adapters affect standard headers in their GTK session; enable rules only
 alongside a verified reservation. Production-wide automatic integration remains
 future work. Transient, fullscreen, server-decorated, and undersized windows are
@@ -44,7 +45,10 @@ excluded. An overlapping native popup temporarily displaces shared controls.
 Knave owns the additive typed rule field, parser, writer, and matching semantics;
 Villain owns rendering and input. Shared config consumers rebuild together.
 There is no schema version, wire/API change, data migration, or package bump.
-Remove the rules and GTK adapter fragments together to roll back. No development
+To roll back, exit the Knave session to release its button-layout lock, then
+remove the rules and GTK adapter fragments together and start the prior build.
+Removing only rules/styles during an active policy session does not restore
+application buttons. No development
 artifacts are installed into the contributor's regular session.
 
 ## Theme and resource behavior

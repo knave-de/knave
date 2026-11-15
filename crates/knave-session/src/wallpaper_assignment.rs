@@ -40,6 +40,7 @@ pub(super) struct Assignment {
 /// shutdown always agree on the live process.
 pub(super) struct AssignmentSlot {
     executable: PathBuf,
+    settings_profile: Option<PathBuf>,
     child: Mutex<Option<Child>>,
     cancel: Mutex<Option<SubscriptionCancel>>,
     stopped: AtomicBool,
@@ -47,9 +48,10 @@ pub(super) struct AssignmentSlot {
 }
 
 impl AssignmentSlot {
-    pub(super) fn new(executable: PathBuf) -> Self {
+    pub(super) fn new(executable: PathBuf, settings_profile: Option<PathBuf>) -> Self {
         Self {
             executable,
+            settings_profile,
             child: Mutex::new(None),
             cancel: Mutex::new(None),
             stopped: AtomicBool::new(false),
@@ -77,7 +79,13 @@ impl AssignmentSlot {
         }
         self.stop_child();
         if config.shell.wallpaper.image.is_some() {
-            let child = crate::spawn_shell(config, "wallpaper", display, &self.executable)?;
+            let child = crate::spawn_shell(
+                config,
+                "wallpaper",
+                display,
+                &self.executable,
+                self.settings_profile.as_deref(),
+            )?;
             *self.child.lock().unwrap() = Some(child.child);
         }
         Ok(())
@@ -107,8 +115,14 @@ impl AssignmentSlot {
                 spawn_config.shell.wallpaper.image = Some(request.image.clone());
                 spawn_config.shell.wallpaper.fit = request.fit;
                 *assigned = Some(
-                    crate::spawn_shell(&spawn_config, "wallpaper", display, &self.executable)?
-                        .child,
+                    crate::spawn_shell(
+                        &spawn_config,
+                        "wallpaper",
+                        display,
+                        &self.executable,
+                        self.settings_profile.as_deref(),
+                    )?
+                    .child,
                 );
                 Ok(())
             }
@@ -333,7 +347,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let image = directory.path().join("assigned.png");
         fs::write(&image, b"png").unwrap();
-        let slot = AssignmentSlot::new(long_running_stub(directory.path()).into());
+        let slot = AssignmentSlot::new(long_running_stub(directory.path()).into(), None);
         let config = config_with(Some(image.to_string_lossy().into_owned()));
 
         slot.apply(
@@ -358,7 +372,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let image = directory.path().join("assigned.png");
         fs::write(&image, b"png").unwrap();
-        let slot = AssignmentSlot::new(long_running_stub(directory.path()).into());
+        let slot = AssignmentSlot::new(long_running_stub(directory.path()).into(), None);
         let config = config_with(Some(image.to_string_lossy().into_owned()));
 
         slot.apply(
@@ -390,7 +404,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let image = directory.path().join("assigned.png");
         fs::write(&image, b"png").unwrap();
-        let slot = AssignmentSlot::new(long_running_stub(directory.path()).into());
+        let slot = AssignmentSlot::new(long_running_stub(directory.path()).into(), None);
         let config = config_with(Some(image.to_string_lossy().into_owned()));
 
         slot.apply(
@@ -419,7 +433,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let image = directory.path().join("assigned.png");
         fs::write(&image, b"png").unwrap();
-        let slot = AssignmentSlot::new("./definitely-not-a-shell-binary".into());
+        let slot = AssignmentSlot::new("./definitely-not-a-shell-binary".into(), None);
         let config = config_with(None);
 
         let error = slot
@@ -443,7 +457,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let image = directory.path().join("assigned.png");
         fs::write(&image, b"png").unwrap();
-        let slot = AssignmentSlot::new(long_running_stub(directory.path()).into());
+        let slot = AssignmentSlot::new(long_running_stub(directory.path()).into(), None);
         let config = config_with(Some(image.to_string_lossy().into_owned()));
 
         slot.shutdown();
