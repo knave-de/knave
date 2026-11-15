@@ -94,17 +94,19 @@ pub(crate) struct EffectsRenderer {
     titlebars: Option<titlebar::Titlebars>,
     scenes: VecDeque<CachedScene>,
     panes: VecDeque<CachedPane>,
+    pane_refresh_budget: usize,
 }
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum SceneLayers {
     None,
     Wallpaper,
+    Preview,
     All,
 }
 impl SceneLayers {
     fn includes(self, layer: Layer, namespace: &str) -> bool {
         self == Self::All
-            || (self == Self::Wallpaper
+            || (matches!(self, Self::Wallpaper | Self::Preview)
                 && layer == Layer::Background
                 && namespace == "knave-shell-wallpaper")
     }
@@ -213,6 +215,10 @@ fn window_elements(
 }
 
 impl EffectsRenderer {
+    pub(crate) fn begin_overview_frame(&mut self) {
+        // Shell submits at most sixteen thumbnails plus the selected pane.
+        self.pane_refresh_budget = 17;
+    }
     pub(crate) fn with_warmed_titlebars() -> Self {
         Self {
             titlebars: Some(titlebar::Titlebars::default()),
@@ -816,7 +822,7 @@ impl EffectsRenderer {
         use smithay::backend::renderer::element::utils::{
             ConstrainAlign, ConstrainScaleBehavior, constrain_render_elements,
         };
-        let scene = self.scene(state, renderer, workspace, SceneLayers::Wallpaper, 1.0)?;
+        let scene = self.scene(state, renderer, workspace, SceneLayers::Preview, 1.0)?;
         let sources: Vec<_> = scene.iter().map(source_key).collect();
         if let Some(index) = self.panes.iter().position(|p| {
             p.workspace == workspace && p.geometry.size == geometry.size && p.sources == sources
@@ -833,13 +839,47 @@ impl EffectsRenderer {
             self.panes.push_back(cached);
             return Ok(element);
         }
+        if self.pane_refresh_budget == 0
+            && let Some(index) = self
+                .panes
+                .iter()
+                .position(|p| p.workspace == workspace && p.geometry.size == geometry.size)
+        {
+            let cached = self.panes.remove(index).expect("pane cache index");
+            let location = geometry
+                .loc
+                .to_physical_precise_round(state.config.output_scale);
+            let element = EffectElement::Texture(texture_element(
+                &cached.texture,
+                (location.x, location.y),
+                1.0,
+            ));
+            self.panes.push_back(cached);
+            return Ok(element);
+        }
+        if self.pane_refresh_budget == 0 {
+            let location = geometry
+                .loc
+                .to_physical_precise_round(state.config.output_scale);
+            let size = geometry
+                .size
+                .to_physical_precise_round(state.config.output_scale);
+            return Ok(EffectElement::Solid(SolidColorRenderElement::new(
+                Id::new(),
+                Rectangle::new(location, size),
+                CommitCounter::default(),
+                [0.0, 0.0, 0.0, 1.0],
+                Kind::Unspecified,
+            )));
+        }
+        self.pane_refresh_budget = self.pane_refresh_budget.saturating_sub(1);
         let pixels = i64::from(geometry.size.w) * i64::from(geometry.size.h);
         if pixels <= 0 || pixels > MAX_PIXELS {
             return Err(EffectError::TargetTooLarge);
         }
         self.panes
             .retain(|p| p.workspace != workspace || p.geometry.size != geometry.size);
-        while self.panes.len() >= 6
+        while self.panes.len() >= 128
             || self
                 .panes
                 .iter()

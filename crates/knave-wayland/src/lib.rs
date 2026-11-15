@@ -405,7 +405,6 @@ impl PaneWorker {
         let thread = thread::spawn(move || {
             const INITIAL_BACKOFF: Duration = Duration::from_millis(250);
             const MAX_BACKOFF: Duration = Duration::from_secs(5);
-            let mut client: Option<DesktopClient> = None;
             while let Ok(mut panes) = receiver.recv() {
                 let mut backoff = INITIAL_BACKOFF;
                 loop {
@@ -415,14 +414,10 @@ impl PaneWorker {
                         backoff = INITIAL_BACKOFF;
                     }
                     let result = (|| {
-                        if client.is_none() {
-                            client = Some(DesktopClient::connect()?);
-                        }
-                        client.as_mut().expect("connected above").request(
-                            &DesktopRequest::SetOverviewPanes {
-                                panes: panes.clone(),
-                            },
-                        )
+                        let mut client = DesktopClient::connect()?;
+                        client.request(&DesktopRequest::SetOverviewPanes {
+                            panes: panes.clone(),
+                        })
                     })();
                     let retry = match result {
                         Ok(DesktopResponse::Ok) => {
@@ -432,7 +427,6 @@ impl PaneWorker {
                         Ok(_) => {
                             let _ =
                                 errors_tx.try_send("Unexpected overview pane response".to_owned());
-                            client = None;
                             false
                         }
                         Err(error) => {
@@ -441,7 +435,6 @@ impl PaneWorker {
                             if !retryable {
                                 let _ = errors_tx.try_send(error.to_string());
                             }
-                            client = None;
                             retryable
                         }
                     };
@@ -506,14 +499,12 @@ impl ActionWorker {
         let (commands, command_rx) = mpsc::sync_channel(1);
         let (results_tx, results) = mpsc::sync_channel(1);
         let thread = thread::spawn(move || {
-            let mut client = None;
             while let Ok(command) = command_rx.recv() {
                 match command {
                     ActionCommand::Dispatch(command) => {
-                        let result = dispatch_action(&mut client, command);
+                        let result = dispatch_action(command);
                         if let Err(error) = &result {
                             eprintln!("knave-shell: shell action failed: {error}");
-                            client = None;
                         }
                         let _ = results_tx.try_send(result);
                         let _ = wake.try_send(RuntimeWake::Redraw);
@@ -549,16 +540,11 @@ impl Drop for ActionWorker {
     }
 }
 
-fn dispatch_action(
-    client: &mut Option<DesktopClient>,
-    command: DesktopCommand,
-) -> Result<(), String> {
-    if client.is_none() {
-        *client = Some(DesktopClient::connect().map_err(|error| error.to_string())?);
-    }
+fn dispatch_action(command: DesktopCommand) -> Result<(), String> {
+    // The compositor closes idle command sockets. Actions are infrequent, so
+    // use a fresh connection and avoid sending through a stale stream.
+    let mut client = DesktopClient::connect().map_err(|error| error.to_string())?;
     match client
-        .as_mut()
-        .expect("desktop client was initialized")
         .request(&DesktopRequest::Dispatch(command))
         .map_err(|error| error.to_string())?
     {
@@ -1283,16 +1269,13 @@ impl Runtime {
         }
         if let Some(panes) = self.app.as_ref().and_then(|app| app.overview_panes())
             && let Some(worker) = &self.pane_worker
+            && (panes != self.pane_requested || self.pane_acknowledged.as_ref() != Some(&panes))
+            && worker.update(panes.clone())
         {
-            if (panes != self.pane_requested || self.pane_acknowledged.as_ref() != Some(&panes))
-                && worker.update(panes.clone())
-            {
-                self.pane_requested = panes.clone();
-            }
-            // The compositor stages geometry; publish its matching shell frame only after acknowledgement.
-            if self.pane_acknowledged.as_ref() != Some(&panes) {
-                return;
-            }
+            self.pane_requested = panes.clone();
+            // Commit the new shell layout immediately. Villain keeps the old
+            // previews until it accepts their replacement geometry, then its
+            // acknowledgement schedules a repaint with the matching panes.
         }
         if let Some(app) = &self.app {
             let mode = app.keyboard_mode();

@@ -93,7 +93,6 @@ pub struct Villain {
     pub(crate) drag_marker_ids: [smithay::backend::renderer::element::Id; 2],
     pub overview_backdrop_id: smithay::backend::renderer::element::Id,
     pub overview_panes: Vec<knave_desktop_api::OverviewPane>,
-    pub pending_overview_panes: Option<Vec<knave_desktop_api::OverviewPane>>,
     pub overview_visible: bool,
     pub popups: smithay::desktop::PopupManager,
     pub xwayland_shell_state: XWaylandShellState,
@@ -237,7 +236,6 @@ impl Villain {
             }),
             overview_backdrop_id: smithay::backend::renderer::element::Id::new(),
             overview_panes: Vec::new(),
-            pending_overview_panes: None,
             overview_visible: false,
             popups: Default::default(),
             // Advertise only policy that Villain currently implements. Close
@@ -335,7 +333,6 @@ impl Villain {
             self.output_size = size;
             self.relayout_active_workspace();
             self.overview_panes.clear();
-            self.pending_overview_panes = None;
             self.publish_output_scale(scale);
             self.request_repaint();
         }

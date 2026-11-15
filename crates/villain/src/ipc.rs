@@ -400,9 +400,9 @@ impl Villain {
         self.ipc_server.subscriptions.publish(snapshot);
     }
 
-    fn set_overview_panes(&mut self, panes: Vec<OverviewPane>) -> DesktopResponse {
-        if panes.len() > 3 {
-            return invalid_request("at most three overview panes are allowed".into());
+    pub(crate) fn set_overview_panes(&mut self, panes: Vec<OverviewPane>) -> DesktopResponse {
+        if panes.len() > 256 {
+            return invalid_request("at most 256 overview panes are allowed".into());
         }
         if !panes.is_empty()
             && !self
@@ -417,37 +417,38 @@ impl Villain {
             });
         }
         let output = self.output_size;
-        if panes.iter().enumerate().any(|(index, pane)| {
-            panes[..index]
-                .iter()
-                .any(|other| other.workspace == pane.workspace)
-                || {
-                    let x = i64::from(pane.x);
-                    let y = i64::from(pane.y);
-                    let width = i64::from(pane.width);
-                    let height = i64::from(pane.height);
-                    let ow = i64::from(output.w);
-                    let oh = i64::from(output.h);
-                    pane.workspace.0 == 0
-                        || pane.workspace.0 as usize > self.workspaces.len()
-                        || width == 0
-                        || height == 0
-                        || width > ow
-                        || height > oh
-                        || x < -ow
-                        || y < -oh
-                        || x >= ow
-                        || y >= oh
-                        || x + width <= 0
-                        || y + height <= 0
-                }
+        if panes.iter().any(|pane| {
+            let x = i64::from(pane.x);
+            let y = i64::from(pane.y);
+            let width = i64::from(pane.width);
+            let height = i64::from(pane.height);
+            let ow = i64::from(output.w);
+            let oh = i64::from(output.h);
+            pane.workspace.0 == 0
+                || pane.workspace.0 as usize > self.workspaces.len()
+                || width == 0
+                || height == 0
+                || width > ow
+                || height > oh
+                || x < -ow
+                || y < -oh
+                || x >= ow
+                || y >= oh
+                || x + width <= 0
+                || y + height <= 0
         }) {
             return invalid_request(
                 "overview pane is outside the logical output or workspace range".into(),
             );
         }
-        // The next shell buffer commits its matching pane geometry atomically.
-        self.pending_overview_panes = Some(panes);
+        // Pane geometry arrives asynchronously after the shell lays out its
+        // buffer. Apply it on receipt so a missed follow-up commit cannot leave
+        // previews stuck at old coordinates; the output replaces them on the
+        // next frame without blocking the shell.
+        if self.overview_panes != panes {
+            self.overview_panes = panes;
+            self.request_repaint();
+        }
         DesktopResponse::Ok
     }
 
