@@ -30,6 +30,14 @@ There is no configurable override. Saved maximization and floating placement
 survive view transitions. Knave's `docs/architecture/window-appearance.md`
 contains the complete validated contract, defaults, bounds and TOML example.
 
+## Shared GTK headers
+
+An opt-in `shared_header = "gtk"` window rule places the four compositor controls
+inside a standard GTK header reservation, using matching GTK 3/4 CSS adapters.
+It adds no titlebar row. The default is off; arbitrary client decorations are
+not detected or rearranged. See [the shared-header decision](../../architecture/decisions/0018-shared-header-experiment.md).
+Decoration palettes resolve Knave’s theme policy and named CSS on load/reload.
+
 ## Server titlebars
 
 Villain provides a 34 logical-pixel titlebar when an xdg-toplevel uses the

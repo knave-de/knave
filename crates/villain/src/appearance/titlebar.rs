@@ -1,6 +1,6 @@
 //! Small software raster adapter for compositor titlebars. No WGPU renderer is used.
+use crate::appearance::palette::DecorationPalette;
 use cosmic_text::{Attrs, Buffer, Color as TextColor, FontSystem, Metrics, Shaping, SwashCache};
-use knave_ui::toolkit::{Element, ElementId, Scene, Widget};
 use smithay::{
     backend::{allocator::Fourcc, renderer::element::memory::MemoryRenderBuffer},
     desktop::Window,
@@ -77,13 +77,8 @@ fn control_origin(width: i32, index: i32) -> (f32, f32) {
     (slot_left as f32 + (24.0 - 24.0 * 0.55) / 2.0, 10.4)
 }
 
-fn paint_hover(pixels: &mut [u8], width: i32, index: u8) {
+fn paint_hover(pixels: &mut [u8], width: i32, index: u8, color: [u8; 4]) {
     let right = width - i32::from(index) * 24;
-    let color = if index == 0 {
-        [167, 91, 91, 255]
-    } else {
-        [70, 77, 85, 255]
-    };
     for y in 5..29 {
         for x in (right - 23).max(0)..right.min(width) {
             let i = (y as usize * width as usize + x as usize) * 4;
@@ -106,6 +101,7 @@ struct Entry {
 #[derive(Clone, Copy)]
 pub(super) struct TitlebarState {
     pub(super) focused: bool,
+    pub(super) palette: DecorationPalette,
     pub(super) controls_only: bool,
     pub(super) hovered: Option<u8>,
     pub(super) maximized: bool,
@@ -115,8 +111,7 @@ pub(super) struct Titlebars {
     fonts: FontSystem,
     glyphs: SwashCache,
     entries: VecDeque<Entry>,
-    background: [u8; 4],
-    foreground: [u8; 4],
+    palette: DecorationPalette,
 }
 impl Default for Titlebars {
     fn default() -> Self {
@@ -133,25 +128,11 @@ impl Default for Titlebars {
                 "titlebar font system initialized"
             );
         }
-        let mut scene = Scene::new(Element::new(1, Widget::Panel)).expect("valid titlebar scene");
-        scene
-            .set_stylesheet("panel { background-color: var(--surface-hover); color: var(--text); }")
-            .expect("valid titlebar style");
-        let style = scene
-            .computed_style(ElementId(1))
-            .expect("titlebar style")
-            .style;
-        let bg = style
-            .background
-            .and_then(|b| b.fill)
-            .expect("titlebar background");
-        let fg = style.text.color;
         Self {
             fonts,
             glyphs: SwashCache::new(),
             entries: VecDeque::new(),
-            background: [bg.red, bg.green, bg.blue, 255],
-            foreground: [fg.red, fg.green, fg.blue, 255],
+            palette: DecorationPalette::default(),
         }
     }
 }
@@ -163,6 +144,10 @@ impl Titlebars {
         width: i32,
         state: TitlebarState,
     ) -> Option<&MemoryRenderBuffer> {
+        if self.palette != state.palette {
+            self.entries.clear();
+            self.palette = state.palette;
+        }
         let width = width.clamp(1, 8192);
         let title = if state.controls_only {
             String::new()
@@ -197,7 +182,7 @@ impl Titlebars {
         self.entries.retain(|entry| entry.window_id != window_id);
         let profile_raster = tracing::enabled!(target: "villain::perf", tracing::Level::DEBUG);
         let raster_started = profile_raster.then(Instant::now);
-        let mut bg = self.background;
+        let mut bg = self.palette.background;
         if !state.focused {
             for value in &mut bg[..3] {
                 *value = (*value as f32 * 0.8) as u8;
@@ -210,15 +195,24 @@ impl Titlebars {
             }
         }
         if let Some(index) = state.hovered {
-            paint_hover(&mut pixels, width, index);
+            paint_hover(
+                &mut pixels,
+                width,
+                index,
+                if index == 0 {
+                    self.palette.close_hover
+                } else {
+                    self.palette.hover
+                },
+            );
         }
         let mut text = Buffer::new(&mut self.fonts, Metrics::new(13.0, 18.0));
         text.set_size(Some((width - 130).max(1) as f32), Some(20.0));
         text.set_text(&title, &Attrs::new(), Shaping::Advanced, None);
         let color = TextColor::rgba(
-            self.foreground[0],
-            self.foreground[1],
-            self.foreground[2],
+            self.palette.foreground[0],
+            self.palette.foreground[1],
+            self.palette.foreground[2],
             255,
         );
         text.draw(&mut self.fonts, &mut self.glyphs, color, |x, y, w, h, c| {
@@ -241,7 +235,7 @@ impl Titlebars {
         });
         // Hit testing counts slots from the right: close, maximize, float,
         // minimize. Rendering places their matching glyphs in those slots.
-        let glyph = self.foreground;
+        let glyph = self.palette.foreground;
         let center = |control: crate::appearance::TitlebarControl| {
             control_origin(width, control.right_slot())
         };
@@ -421,7 +415,7 @@ mod tests {
         for pixel in pixels.as_chunks_mut::<4>().0 {
             pixel.copy_from_slice(&super::bgra([24, 28, 32, 255]));
         }
-        super::paint_hover(&mut pixels, width, index);
+        super::paint_hover(&mut pixels, width, index, [70, 77, 85, 255]);
         let hovered_color = super::bgra([70, 77, 85, 255]);
         let hover_center = ((width - i32::from(index) * 24 - 23) as f32
             + (width - i32::from(index) * 24 - 1) as f32)
@@ -510,6 +504,6 @@ mod tests {
     #[test]
     fn bundled_theme_resolves_for_titlebar() {
         let titlebars = super::Titlebars::default();
-        assert_ne!(titlebars.background, titlebars.foreground);
+        assert_ne!(titlebars.palette.background, titlebars.palette.foreground);
     }
 }

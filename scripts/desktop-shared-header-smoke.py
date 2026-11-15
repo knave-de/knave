@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Isolated Evince/shared-header experiment; never changes host GTK settings."""
+"""Isolated GTK 3/4 shared-header verification; never changes host GTK settings."""
 import argparse
 import importlib.util
 import json
@@ -8,6 +8,7 @@ from pathlib import Path
 import signal
 import subprocess
 import time
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('harness', ROOT / 'scripts/desktop-harness.py')
@@ -40,16 +41,21 @@ def main():
     parser.add_argument('--run', type=Path, required=True)
     parser.add_argument('--display', default='96')
     parser.add_argument('--baseline', action='store_true')
+    parser.add_argument('--theme', choices=('light', 'dark'), default='dark')
     args = parser.parse_args()
     run = args.run.resolve()
     env = os.environ.copy()
-    env.pop('VILLAIN_EXPERIMENTAL_SHARED_HEADER_APP_ID', None)
-    if not args.baseline:
-        env['VILLAIN_EXPERIMENTAL_SHARED_HEADER_APP_ID'] = 'org.gnome.Evince'
     apps = []
     started = False
     assertions = []
     log = None
+    setup = tempfile.TemporaryDirectory(prefix='knave-header-config-')
+    source_config = Path(setup.name) / 'config.toml'
+    source_config.write_text('[appearance.theme]\nmode = "' + args.theme + '"\n')
+    if not args.baseline:
+        with source_config.open('a') as config:
+            for app_id in ('org.gnome.Evince', 'com.github.johnfactotum.Foliate'):
+                config.write('\n[[compositor.window_rules.application]]\napp_id = "' + app_id + '"\nshared_header = "gtk"\n')
     def call(command, *values):
         if command == 'screenshot':
             time.sleep(.3)
@@ -65,7 +71,7 @@ def main():
         assertions.append(label)
     try:
         subprocess.run(['python3', str(ROOT / 'scripts/desktop-harness.py'), '--run', str(run),
-                        'start', '--profile', 'debug', '--display', args.display, '--no-vnc'],
+                        'start', '--profile', 'debug', '--display', args.display, '--no-vnc', '--config', str(source_config)],
                        env=env, check=True, capture_output=True, text=True, timeout=60)
         started = True
         manifest = json.loads((run / 'manifest.json').read_text())
@@ -84,12 +90,16 @@ def main():
             raise RuntimeError('isolated compositor not found')
         app_env = dict(item.decode().split('=', 1) for item in Path(f'/proc/{compositor}/environ').read_bytes().split(b'\0') if b'=' in item)
         socket = next(Path(runtime).glob('knave/desktop-wayland-*.sock'))
+        app_env.pop('GTK_THEME', None)
         app_env.update(WAYLAND_DISPLAY=socket.name[len('desktop-'):-len('.sock')],
-                       KNAVE_SOCKET=str(socket), GDK_BACKEND='wayland', GTK_THEME='Adwaita:dark')
-        gtk = Path(app_env['XDG_CONFIG_HOME']) / 'gtk-3.0'
-        gtk.mkdir(exist_ok=True)
-        for filename in ('gtk.css', 'settings.ini'):
-            (gtk / filename).write_bytes((ROOT / 'scripts/fixtures/shared-header-evince' / filename).read_bytes())
+                       KNAVE_SOCKET=str(socket), GDK_BACKEND='wayland', GSK_RENDERER='cairo',
+                       HDY_DEBUG_COLOR_SCHEME='prefer-' + args.theme,
+                       ADW_DEBUG_COLOR_SCHEME='prefer-' + args.theme)
+        for version in ('gtk-3.0', 'gtk-4.0'):
+            gtk = Path(app_env['XDG_CONFIG_HOME']) / version
+            gtk.mkdir(exist_ok=True)
+            for filename in ('gtk.css', 'settings.ini'):
+                (gtk / filename).write_bytes((ROOT / 'scripts/fixtures/shared-header' / version / filename).read_bytes())
         subprocess.run(['gsettings', 'set', 'org.gnome.desktop.wm.preferences', 'button-layout', ':'], env=app_env, check=True, timeout=15)
         log = (run / 'evince.log').open('ab')
         def launch(document):
@@ -158,6 +168,48 @@ def main():
             wait(lambda: len(windows()) == 1, 'close one document')
             check(len(windows()) == 1, 'close button removes only its target document')
             call('screenshot', 'remaining-window')
+            # Presentation rules are live; placement remains on-open.
+            config_path = run / 'config.toml'
+            original_config = config_path.read_text()
+            def reload_config(contents):
+                replacement = config_path.with_suffix('.new')
+                replacement.write_text(contents)
+                replacement.replace(config_path)
+                subprocess.run([str(ROOT / 'target/debug/knave'), 'reload'], env=app_env,
+                               check=True, capture_output=True, timeout=15)
+            reload_config(original_config.replace('"gtk"', '"off"'))
+            call('screenshot', 'rules-disabled')
+            reload_config(original_config)
+            call('screenshot', 'rules-restored')
+            check(True, 'shared-header rule changes reload successfully for existing windows')
+            # GTK4/libadwaita uses the same reserved header and compositor actions.
+            apps.append(subprocess.Popen(['foliate'], env=app_env, stdout=log,
+                                         stderr=log, start_new_session=True))
+            foliate_id = 'com.github.johnfactotum.Foliate'
+            def foliate_window():
+                return next((window for window in windows() if window['app_id'] == foliate_id), None)
+            wait(foliate_window, 'Foliate opens')
+            time.sleep(2)
+            call('screenshot', 'evince-and-foliate')
+            subprocess.run(['xdotool', 'mousemove', '1220', '59'], env=app_env, check=True)
+            time.sleep(2)
+            call('click', 1220, 59, 1)
+            wait(lambda: foliate_window()['floating'], 'Foliate mouse float')
+            call('screenshot', 'foliate-floating')
+            call('click', 1006, 186, 1)
+            wait(lambda: not foliate_window()['floating'], 'Foliate mouse tile')
+            call('click', 1244, 59, 1)
+            wait(lambda: foliate_window()['maximized'], 'Foliate mouse maximize')
+            call('click', 1244, 59, 1)
+            wait(lambda: not foliate_window()['maximized'], 'Foliate mouse restore')
+            call('click', 1196, 59, 1)
+            wait(lambda: foliate_window()['minimized'], 'Foliate mouse minimize')
+            subprocess.run([str(ROOT / 'target/debug/knave'), 'dispatch', 'restore-minimized'], env=app_env, check=True, capture_output=True)
+            wait(lambda: not foliate_window()['minimized'], 'Foliate restores')
+            call('screenshot', 'foliate-controls')
+            call('click', 1268, 59, 1)
+            wait(lambda: foliate_window() is None, 'Foliate close')
+            check(True, 'GTK4/libadwaita Foliate supports float, tile, maximize, restore, minimize and close')
             call('record-stop')
         (run / 'resources.json').write_text(json.dumps(resources, indent=2) + '\n')
         (run / 'assertions.json').write_text(json.dumps(assertions, indent=2) + '\n')
@@ -175,6 +227,7 @@ def main():
             log.close()
         if started:
             call('stop')
+        setup.cleanup()
 
 
 if __name__ == '__main__':

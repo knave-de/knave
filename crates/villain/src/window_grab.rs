@@ -185,7 +185,8 @@ impl Villain {
             if !visible {
                 continue;
             }
-            let shared = crate::shared_header::controls_rect(&window, rect, fullscreen);
+            let shared =
+                crate::shared_header::controls_rect(&window, rect, fullscreen, &self.config);
             if shared.is_some()
                 && window
                     .surface_under(

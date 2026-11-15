@@ -1,4 +1,4 @@
-/* Isolated Evince experiment: compositor controls occupy the rightmost 96px. */
+/* Shared GTK header adapter: compositor controls occupy the rightmost 96px. */
 headerbar {
   min-height: 46px;
   padding: 0 100px 0 6px;

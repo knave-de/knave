@@ -1,28 +1,22 @@
-//! Opt-in GTK shared-header experiment; no persistent setting or protocol contract.
+//! Shared GTK controls for windows with an explicit reservation rule.
 use smithay::{
     desktop::Window,
     utils::{Logical, Rectangle},
 };
-use std::sync::OnceLock;
 
 type Geometry = Rectangle<i32, Logical>;
 
-fn selected_app() -> Option<&'static str> {
-    static APP: OnceLock<Option<String>> = OnceLock::new();
-    APP.get_or_init(|| std::env::var("VILLAIN_EXPERIMENTAL_SHARED_HEADER_APP_ID").ok())
-        .as_deref()
-        .filter(|id| !id.is_empty())
-}
-
 pub(crate) fn owns_pointer(state: &crate::state::Villain, window: &Window) -> bool {
-    if selected_app().is_none() {
+    if !state.config.window_rules.has_shared_headers() {
         return false;
     }
     state
         .workspace_layout(state.active_workspace)
         .into_iter()
         .find(|entry| entry.0 == *window && entry.5)
-        .and_then(|(_, rect, fullscreen, _, _, _)| controls_rect(window, rect, fullscreen))
+        .and_then(|(_, rect, fullscreen, _, _, _)| {
+            controls_rect(window, rect, fullscreen, &state.config)
+        })
         .is_some_and(|rect| rect.to_f64().contains(state.pointer_location))
 }
 
@@ -30,8 +24,11 @@ pub(crate) fn controls_rect(
     window: &Window,
     client: Geometry,
     fullscreen: bool,
+    config: &crate::config::RuntimeConfig,
 ) -> Option<Geometry> {
-    let app = selected_app()?;
+    if !config.window_rules.has_shared_headers() {
+        return None;
+    }
     let top = window.toplevel()?;
     if fullscreen || top.parent().is_some() || crate::workspaces::has_compositor_titlebar(window) {
         return None;
@@ -41,9 +38,16 @@ pub(crate) fn controls_rect(
             .data_map
             .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
             .and_then(|data| {
-                data.lock()
-                    .ok()
-                    .map(|data| data.app_id.as_deref() == Some(app))
+                data.lock().ok().map(|data| {
+                    config
+                        .window_rules
+                        .for_window(
+                            data.app_id.as_deref().unwrap_or_default(),
+                            data.title.as_deref().unwrap_or_default(),
+                        )
+                        .shared_header
+                        == Some(knave_config::SharedHeader::Gtk)
+                })
             })
             .unwrap_or(false)
     });
@@ -66,7 +70,7 @@ pub(crate) fn controls_rect(
 }
 
 fn reserved_rect(client: Geometry) -> Option<Geometry> {
-    // The isolated GTK adapter reserves this exact logical rectangle. Never
+    // The GTK adapter reserves this exact logical rectangle. Never
     // infer a header from pixels or cover content in a window too small for it.
     (client.size.w >= 96 && client.size.h >= 46).then(|| {
         Geometry::new(
