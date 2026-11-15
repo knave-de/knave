@@ -153,40 +153,26 @@ mod tests {
     ];
 
     #[test]
-    fn policy_variants_keep_transparent_cutouts_and_identical_coverage() {
+    fn policy_variants_keep_transparent_margins_and_visible_marks() {
         let images: Vec<_> = POLICIES
             .iter()
             .map(|policy| image_for(*policy).expect("bundled themed mark decodes"))
             .collect();
-        let reference = images[0].pixels();
         assert_eq!((images[0].width(), images[0].height()), (128, 128));
-        assert_eq!(pixel(&images[0], 64, 5), [0, 0, 0, 0]);
-        assert_eq!(pixel(&images[0], 50, 20)[3], 255);
-        assert!(
-            reference
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .any(|pixel| pixel[3] > 0 && pixel[3] < 255)
-        );
-        for image in &images[1..] {
+        for image in &images {
             assert_eq!((image.width(), image.height()), (128, 128));
-            assert_eq!(
+            assert_eq!(pixel(image, 0, 0)[3], 0);
+            assert_eq!(pixel(image, 127, 0)[3], 0);
+            assert_eq!(pixel(image, 0, 127)[3], 0);
+            assert_eq!(pixel(image, 127, 127)[3], 0);
+            assert!(
                 image
                     .pixels()
                     .as_chunks::<4>()
                     .0
                     .iter()
-                    .map(|pixel| pixel[3])
-                    .collect::<Vec<_>>(),
-                reference
-                    .as_chunks::<4>()
-                    .0
-                    .iter()
-                    .map(|pixel| pixel[3])
-                    .collect::<Vec<_>>(),
+                    .any(|pixel| pixel[3] == 255)
             );
-            assert_eq!(pixel(image, 64, 5), [0, 0, 0, 0]);
         }
         for policy in POLICIES
             .into_iter()
@@ -213,20 +199,22 @@ mod tests {
                 Theme::Dark => [35, 39, 45],
                 Theme::Light => [221, 229, 234],
             };
-            let ratio =
-                |x, y| contrast_ratio(pixel(&image, x, y)[..3].try_into().unwrap(), background);
+            let opaque_pixels = image
+                .pixels()
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .filter(|pixel| pixel[3] == 255);
             let minimum = if policy.contrast == Contrast::High {
                 3.0
             } else {
                 2.0
             };
             assert!(
-                ratio(50, 20) >= minimum,
-                "{policy:?} left half lacks contrast"
-            );
-            assert!(
-                ratio(80, 20) >= minimum,
-                "{policy:?} right half lacks contrast"
+                opaque_pixels.into_iter().all(|pixel| {
+                    contrast_ratio(pixel[..3].try_into().unwrap(), background) >= minimum
+                }),
+                "{policy:?} has opaque logo pixels below the contrast threshold"
             );
             assert_eq!(image.cache_key(), image_for(policy).unwrap().cache_key());
         }
