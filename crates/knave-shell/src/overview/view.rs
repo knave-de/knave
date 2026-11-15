@@ -78,6 +78,7 @@ impl Overview {
     pub(super) fn compose(&mut self) -> Element {
         self.targets.clear();
         self.panes.clear();
+        self.pane_cards.clear();
         let [width, height] = self.size;
         let mut root = Element::new(0, Widget::Panel).layout(Layout {
             height: Length::Fill,
@@ -88,7 +89,7 @@ impl Overview {
         root = root.without_surface();
         root.style.background = Some(ShapePaint::fill(Color::rgba(0, 0, 0, 0)));
         let pad = (width * 0.045).clamp(12.0, 64.0);
-        let button_width = 154.0f32.min((width - pad * 2.0).max(1.0) * 0.44);
+        let button_width = 154.0f32.min((width - pad * 2.0).max(1.0) * 0.38);
         let gap = 10.0;
         let search_width = (width - pad * 2.0 - button_width - gap).clamp(1.0, 760.0);
         let group_width = search_width + gap + button_width;
@@ -145,78 +146,97 @@ impl Overview {
             && !self.all_apps
             && let (Some(snapshot), Some(ws)) = (&self.snapshot, self.workspace)
         {
-            let index = snapshot
-                .workspaces
-                .iter()
-                .position(|w| w.workspace == ws)
-                .unwrap_or(0);
-            let top = search_rect.y + search_rect.height + 28.0f32.min(height * 0.04);
-            // Keep the separate minimized shelf inside the overview's clipped
-            // scene area, below the selected preview.
-            let bottom_room = 140.0f32.min(height * 0.24);
-            let available_h = (height - top - bottom_room).max(40.0);
-            let preview_width = ((width * 0.82).min(available_h * 16.0 / 9.0)).max(1.0);
-            let preview_height = (preview_width * 9.0 / 16.0).min(available_h);
-            let x = (width - preview_width) / 2.0;
-            let y = top + (available_h - preview_height) / 2.0;
-            let rect = Rect::new(x, y, preview_width, preview_height);
-            let spaces: Vec<_> = snapshot
-                .workspaces
+            let strip_y = search_rect.y + search_rect.height + 22.0;
+            let item_gap = 10.0;
+            let capacity = self
+                .workspace_strip_capacity()
+                .min(snapshot.workspaces.len().max(1));
+            let item_w: f32 = 132.0;
+            let strip_h = (item_w * 9.0 / 16.0).min((height * 0.16).max(24.0));
+            let workspaces = snapshot.workspaces.clone();
+            let viewport_w =
+                item_w * capacity as f32 + item_gap * capacity.saturating_sub(1) as f32;
+            let viewport_x = (width - viewport_w) / 2.0;
+            let viewport_id = ElementId(0x120_0000_0000);
+            let mut strip = placed(
+                Element::new(viewport_id.0, Widget::Panel),
+                Rect::new(viewport_x, strip_y, viewport_w, strip_h),
+            );
+            strip.classes.push("overview-workspace-strip".into());
+            strip.layout.clip = ClipMode::Bounds;
+            strip.layout.flow = Flow::Row;
+            strip.layout.gap = item_gap;
+            for (index, summary) in workspaces
                 .iter()
                 .enumerate()
-                .filter(|(i, _)| i.abs_diff(index) <= 1)
-                .map(|(i, w)| (i, w.clone()))
-                .collect();
-            for (i, w) in spaces.iter().filter(|(i, _)| *i != index) {
-                let scale = 0.86;
-                let small_w = preview_width * scale;
-                let small_h = preview_height * scale;
-                let side_x = if *i < index {
-                    x - small_w - 24.0
-                } else {
-                    x + preview_width + 24.0
-                };
-                root.children.push(self.workspace_card(
-                    w.workspace,
-                    Rect::new(
-                        side_x,
-                        y + (preview_height - small_h) / 2.0,
-                        small_w,
-                        small_h,
-                    ),
-                    false,
-                ));
+                .skip(self.workspace_scroll_offset)
+                .take(capacity)
+            {
+                let workspace = summary.workspace;
+                let rect = Rect::new(0.0, 0.0, item_w, strip_h);
+                let id = 0x100_0000_0000 + u64::from(workspace.0) * 512 + index as u64 + 1;
+                let mut card = self.workspace_card_with_preview(
+                    workspace,
+                    rect,
+                    workspace == ws,
+                    id,
+                    Some(viewport_id),
+                );
+                let mut label = text(
+                    id + 2,
+                    workspace.0.to_string(),
+                    Rect::new(0.0, 0.0, item_w, strip_h),
+                    12.0,
+                    "overview-workspace-number",
+                );
+                label.style.text.align = TextAlign::Center;
+                card.children.push(label);
+                strip.children.push(card);
             }
+            root.children.push(strip);
+
+            for (id, label, next, x) in [
+                (6, "‹", false, viewport_x - 44.0),
+                (7, "›", true, viewport_x + viewport_w + 8.0),
+            ] {
+                let mut arrow = control(
+                    id,
+                    label,
+                    Rect::new(x, strip_y + (strip_h - 48.0) / 2.0, 36.0, 48.0),
+                );
+                arrow.style.text.font_size = 24.0;
+                arrow.enabled = !self.pending;
+                self.targets
+                    .insert(ElementId(id), Target::WorkspaceStripPage(next));
+                root.children.push(arrow);
+            }
+
+            let top = strip_y + strip_h + 28.0;
+            let shelf_room = if self.minimized(ws).is_empty() {
+                0.0
+            } else {
+                54.0
+            };
+            let bottom_room = (88.0f32 + shelf_room).min(height * 0.24);
+            let available_h = (height - top - bottom_room).max(40.0);
+            let preview_width = (width * 0.80).min(available_h * 16.0 / 9.0).max(1.0);
+            let preview_height = (preview_width * 9.0 / 16.0).min(available_h);
+            let rect = Rect::new(
+                (width - preview_width) / 2.0,
+                top + (available_h - preview_height) / 2.0,
+                preview_width,
+                preview_height,
+            );
+            root.children.push(text(
+                0x130_0000_1000,
+                format!("Workspace {}", ws.0),
+                Rect::new(rect.x, rect.y - 26.0, rect.width, 22.0),
+                16.0,
+                "overview-workspace-label",
+            ));
             root.children.push(self.workspace_card(ws, rect, true));
             if let Some(shelf) = self.minimized_shelf(ws, rect) {
                 root.children.push(shelf);
-            }
-            let prev = index
-                .checked_sub(1)
-                .and_then(|i| self.snapshot.as_ref()?.workspaces.get(i))
-                .map(|w| w.workspace);
-            let next = self
-                .snapshot
-                .as_ref()
-                .unwrap()
-                .workspaces
-                .get(index + 1)
-                .map(|w| w.workspace);
-            for (id, label, target, bx) in [
-                (20, "‹", prev, 12.0),
-                (21, "›", next, (width - 48.0).max(0.0)),
-            ] {
-                if let Some(target) = target {
-                    let mut b = control(
-                        id,
-                        label,
-                        Rect::new(bx, y + preview_height / 2.0 - 24.0, 36.0, 48.0),
-                    );
-                    b.style.text.font_size = 24.0;
-                    self.targets
-                        .insert(ElementId(id), Target::Workspace(target));
-                    root.children.push(b);
-                }
             }
         } else if self.query.text().is_empty() && !self.all_apps {
             let message = if self.snapshot.is_some() {
@@ -597,15 +617,33 @@ impl Overview {
     }
     fn workspace_card(&mut self, ws: WorkspaceId, rect: Rect, selected: bool) -> Element {
         let id = 0x100_0000_0000 + u64::from(ws.0) * 32;
+        self.workspace_card_with_id(ws, rect, selected, id)
+    }
+    fn workspace_card_with_id(
+        &mut self,
+        ws: WorkspaceId,
+        rect: Rect,
+        selected: bool,
+        id: u64,
+    ) -> Element {
+        self.workspace_card_with_preview(ws, rect, selected, id, None)
+    }
+    fn workspace_card_with_preview(
+        &mut self,
+        ws: WorkspaceId,
+        rect: Rect,
+        selected: bool,
+        id: u64,
+        pane_viewport: Option<ElementId>,
+    ) -> Element {
         let mut card = placed(Element::new(id, Widget::Button(String::new())), rect);
         card.classes.push(if selected {
             "overview-card-selected".into()
         } else {
             "overview-card-idle".into()
         });
-        // The compositor supplies each workspace preview through this window.
-        card = card.without_surface();
-        card.style.background = Some(ShapePaint::fill(Color::rgba(0, 0, 0, 0)));
+        // The compositor supplies each workspace preview beneath this
+        // transparent button; retain only its visible selection border.
         card.layout.clip = ClipMode::Bounds;
         self.targets.insert(
             ElementId(id),
@@ -616,7 +654,9 @@ impl Overview {
             },
         );
         // The compositor fills the card; shell borders and controls remain above it.
-        if rect.height > 4.0
+        if let Some(viewport) = pane_viewport {
+            self.pane_cards.push((ElementId(id), ws, viewport));
+        } else if rect.height > 4.0
             && rect.width > 4.0
             && rect.x + rect.width > 0.0
             && rect.x < self.size[0]

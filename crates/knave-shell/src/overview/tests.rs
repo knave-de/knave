@@ -432,7 +432,8 @@ fn no_icon_tray_when_the_selected_workspace_has_no_minimized_windows() {
     )));
     assert!(app.error.is_none());
     assert!(
-        app.panes
+        app.overview_panes()
+            .unwrap()
             .iter()
             .any(|pane| pane.workspace == WorkspaceId(2))
     );
@@ -506,8 +507,7 @@ fn failed_navigation_and_repeated_input_preserve_confirmed_workspace() {
 #[test]
 fn workspace_controls_switch_without_hiding() {
     for id in [
-        ElementId(21),
-        ElementId(0x100_0000_0000 + 3 * 32),
+        ElementId(0x100_0000_0000 + 3 * 512 + 3),
         bar_target(
             &app(),
             knave_shell_ui::UiAction::FocusWorkspace(WorkspaceId(3)),
@@ -593,10 +593,15 @@ fn idle_frames_reuse_layout_and_panes_are_bounded_to_neighbors() {
     app.frame([1200.0, 800.0], &mut Metrics);
     assert_eq!(app.scene.stats(), stats);
     let panes = app.overview_panes().unwrap();
-    assert_eq!(panes.len(), 3);
+    assert_eq!(panes.len(), 4);
     assert_eq!(
         panes.iter().map(|pane| pane.workspace).collect::<Vec<_>>(),
-        vec![WorkspaceId(1), WorkspaceId(3), WorkspaceId(2)]
+        vec![
+            WorkspaceId(2),
+            WorkspaceId(1),
+            WorkspaceId(2),
+            WorkspaceId(3)
+        ]
     );
     assert!(panes.iter().all(|pane| pane.width > 0 && pane.height > 0));
     publish_workspace(&mut app, WorkspaceId(3));
@@ -607,7 +612,12 @@ fn idle_frames_reuse_layout_and_panes_are_bounded_to_neighbors() {
             .iter()
             .map(|pane| pane.workspace)
             .collect::<Vec<_>>(),
-        vec![WorkspaceId(2), WorkspaceId(3)]
+        vec![
+            WorkspaceId(3),
+            WorkspaceId(1),
+            WorkspaceId(2),
+            WorkspaceId(3)
+        ]
     );
 }
 
@@ -1157,7 +1167,7 @@ fn launching_then_reopening_resets_the_search_without_reloading_apps() {
     );
     assert!(matches!(app.apps, Apps::Ready(_)));
     assert_eq!(app.workspace, Some(WorkspaceId(2)));
-    assert!(!app.panes.is_empty());
+    assert!(!app.overview_panes().unwrap().is_empty());
     assert!(!app.should_close());
     assert!(app.take_request().is_none());
 }
@@ -1282,10 +1292,11 @@ fn overview_controls_follow_the_selected_toolkit_theme() {
 #[test]
 fn overview_uses_preview_and_arrows_without_redundant_workspace_dots() {
     let app = app();
-    assert!(app.scene.bounds(ElementId(21)).is_some());
+    assert!(app.scene.bounds(ElementId(6)).is_some());
+    assert!(app.scene.bounds(ElementId(7)).is_some());
     assert!(
         app.scene
-            .bounds(ElementId(0x100_0000_0000 + 3 * 32))
+            .bounds(ElementId(0x100_0000_0000 + 3 * 512 + 3))
             .is_some()
     );
     for workspace in 1..=3 {
@@ -1301,14 +1312,117 @@ fn overview_uses_preview_and_arrows_without_redundant_workspace_dots() {
 fn workspace_panes_fill_cards_without_reserved_empty_shelf() {
     let mut app = app();
     app.frame([1280.0, 800.0], &mut Metrics);
-    for pane in &app.panes {
-        let id = ElementId(0x100_0000_0000 + u64::from(pane.workspace.0) * 32);
+    for pane in &app.overview_panes().unwrap() {
+        let ws = u64::from(pane.workspace.0);
+        let id = if pane.width <= 132 {
+            ElementId(0x100_0000_0000 + ws * 512 + ws)
+        } else {
+            ElementId(0x100_0000_0000 + ws * 32)
+        };
         let card = app.scene.bounds(id).unwrap();
         assert_eq!(pane.width, (card.width - 4.0).round() as u32);
         assert_eq!(pane.height, (card.height - 4.0).round() as u32);
         assert_eq!(pane.x, (card.x + 2.0).round() as i32);
         assert_eq!(pane.y, (card.y + 2.0).round() as i32);
     }
+}
+
+#[test]
+fn workspace_strip_scrolls_horizontally_and_only_submits_visible_thumbnails() {
+    let mut app = app();
+    let mut many = app.snapshot().unwrap().clone();
+    many.workspaces = (1..=40)
+        .map(|i| WorkspaceSummary {
+            workspace: WorkspaceId(i),
+            active: i == 2,
+            window_count: 0,
+            visible_window_count: 0,
+        })
+        .collect();
+    app.desktop_snapshot(&many);
+    app.frame([1200.0, 800.0], &mut Metrics);
+
+    let viewport = app.scene.bounds(ElementId(0x120_0000_0000)).unwrap();
+    let initial = app.overview_panes().unwrap();
+    assert!(initial.len() < many.workspaces.len());
+    let workspace_2_id = ElementId(0x100_0000_0000 + 2 * 512 + 2);
+    let first_x = app.scene.bounds(workspace_2_id).unwrap().x;
+    assert!(
+        app.targets
+            .values()
+            .any(|target| matches!(target, Target::WorkspaceStripPage(true)))
+    );
+
+    for _ in 0..4 {
+        let next = app
+            .targets
+            .iter()
+            .find_map(|(id, target)| {
+                matches!(target, Target::WorkspaceStripPage(true)).then_some(*id)
+            })
+            .unwrap();
+        click(&mut app, next);
+        app.frame([1200.0, 800.0], &mut Metrics);
+    }
+    let after_scroll = app.overview_panes().unwrap();
+    assert!(
+        after_scroll
+            .iter()
+            .any(|pane| pane.workspace == WorkspaceId(30))
+    );
+    assert!(after_scroll.len() < many.workspaces.len());
+    assert!(app.scene.bounds(workspace_2_id).is_none());
+    let workspace_30_id = ElementId(0x100_0000_0000 + 30 * 512 + 30);
+    let workspace_30_bounds = app.scene.bounds(workspace_30_id).unwrap();
+    assert!(workspace_30_bounds.x > first_x);
+    assert_eq!(
+        app.scene.bounds(ElementId(0x120_0000_0000)).unwrap().width,
+        viewport.width
+    );
+
+    let workspace_30 = app
+        .targets
+        .iter()
+        .find_map(|(id, target)| {
+            matches!(target, Target::Workspace(WorkspaceId(30))).then_some(*id)
+        })
+        .unwrap();
+    click(&mut app, workspace_30);
+    assert!(matches!(
+        app.take_request(),
+        Some(HostRequest::Desktop(DesktopCommand::FocusWorkspace {
+            workspace: WorkspaceId(30)
+        }))
+    ));
+    app.desktop_action_finished(Ok(()));
+    publish_workspace(&mut app, WorkspaceId(30));
+    assert_eq!(app.workspace, Some(WorkspaceId(30)));
+    assert!(
+        app.surface_visible(),
+        "workspace selection keeps Overview open"
+    );
+}
+
+#[test]
+fn workspace_strip_is_always_visible_with_left_and_right_controls() {
+    let mut app = app();
+    app.frame([1200.0, 800.0], &mut Metrics);
+    assert!(app.scene.bounds(ElementId(0x120_0000_0000)).is_some());
+    assert!(
+        app.targets
+            .values()
+            .any(|target| matches!(target, Target::WorkspaceStripPage(false)))
+    );
+    assert!(
+        app.targets
+            .values()
+            .any(|target| matches!(target, Target::WorkspaceStripPage(true)))
+    );
+    assert!(
+        !app.targets.contains_key(&ElementId(5)),
+        "there is no mode toggle"
+    );
+    assert_eq!(app.overview_panes().unwrap().len(), 4);
 }
 
 /// Retained controls follow the shared bar's hit-target order.
@@ -1712,8 +1826,8 @@ fn full_named_themes_leave_compositor_preview_windows_unpainted() {
         let mut app = app();
         app.theme_changed(theme, theme.stylesheet()).unwrap();
         let list = app.frame([1200.0, 800.0], &mut Metrics).clone();
-        let pane = app
-            .panes
+        let panes = app.overview_panes().unwrap();
+        let pane = panes
             .iter()
             .find(|pane| pane.workspace == WorkspaceId(2))
             .unwrap();

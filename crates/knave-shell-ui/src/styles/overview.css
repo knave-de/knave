@@ -30,9 +30,17 @@ button.overview-dock-app:focus {
     border-radius: 8px;
     text-align: center;
 }
-.overview-card-selected { background-color: var(--surface-selected); }
+.overview-card-selected {
+    background-color: transparent;
+    border: 2px solid var(--accent);
+    border-radius: 8px;
+    margin: 0;
+}
 .overview-tray {
     background-color: transparent;
+}
+.overview-tray-divider {
+    background-color: var(--border-strong);
 }
 button.overview-window-icon {
     background-color: var(--surface-raised);
@@ -44,8 +52,17 @@ button.overview-window-icon:focus {
     background-color: var(--surface-selected);
     border-color: var(--border-strong);
 }
-.overview-tray-divider {
-    background-color: var(--border-strong);
+.overview-card-idle {
+    background-color: transparent;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    margin: 0;
+}
+.overview-workspace-strip {
+    background-color: transparent;
+}
+.overview-workspace-number {
+    color: var(--text-secondary);
 }
 .overview-workspace-indicator-rail {
     background-color: var(--surface-raised);

@@ -71,6 +71,7 @@ pub fn elements(
     renderer: &mut GlesRenderer,
     cursor: Vec<CursorRenderElement>,
 ) -> Result<Vec<OverviewRenderElement>, crate::appearance::render::EffectError> {
+    state.appearance_renderer.begin_overview_frame();
     let profile = tracing::enabled!(target: "villain::perf", tracing::Level::DEBUG);
     let total_started = profile.then(Instant::now);
     if let Some(background) = state.screenshot.background() {
@@ -238,13 +239,10 @@ pub fn elements(
         }
         log_slow_stage("overview_shell_layers", stage_started, result.len());
     }
-    for pane in state
-        .overview_panes
-        .clone()
-        .iter()
-        .rev()
-        .filter(|_| overview_mapped)
-    {
+    let mut overview_panes = state.overview_panes.clone();
+    overview_panes
+        .sort_by_key(|pane| std::cmp::Reverse(u64::from(pane.width) * u64::from(pane.height)));
+    for pane in overview_panes.iter().filter(|_| overview_mapped) {
         if state
             .workspace_preview_scene(pane.workspace.0 as usize - 1)
             .is_none()

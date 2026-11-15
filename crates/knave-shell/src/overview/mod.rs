@@ -32,6 +32,7 @@ enum Target {
     Page(bool),
     DockWindow(WindowId),
     DockPage(bool),
+    WorkspaceStripPage(bool),
 }
 
 /// The catalog loads on a worker after the first query or when a snapshot
@@ -58,6 +59,7 @@ pub struct Overview {
     notifications_after_hide: bool,
     quick_settings_after_hide: bool,
     panes: Vec<OverviewPane>,
+    pane_cards: Vec<(ElementId, WorkspaceId, ElementId)>,
     workspace: Option<WorkspaceId>,
     scene: Scene,
     display: DisplayList,
@@ -80,6 +82,7 @@ pub struct Overview {
     dock_page: usize,
     result_page: usize,
     all_apps: bool,
+    workspace_scroll_offset: usize,
     connected: bool,
     size: [f32; 2],
     dirty: bool,
@@ -134,6 +137,7 @@ impl Overview {
             notifications_after_hide: false,
             quick_settings_after_hide: false,
             panes: Vec::new(),
+            pane_cards: Vec::new(),
             workspace: None,
             scene,
             targets: HashMap::new(),
@@ -153,6 +157,7 @@ impl Overview {
             dock_page: 0,
             result_page: 0,
             all_apps: false,
+            workspace_scroll_offset: 0,
             connected: false,
             size: [0.0; 2],
             dirty: true,
@@ -274,6 +279,7 @@ impl Overview {
         }
         match self.targets.get(&id).copied() {
             Some(Target::Workspace(ws)) => self.browse(ws),
+            Some(Target::WorkspaceStripPage(next)) => self.page_workspace_strip(next),
             Some(Target::EnterWorkspace(ws)) => {
                 self.dispatch(DesktopCommand::FocusWorkspace { workspace: ws })
             }
@@ -393,11 +399,13 @@ impl Overview {
             .expect("selected shell theme stylesheet is valid");
         self.targets.clear();
         self.panes.clear();
+        self.pane_cards.clear();
         self.workspace = None;
         self.page = 0;
         self.dock_page = 0;
         self.result_page = 0;
         self.all_apps = false;
+        self.workspace_scroll_offset = 0;
         self.launch_when_ready = false;
         self.hide_after_action = false;
         self.background_pressed = false;
@@ -554,6 +562,67 @@ impl Overview {
         }
         self.dirty = false;
     }
+    fn scroll_workspace_grid(&mut self, position: [f32; 2], delta: [f32; 2]) -> bool {
+        let Some(viewport) = self.scene.bounds(ElementId(0x120_0000_0000)) else {
+            return false;
+        };
+        if position[0] < viewport.x
+            || position[0] >= viewport.x + viewport.width
+            || position[1] < viewport.y
+            || position[1] >= viewport.y + viewport.height
+        {
+            return false;
+        }
+        let Some(snapshot) = &self.snapshot else {
+            return false;
+        };
+        let max_offset = snapshot
+            .workspaces
+            .len()
+            .saturating_sub(self.workspace_strip_capacity());
+        let direction = if delta[1] != 0.0 { delta[1] } else { delta[0] };
+        if !direction.is_finite() || direction == 0.0 {
+            return false;
+        }
+        let next = if direction > 0.0 {
+            self.workspace_scroll_offset
+                .saturating_add(1)
+                .min(max_offset)
+        } else {
+            self.workspace_scroll_offset.saturating_sub(1)
+        };
+        if next == self.workspace_scroll_offset {
+            return false;
+        }
+        self.workspace_scroll_offset = next;
+        self.dirty = true;
+        true
+    }
+
+    fn page_workspace_strip(&mut self, next: bool) {
+        let capacity = self.workspace_strip_capacity();
+        let count = self.snapshot.as_ref().map_or(0, |s| s.workspaces.len());
+        let max_offset = count.saturating_sub(capacity);
+        let page = capacity.saturating_sub(1);
+        let offset = if next {
+            self.workspace_scroll_offset
+                .saturating_add(page)
+                .min(max_offset)
+        } else {
+            self.workspace_scroll_offset.saturating_sub(page)
+        };
+        if offset != self.workspace_scroll_offset {
+            self.workspace_scroll_offset = offset;
+            self.dirty = true;
+        }
+    }
+
+    fn workspace_strip_capacity(&self) -> usize {
+        let item_gap = 10.0;
+        let pad = (self.size[0] * 0.045).clamp(12.0, 64.0);
+        let width = (self.size[0] - 2.0 * pad - 84.0).max(1.0);
+        (((width + item_gap) / (132.0 + item_gap)).floor() as usize).max(1)
+    }
 }
 impl Application for Overview {
     fn theme_policy_changed(
@@ -676,7 +745,28 @@ impl Application for Overview {
         self.host_error("Desktop connection unavailable — retrying");
     }
     fn overview_panes(&self) -> Option<Vec<OverviewPane>> {
-        Some(self.panes.clone())
+        let mut panes = self.panes.clone();
+        for (element, workspace, viewport) in &self.pane_cards {
+            let (Some(card), Some(viewport)) =
+                (self.scene.bounds(*element), self.scene.bounds(*viewport))
+            else {
+                continue;
+            };
+            let Some(visible) = card.intersection(viewport) else {
+                continue;
+            };
+            if visible.width <= 4.0 || visible.height <= 4.0 {
+                continue;
+            }
+            panes.push(OverviewPane {
+                workspace: *workspace,
+                x: (visible.x + 2.0).round() as i32,
+                y: (visible.y + 2.0).round() as i32,
+                width: (visible.width - 4.0).round() as u32,
+                height: (visible.height - 4.0).round() as u32,
+            });
+        }
+        Some(panes)
     }
     fn desktop_action_finished(&mut self, result: Result<(), String>) {
         if !self.pending {
@@ -738,6 +828,12 @@ impl Application for Overview {
         self.pins_reload = Some(pins_reload::PinsReload::start(waker));
     }
     fn input(&mut self, event: Input) {
+        if let Input::Scroll { position, delta } = &event
+            && self.query.text().is_empty()
+            && self.scroll_workspace_grid(*position, *delta)
+        {
+            self.pointer = Some(*position);
+        }
         match &event {
             Input::FocusGained => self.surface_focused = true,
             Input::FocusLost => {
