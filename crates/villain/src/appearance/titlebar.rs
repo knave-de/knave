@@ -52,6 +52,7 @@ fn stroke_segment(pixels: &mut [u8], width: i32, color: [u8; 4], a: (f32, f32), 
                     + u32::from(pixels[i + channel]) * (255 - alpha))
                     / 255) as u8;
             }
+            pixels[i + 3] = (alpha + u32::from(pixels[i + 3]) * (255 - alpha) / 255) as u8;
         }
     }
 }
@@ -99,11 +100,13 @@ struct Entry {
     hovered: Option<u8>,
     maximized: bool,
     tiled: bool,
+    controls_only: bool,
     buffer: MemoryRenderBuffer,
 }
 #[derive(Clone, Copy)]
 pub(super) struct TitlebarState {
     pub(super) focused: bool,
+    pub(super) controls_only: bool,
     pub(super) hovered: Option<u8>,
     pub(super) maximized: bool,
     pub(super) tiled: bool,
@@ -161,7 +164,9 @@ impl Titlebars {
         state: TitlebarState,
     ) -> Option<&MemoryRenderBuffer> {
         let width = width.clamp(1, 8192);
-        let title = if let Some(surface) = window.toplevel() {
+        let title = if state.controls_only {
+            String::new()
+        } else if let Some(surface) = window.toplevel() {
             smithay::wayland::compositor::with_states(surface.wl_surface(), |states| {
                 states
                     .data_map
@@ -183,6 +188,7 @@ impl Titlebars {
                 && entry.hovered == state.hovered
                 && entry.maximized == state.maximized
                 && entry.tiled == state.tiled
+                && entry.controls_only == state.controls_only
         }) {
             let entry = self.entries.remove(index)?;
             self.entries.push_front(entry);
@@ -199,7 +205,9 @@ impl Titlebars {
         }
         let mut pixels = vec![0u8; width as usize * 34 * 4];
         for px in pixels.as_chunks_mut::<4>().0 {
-            px.copy_from_slice(&bgra(bg));
+            if !state.controls_only {
+                px.copy_from_slice(&bgra(bg));
+            }
         }
         if let Some(index) = state.hovered {
             paint_hover(&mut pixels, width, index);
@@ -375,6 +383,7 @@ impl Titlebars {
             hovered: state.hovered,
             maximized: state.maximized,
             tiled: state.tiled,
+            controls_only: state.controls_only,
             buffer,
         });
         if let Some(started) = raster_started {
@@ -467,6 +476,27 @@ mod tests {
         assert_eq!(Control::from_right_distance(48.0), Some(Control::Maximize));
         assert_eq!(Control::from_right_distance(72.0), Some(Control::Float));
         assert_eq!(Control::from_right_distance(96.0), Some(Control::Minimize));
+    }
+
+    #[test]
+    fn controls_over_client_content_have_premultiplied_coverage() {
+        let mut pixels = vec![0; 96 * 34 * 4];
+        super::stroke_path(
+            &mut pixels,
+            96,
+            [240, 240, 240, 255],
+            (10.0, 10.0),
+            &[(0.0, 0.0), (20.0, 0.0)],
+        );
+        assert!(pixels.as_chunks::<4>().0.iter().any(|pixel| pixel[3] > 0));
+        assert!(
+            pixels
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|pixel| pixel[..3].iter().all(|c| *c <= pixel[3]))
+        );
+        assert_eq!(&pixels[..4], &[0; 4]);
     }
 
     #[test]

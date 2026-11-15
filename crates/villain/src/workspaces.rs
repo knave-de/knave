@@ -2589,6 +2589,9 @@ impl Villain {
                 .map(|(surface, origin, _)| (surface, origin))
                 .or_else(|| {
                     hit.and_then(|(window, origin)| {
+                        if crate::shared_header::owns_pointer(self, &window) {
+                            return None;
+                        }
                         window
                             .surface_under(
                                 self.pointer_location - origin.to_f64(),
