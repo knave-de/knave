@@ -28,6 +28,7 @@ mod render;
 mod screenshot;
 mod screenshot_notification;
 mod session;
+mod shared_header;
 mod shutdown;
 mod split_grab;
 mod state;

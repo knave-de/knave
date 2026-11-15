@@ -4,6 +4,8 @@ use knave_config::{
     appearance::{Edges, ViewEffects},
 };
 use smithay::utils::{Logical, Rectangle};
+pub(crate) mod palette;
+
 type Geometry = Rectangle<i32, Logical>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

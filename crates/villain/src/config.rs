@@ -38,6 +38,7 @@ pub struct RuntimeConfig {
     pub switch_to_new_window_workspace: bool,
     pub workspace: knave_config::CompositorWorkspaceConfig,
     pub appearance: knave_config::WindowAppearance,
+    pub(crate) decoration_palette: crate::appearance::palette::DecorationPalette,
     pub input: InputConfig,
     /// Ordered `[[compositor.device]]` rules; later matches override earlier ones.
     pub devices: Vec<knave_config::CompositorDeviceConfig>,
@@ -51,6 +52,7 @@ pub struct RuntimeConfig {
 #[derive(Clone, Debug, Default)]
 pub struct WindowRulesRuntime {
     applications: Vec<knave_config::WindowApplicationRule>,
+    shared_headers: bool,
     rules: Vec<CompiledWindowRule>,
 }
 
@@ -65,6 +67,12 @@ impl WindowRulesRuntime {
     fn compile(config: &knave_config::WindowRulesConfig) -> Self {
         Self {
             applications: config.application.clone(),
+            shared_headers: config
+                .application
+                .iter()
+                .map(|rule| &rule.set)
+                .chain(config.rule.iter().map(|rule| &rule.set))
+                .any(|actions| actions.shared_header == Some(knave_config::SharedHeader::Gtk)),
             rules: config
                 .rule
                 .iter()
@@ -81,6 +89,10 @@ impl WindowRulesRuntime {
                 })
                 .collect(),
         }
+    }
+
+    pub fn has_shared_headers(&self) -> bool {
+        self.shared_headers
     }
 
     pub fn for_window(&self, app_id: &str, title: &str) -> knave_config::WindowRuleActions {
@@ -116,6 +128,9 @@ fn overlay_window_actions(
     target: &mut knave_config::WindowRuleActions,
     source: &knave_config::WindowRuleActions,
 ) {
+    if source.shared_header.is_some() {
+        target.shared_header = source.shared_header;
+    }
     if source.placement.is_some() {
         target.placement = source.placement;
     }
@@ -205,6 +220,10 @@ impl RuntimeConfig {
             switch_to_new_window_workspace: compositor.switch_to_new_window_workspace,
             workspace: compositor.workspace,
             appearance: compositor.appearance.clone(),
+            decoration_palette: crate::appearance::palette::DecorationPalette::load(
+                document.config(),
+            )
+            .map_err(ConfigError)?,
             input: InputConfig {
                 tap_to_click: compositor.input.tap_to_click,
                 natural_scroll: compositor.input.natural_scroll,
@@ -504,6 +523,7 @@ predefined = 3
 app_id = "firefox"
 workspace = 3
 placement = "tiled"
+shared_header = "gtk"
 [[compositor.window_rules.rule]]
 [compositor.window_rules.rule.match]
 app_id = "firefox"
@@ -516,6 +536,7 @@ center = true
 title_regex = '(?i)^picture.*in.picture$'
 [compositor.window_rules.rule.set]
 stay_on_top = true
+shared_header = "off"
 "#,
         )
         .unwrap();
@@ -528,6 +549,8 @@ stay_on_top = true
             matched.placement,
             Some(knave_config::WindowPlacement::Floating)
         );
+        assert!(config.window_rules.has_shared_headers());
+        assert_eq!(matched.shared_header, Some(knave_config::SharedHeader::Off));
         assert_eq!(matched.center, Some(true));
         assert_eq!(matched.workspace, Some(3));
         assert_eq!(matched.stay_on_top, Some(true));
@@ -535,6 +558,10 @@ stay_on_top = true
         assert_eq!(
             unrelated.placement,
             Some(knave_config::WindowPlacement::Tiled)
+        );
+        assert_eq!(
+            unrelated.shared_header,
+            Some(knave_config::SharedHeader::Gtk)
         );
         assert_eq!(unrelated.workspace, Some(3));
         assert_eq!(unrelated.center, None);
