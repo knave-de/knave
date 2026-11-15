@@ -273,29 +273,19 @@ impl Overview {
         let Some(workspace) = self.workspace else {
             return panel(DOCK_ELEMENT_ID_BASE, Rect::new(0.0, height, 0.0, 0.0));
         };
+        let mut pin_keys = std::collections::HashSet::new();
+        for pinned in &self.pinned_apps {
+            let key = match &self.apps {
+                Apps::Ready(catalog) => catalog_index(catalog, pinned)
+                    .and_then(|index| catalog.get(index).map(|app| desktop_id_key(&app.id)))
+                    .unwrap_or_else(|| desktop_id_key(pinned)),
+                Apps::Unloaded | Apps::Loading | Apps::Unavailable => desktop_id_key(pinned),
+            };
+            pin_keys.insert(key);
+        }
         let mut items = Vec::<DockItem>::new();
         let mut indexes = HashMap::<String, usize>::new();
-        if let Apps::Ready(catalog) = &self.apps {
-            for pinned in &self.pinned_apps {
-                let Some(index) = catalog_index(catalog, pinned) else {
-                    continue;
-                };
-                let app = catalog
-                    .get(index)
-                    .expect("catalog index came from this catalog");
-                let key = desktop_id_key(&app.id);
-                if indexes.contains_key(&key) {
-                    continue;
-                }
-                indexes.insert(key.clone(), items.len());
-                items.push(DockItem {
-                    name: app.name.clone(),
-                    icon: app.icon.clone().unwrap_or_else(|| icons::FALLBACK.into()),
-                    catalog_index: Some(index),
-                    windows: Vec::new(),
-                });
-            }
-        }
+        let mut pinned_windows = HashMap::<String, Vec<WindowSummary>>::new();
         if let Some(snapshot) = &self.snapshot {
             for window in snapshot.windows.iter().filter(|w| w.workspace == workspace) {
                 let matched = match &self.apps {
@@ -310,6 +300,10 @@ impl Overview {
                         _ => None,
                     })
                     .unwrap_or_else(|| desktop_id_key(&window.app_id));
+                if pin_keys.contains(&key) {
+                    pinned_windows.entry(key).or_default().push(window.clone());
+                    continue;
+                }
                 let item_index = if let Some(&item_index) = indexes.get(&key) {
                     item_index
                 } else {
@@ -348,6 +342,46 @@ impl Overview {
                 items[item_index].windows.push(window.clone());
             }
         }
+        let running_count = items.len();
+        let mut added_pins = std::collections::HashSet::new();
+        for pinned in &self.pinned_apps {
+            let app = match &self.apps {
+                Apps::Ready(catalog) => catalog_index(catalog, pinned)
+                    .and_then(|index| catalog.get(index).map(|app| (index, app))),
+                Apps::Unloaded | Apps::Loading | Apps::Unavailable => None,
+            };
+            let key = app
+                .map(|(_, app)| desktop_id_key(&app.id))
+                .unwrap_or_else(|| desktop_id_key(pinned));
+            if !added_pins.insert(key.clone()) {
+                continue;
+            }
+            let (name, icon, catalog_index) = app.map_or_else(
+                || {
+                    (
+                        pinned.strip_suffix(".desktop").unwrap_or(pinned).to_owned(),
+                        icons::FALLBACK.into(),
+                        None,
+                    )
+                },
+                |(index, app)| {
+                    (
+                        app.name.clone(),
+                        app.icon.clone().unwrap_or_else(|| icons::FALLBACK.into()),
+                        Some(index),
+                    )
+                },
+            );
+            let windows = pinned_windows.remove(&key).unwrap_or_default();
+            indexes.insert(key, items.len());
+            items.push(DockItem {
+                name,
+                icon,
+                catalog_index,
+                windows,
+            });
+        }
+        let has_divider = running_count > 0 && running_count < items.len();
 
         if items.is_empty() {
             return panel(DOCK_ELEMENT_ID_BASE, Rect::new(0.0, height, 0.0, 0.0));
@@ -355,23 +389,29 @@ impl Overview {
         let icon_size = 42.0f32.min((height - STATUS_BAR_HEIGHT - 24.0).max(20.0));
         let item_width = 58.0;
         let gap = 4.0;
+        let divider_allowance = if has_divider { 14.0 } else { 0.0 };
         let max_width = (width - 24.0).max(item_width);
-        let plain_capacity =
-            (((max_width - 20.0 + gap) / (item_width + gap)).floor() as usize).max(1);
+        let plain_capacity = (((max_width - 20.0 - divider_allowance + gap) / (item_width + gap))
+            .floor() as usize)
+            .max(1);
         let paged = items.len() > plain_capacity;
         let side_controls = if paged { 58.0 } else { 0.0 };
-        let capacity = (((max_width - 20.0 - side_controls + gap) / (item_width + gap)).floor()
-            as usize)
+        let capacity = (((max_width - 20.0 - side_controls - divider_allowance + gap)
+            / (item_width + gap))
+            .floor() as usize)
             .max(1)
             .min(items.len());
         let pages = items.len().saturating_sub(1) / capacity + 1;
         self.dock_page = self.dock_page.min(pages.saturating_sub(1));
         let first = self.dock_page * capacity;
         let shown = items.len().saturating_sub(first).min(capacity);
+        let divider_on_page = running_count > first && running_count < first + shown;
+        let divider_space = if divider_on_page { 14.0 } else { 0.0 };
         let dock_width = (20.0
             + side_controls
             + shown as f32 * item_width
-            + shown.saturating_sub(1) as f32 * gap)
+            + shown.saturating_sub(1) as f32 * gap
+            + divider_space)
             .min(width.max(1.0));
         let dock_height = 68.0;
         let x = ((width - dock_width) / 2.0).max(0.0);
@@ -384,6 +424,17 @@ impl Overview {
         dock.layout.clip = ClipMode::Bounds;
         // Child offsets start inside the dock border.
         let item_offset = if paged { 38.0 } else { 9.0 };
+        if divider_on_page {
+            let slot = running_count - first;
+            let divider_x = item_offset + slot as f32 * (item_width + gap) + 6.5;
+            let mut divider = panel(
+                DOCK_ELEMENT_ID_BASE + 0x5000,
+                Rect::new(divider_x, 16.0, 1.0, 36.0),
+            );
+            divider.classes.push("overview-dock-divider".into());
+            divider.style.background = Some(ShapePaint::fill(Color::rgba(90, 96, 108, 255)));
+            dock.children.push(divider);
+        }
         if paged {
             for (slot, next) in [(0, false), (1, true)] {
                 let id = ElementId(DOCK_ELEMENT_ID_BASE + 0x4000 + slot as u64);
@@ -419,13 +470,22 @@ impl Overview {
             let mut button = placed(
                 Element::new(id.0, Widget::Button(String::new())),
                 Rect::new(
-                    item_offset + slot as f32 * (item_width + gap),
+                    item_offset
+                        + slot as f32 * (item_width + gap)
+                        + if divider_on_page && first + slot >= running_count {
+                            divider_space
+                        } else {
+                            0.0
+                        },
                     4.0,
                     item_width,
                     58.0,
                 ),
             );
             button.classes.push("overview-dock-app".into());
+            if item.windows.is_empty() {
+                button.classes.push("overview-dock-app-idle".into());
+            }
             button.enabled = target.is_some() && !self.pending;
             button.tooltip = Some(if item.windows.len() > 1 {
                 format!(

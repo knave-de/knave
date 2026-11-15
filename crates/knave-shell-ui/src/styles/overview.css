@@ -10,6 +10,11 @@ button.overview-dock-app {
     border: 1px solid transparent;
     border-radius: 12px;
 }
+button.overview-dock-app-idle,
+button.overview-dock-app-idle:hover,
+button.overview-dock-app-idle:focus {
+    box-shadow: none;
+}
 button.overview-dock-app:hover,
 button.overview-dock-app:focus {
     background-color: var(--surface-selected);
