@@ -2,13 +2,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="862" height="862" viewBox="0 0 862 862" role="img" aria-label="Knave symmetric jester logo">
   <title>Knave jester mark</title>
   <g transform="scale(1.68359375)">
-    <path fill="#009DCF" d="M256 204 C218 125 161 48 85 40 L67 75 C142 152 150 236 106 326 H258 V204 Z"/>
-    <path fill="#009DCF" d="M256 204 C294 125 351 48 427 40 L445 75 C370 152 362 236 406 326 H254 V204 Z"/>
-    <path fill="#009DCF" d="M90 45 A45 45 0 1 1 0 45 A45 45 0 1 1 90 45 Z"/>
-    <path fill="#009DCF" d="M512 45 A45 45 0 1 1 422 45 A45 45 0 1 1 512 45 Z"/>
-    <path fill="#263346" d="M106 370 H258 V472 H106 Z"/>
-    <path fill="#263346" d="M254 370 H406 V472 H254 Z"/>
-    <path fill="#263346" d="M106 468 H258 V512 H256 Q181 512 106 470 Z"/>
-    <path fill="#263346" d="M254 468 H406 V470 Q331 512 256 512 H254 Z"/>
+    <path fill="#01A5DB" d="M256 204 C218 125 161 48 85 40 L67 75 C142 152 150 236 106 326 H258 V204 Z"/>
+    <path fill="#01A5DB" d="M256 204 C294 125 351 48 427 40 L445 75 C370 152 362 236 406 326 H254 V204 Z"/>
+    <path fill="#01A5DB" d="M90 45 A45 45 0 1 1 0 45 A45 45 0 1 1 90 45 Z"/>
+    <path fill="#01A5DB" d="M512 45 A45 45 0 1 1 422 45 A45 45 0 1 1 512 45 Z"/>
+    <path fill="#1d293d" d="M106 370 H258 V472 H106 Z"/>
+    <path fill="#1d293d" d="M254 370 H406 V472 H254 Z"/>
+    <path fill="#1d293d" d="M106 468 H258 V512 H256 Q181 512 106 470 Z"/>
+    <path fill="#1d293d" d="M254 468 H406 V470 Q331 512 256 512 H254 Z"/>
   </g>
 </svg>
