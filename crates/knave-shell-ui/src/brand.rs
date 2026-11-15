@@ -165,7 +165,14 @@ mod tests {
             assert_eq!(pixel(image, 127, 0)[3], 0);
             assert_eq!(pixel(image, 0, 127)[3], 0);
             assert_eq!(pixel(image, 127, 127)[3], 0);
-            assert!(image.pixels().as_chunks::<4>().0.iter().any(|pixel| pixel[3] == 255));
+            assert!(
+                image
+                    .pixels()
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .any(|pixel| pixel[3] == 255)
+            );
         }
         for policy in POLICIES
             .into_iter()
@@ -203,9 +210,12 @@ mod tests {
             } else {
                 2.0
             };
-            assert!(opaque_pixels.into_iter().all(|pixel| {
-                contrast_ratio(pixel[..3].try_into().unwrap(), background) >= minimum
-            }), "{policy:?} has opaque logo pixels below the contrast threshold");
+            assert!(
+                opaque_pixels.into_iter().all(|pixel| {
+                    contrast_ratio(pixel[..3].try_into().unwrap(), background) >= minimum
+                }),
+                "{policy:?} has opaque logo pixels below the contrast threshold"
+            );
             assert_eq!(image.cache_key(), image_for(policy).unwrap().cache_key());
         }
     }
