@@ -757,7 +757,7 @@ fn clicking_a_result_launches_it_and_failure_keeps_overview_open() {
 }
 
 #[test]
-fn dock_keeps_pins_in_order_and_adds_only_unpinned_apps_from_the_active_workspace() {
+fn dock_places_running_apps_before_pins_with_a_divider() {
     let app = dock_app();
     assert!(
         app.scene
@@ -781,30 +781,50 @@ fn dock_keeps_pins_in_order_and_adds_only_unpinned_apps_from_the_active_workspac
     );
     assert!(matches!(
         app.targets.get(&ElementId(DOCK_ELEMENT_ID_BASE + 1)),
+        Some(Target::DockWindow(WindowId(15)))
+    ));
+    assert!(matches!(
+        app.targets.get(&ElementId(DOCK_ELEMENT_ID_BASE + 2)),
         Some(Target::App(index))
             if matches!(&app.apps, Apps::Ready(catalog) if catalog.get(*index).is_some_and(|app| app.id == "tool01.desktop"))
     ));
     assert!(matches!(
-        app.targets.get(&ElementId(DOCK_ELEMENT_ID_BASE + 2)),
+        app.targets.get(&ElementId(DOCK_ELEMENT_ID_BASE + 3)),
         Some(Target::DockWindow(WindowId(1)))
     ));
-    assert!(matches!(
-        app.targets.get(&ElementId(DOCK_ELEMENT_ID_BASE + 3)),
-        Some(Target::DockWindow(WindowId(15)))
-    ));
+    assert!(
+        app.scene
+            .bounds(ElementId(DOCK_ELEMENT_ID_BASE + 0x5000))
+            .is_some()
+    );
+}
+
+#[test]
+fn dock_shows_pins_while_the_application_catalog_is_unavailable() {
+    let mut app = Overview::new();
+    app.workspace = Some(WorkspaceId(1));
+    app.pinned_apps = vec!["kitty.desktop".into()];
+    app.frame([1200.0, 800.0], &mut Metrics);
+
+    assert!(
+        app.scene
+            .bounds(ElementId(DOCK_ELEMENT_ID_BASE + 1))
+            .is_some()
+    );
+    assert!(matches!(app.apps, Apps::Unloaded));
 }
 
 #[test]
 fn dock_launches_idle_pins() {
     let mut app = dock_app();
-    click(&mut app, ElementId(DOCK_ELEMENT_ID_BASE + 1));
+    click(&mut app, ElementId(DOCK_ELEMENT_ID_BASE + 2));
     assert_eq!(spawned(&mut app), Some(vec!["tool01".into()]));
 }
 
 #[test]
 fn dock_restores_running_minimized_apps() {
     let mut app = dock_app();
-    click(&mut app, ElementId(DOCK_ELEMENT_ID_BASE + 3));
+    click(&mut app, ElementId(DOCK_ELEMENT_ID_BASE + 1));
     assert!(matches!(
         app.take_request(),
         Some(HostRequest::Desktop(DesktopCommand::RestoreWindow {

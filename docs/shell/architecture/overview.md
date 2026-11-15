@@ -35,14 +35,15 @@ Search lists installed applications, not windows. `knave-apps` reads XDG
 desktop command, so Villain starts the process with the session environment and
 the overview hides only after it acknowledges.
 
-The bottom dock keeps the configured `shell.pinned_apps` in order, followed by
-distinct apps with windows on the active workspace. A running pinned app appears
-only once. Its icon shows a running mark and a window count when applicable;
-clicking it focuses a visible window or restores a minimized one. A pin without
-a window launches through the same desktop command as search. The app catalog
-loads when Overview opens, off the input and frame paths. The dock pages when
-its contents exceed the output width. It has no all-applications control; app
-search remains the route to the full catalog.
+The bottom dock shows distinct running apps from the active workspace on the
+left, then a divider and configured `shell.pinned_apps` in order on the right.
+A running pinned app appears once in the pinned section. Its icon shows a
+running mark and a window count when applicable; clicking it focuses a visible
+window or restores a minimized one. A pin without a window launches through the
+same desktop command as search. Pins render while the app catalog loads, then
+use catalog names and icons when available. The catalog loads off the input and
+frame paths. The dock pages when its contents exceed the output width. It has no
+all-applications control; app search remains the route to the full catalog.
 
 Rows show each application's `Icon`, resolved by `knave-icons` with the icon theme
 spec's size rule. Knave has no icon-theme setting and the shell reads no other
