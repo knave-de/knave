@@ -59,26 +59,6 @@ fn desktop_id_key(id: &str) -> String {
     id.strip_suffix(".desktop").unwrap_or(id).to_lowercase()
 }
 
-/// Icon theme name for a window's `app_id`, resolved from the loaded catalog.
-/// Wayland app ids may be the desktop file id with or without its suffix, or
-/// the displayed application name; the caller supplies a generic icon if no
-/// entry or icon matches.
-fn catalog_icon(catalog: &Catalog, app_id: &str) -> Option<String> {
-    let key = app_id.to_lowercase();
-    let file_id = |id: &str| id.strip_suffix(".desktop").unwrap_or(id).to_lowercase();
-    let mut named = None;
-    for index in 0..catalog.len() {
-        let app = catalog.get(index)?;
-        if file_id(&app.id) == key {
-            return app.icon.clone();
-        }
-        if named.is_none() && app.name.to_lowercase() == key {
-            named = app.icon.clone();
-        }
-    }
-    named
-}
-
 fn catalog_index(catalog: &Catalog, app_id: &str) -> Option<usize> {
     let key = desktop_id_key(app_id);
     let mut named = None;
@@ -200,7 +180,6 @@ impl Overview {
                     rect,
                     workspace == ws,
                     id,
-                    false,
                     Some(viewport_id),
                 );
                 let mut label = text(
@@ -233,7 +212,12 @@ impl Overview {
             }
 
             let top = strip_y + strip_h + 28.0;
-            let bottom_room = 88.0f32.min(height * 0.16);
+            let shelf_room = if self.minimized(ws).is_empty() {
+                0.0
+            } else {
+                54.0
+            };
+            let bottom_room = (88.0f32 + shelf_room).min(height * 0.24);
             let available_h = (height - top - bottom_room).max(40.0);
             let preview_width = (width * 0.80).min(available_h * 16.0 / 9.0).max(1.0);
             let preview_height = (preview_width * 9.0 / 16.0).min(available_h);
@@ -251,6 +235,9 @@ impl Overview {
                 "overview-workspace-label",
             ));
             root.children.push(self.workspace_card(ws, rect, true));
+            if let Some(shelf) = self.minimized_shelf(ws, rect) {
+                root.children.push(shelf);
+            }
         } else if self.query.text().is_empty() && !self.all_apps {
             let message = if self.snapshot.is_some() {
                 "No workspaces available"
@@ -311,29 +298,19 @@ impl Overview {
         let Some(workspace) = self.workspace else {
             return panel(DOCK_ELEMENT_ID_BASE, Rect::new(0.0, height, 0.0, 0.0));
         };
+        let mut pin_keys = std::collections::HashSet::new();
+        for pinned in &self.pinned_apps {
+            let key = match &self.apps {
+                Apps::Ready(catalog) => catalog_index(catalog, pinned)
+                    .and_then(|index| catalog.get(index).map(|app| desktop_id_key(&app.id)))
+                    .unwrap_or_else(|| desktop_id_key(pinned)),
+                Apps::Unloaded | Apps::Loading | Apps::Unavailable => desktop_id_key(pinned),
+            };
+            pin_keys.insert(key);
+        }
         let mut items = Vec::<DockItem>::new();
         let mut indexes = HashMap::<String, usize>::new();
-        if let Apps::Ready(catalog) = &self.apps {
-            for pinned in &self.pinned_apps {
-                let Some(index) = catalog_index(catalog, pinned) else {
-                    continue;
-                };
-                let app = catalog
-                    .get(index)
-                    .expect("catalog index came from this catalog");
-                let key = desktop_id_key(&app.id);
-                if indexes.contains_key(&key) {
-                    continue;
-                }
-                indexes.insert(key.clone(), items.len());
-                items.push(DockItem {
-                    name: app.name.clone(),
-                    icon: app.icon.clone().unwrap_or_else(|| icons::FALLBACK.into()),
-                    catalog_index: Some(index),
-                    windows: Vec::new(),
-                });
-            }
-        }
+        let mut pinned_windows = HashMap::<String, Vec<WindowSummary>>::new();
         if let Some(snapshot) = &self.snapshot {
             for window in snapshot.windows.iter().filter(|w| w.workspace == workspace) {
                 let matched = match &self.apps {
@@ -348,19 +325,33 @@ impl Overview {
                         _ => None,
                     })
                     .unwrap_or_else(|| desktop_id_key(&window.app_id));
+                if pin_keys.contains(&key) {
+                    pinned_windows.entry(key).or_default().push(window.clone());
+                    continue;
+                }
                 let item_index = if let Some(&item_index) = indexes.get(&key) {
                     item_index
                 } else {
                     let (name, icon) = match (&self.apps, matched) {
-                        (Apps::Ready(catalog), Some(index)) => catalog
-                            .get(index)
-                            .map(|app| {
+                        (Apps::Ready(catalog), Some(index)) => catalog.get(index).map_or_else(
+                            || (window.app_id.clone(), icons::FALLBACK.into()),
+                            |app| {
                                 (
                                     app.name.clone(),
-                                    app.icon.clone().unwrap_or_else(|| icons::FALLBACK.into()),
+                                    catalog
+                                        .running_icon(&window.app_id)
+                                        .unwrap_or(icons::FALLBACK)
+                                        .to_owned(),
                                 )
-                            })
-                            .unwrap_or_else(|| (window.app_id.clone(), icons::FALLBACK.into())),
+                            },
+                        ),
+                        (Apps::Ready(catalog), None) => (
+                            window.app_id.clone(),
+                            catalog
+                                .running_icon(&window.app_id)
+                                .unwrap_or(icons::FALLBACK)
+                                .to_owned(),
+                        ),
                         _ => (window.app_id.clone(), icons::FALLBACK.into()),
                     };
                     let item_index = items.len();
@@ -376,6 +367,46 @@ impl Overview {
                 items[item_index].windows.push(window.clone());
             }
         }
+        let running_count = items.len();
+        let mut added_pins = std::collections::HashSet::new();
+        for pinned in &self.pinned_apps {
+            let app = match &self.apps {
+                Apps::Ready(catalog) => catalog_index(catalog, pinned)
+                    .and_then(|index| catalog.get(index).map(|app| (index, app))),
+                Apps::Unloaded | Apps::Loading | Apps::Unavailable => None,
+            };
+            let key = app
+                .map(|(_, app)| desktop_id_key(&app.id))
+                .unwrap_or_else(|| desktop_id_key(pinned));
+            if !added_pins.insert(key.clone()) {
+                continue;
+            }
+            let (name, icon, catalog_index) = app.map_or_else(
+                || {
+                    (
+                        pinned.strip_suffix(".desktop").unwrap_or(pinned).to_owned(),
+                        icons::FALLBACK.into(),
+                        None,
+                    )
+                },
+                |(index, app)| {
+                    (
+                        app.name.clone(),
+                        app.icon.clone().unwrap_or_else(|| icons::FALLBACK.into()),
+                        Some(index),
+                    )
+                },
+            );
+            let windows = pinned_windows.remove(&key).unwrap_or_default();
+            indexes.insert(key, items.len());
+            items.push(DockItem {
+                name,
+                icon,
+                catalog_index,
+                windows,
+            });
+        }
+        let has_divider = running_count > 0 && running_count < items.len();
 
         if items.is_empty() {
             return panel(DOCK_ELEMENT_ID_BASE, Rect::new(0.0, height, 0.0, 0.0));
@@ -383,23 +414,29 @@ impl Overview {
         let icon_size = 42.0f32.min((height - STATUS_BAR_HEIGHT - 24.0).max(20.0));
         let item_width = 58.0;
         let gap = 4.0;
+        let divider_allowance = if has_divider { 14.0 } else { 0.0 };
         let max_width = (width - 24.0).max(item_width);
-        let plain_capacity =
-            (((max_width - 20.0 + gap) / (item_width + gap)).floor() as usize).max(1);
+        let plain_capacity = (((max_width - 20.0 - divider_allowance + gap) / (item_width + gap))
+            .floor() as usize)
+            .max(1);
         let paged = items.len() > plain_capacity;
         let side_controls = if paged { 58.0 } else { 0.0 };
-        let capacity = (((max_width - 20.0 - side_controls + gap) / (item_width + gap)).floor()
-            as usize)
+        let capacity = (((max_width - 20.0 - side_controls - divider_allowance + gap)
+            / (item_width + gap))
+            .floor() as usize)
             .max(1)
             .min(items.len());
         let pages = items.len().saturating_sub(1) / capacity + 1;
         self.dock_page = self.dock_page.min(pages.saturating_sub(1));
         let first = self.dock_page * capacity;
         let shown = items.len().saturating_sub(first).min(capacity);
+        let divider_on_page = running_count > first && running_count < first + shown;
+        let divider_space = if divider_on_page { 14.0 } else { 0.0 };
         let dock_width = (20.0
             + side_controls
             + shown as f32 * item_width
-            + shown.saturating_sub(1) as f32 * gap)
+            + shown.saturating_sub(1) as f32 * gap
+            + divider_space)
             .min(width.max(1.0));
         let dock_height = 68.0;
         let x = ((width - dock_width) / 2.0).max(0.0);
@@ -412,6 +449,17 @@ impl Overview {
         dock.layout.clip = ClipMode::Bounds;
         // Child offsets start inside the dock border.
         let item_offset = if paged { 38.0 } else { 9.0 };
+        if divider_on_page {
+            let slot = running_count - first;
+            let divider_x = item_offset + slot as f32 * (item_width + gap) + 6.5;
+            let mut divider = panel(
+                DOCK_ELEMENT_ID_BASE + 0x5000,
+                Rect::new(divider_x, 16.0, 1.0, 36.0),
+            );
+            divider.classes.push("overview-dock-divider".into());
+            divider.style.background = Some(ShapePaint::fill(Color::rgba(90, 96, 108, 255)));
+            dock.children.push(divider);
+        }
         if paged {
             for (slot, next) in [(0, false), (1, true)] {
                 let id = ElementId(DOCK_ELEMENT_ID_BASE + 0x4000 + slot as u64);
@@ -447,13 +495,22 @@ impl Overview {
             let mut button = placed(
                 Element::new(id.0, Widget::Button(String::new())),
                 Rect::new(
-                    item_offset + slot as f32 * (item_width + gap),
+                    item_offset
+                        + slot as f32 * (item_width + gap)
+                        + if divider_on_page && first + slot >= running_count {
+                            divider_space
+                        } else {
+                            0.0
+                        },
                     4.0,
                     item_width,
                     58.0,
                 ),
             );
             button.classes.push("overview-dock-app".into());
+            if item.windows.is_empty() {
+                button.classes.push("overview-dock-app-idle".into());
+            }
             button.enabled = target.is_some() && !self.pending;
             button.tooltip = Some(if item.windows.len() > 1 {
                 format!(
@@ -553,7 +610,7 @@ impl Overview {
     /// executable icon, with a built-in glyph if theme lookup also fails.
     fn window_icon_name(&self, app_id: &str) -> String {
         match &self.apps {
-            Apps::Ready(catalog) => catalog_icon(catalog, app_id),
+            Apps::Ready(catalog) => catalog.running_icon(app_id).map(str::to_owned),
             _ => None,
         }
         .unwrap_or_else(|| icons::FALLBACK.to_owned())
@@ -569,7 +626,7 @@ impl Overview {
         selected: bool,
         id: u64,
     ) -> Element {
-        self.workspace_card_with_preview(ws, rect, selected, id, true, None)
+        self.workspace_card_with_preview(ws, rect, selected, id, None)
     }
     fn workspace_card_with_preview(
         &mut self,
@@ -577,7 +634,6 @@ impl Overview {
         rect: Rect,
         selected: bool,
         id: u64,
-        show_tray: bool,
         pane_viewport: Option<ElementId>,
     ) -> Element {
         let mut card = placed(Element::new(id, Widget::Button(String::new())), rect);
@@ -613,111 +669,127 @@ impl Overview {
                 height: (rect.height - 4.0).round() as u32,
             });
         }
-        if selected && show_tray && !self.minimized(ws).is_empty() {
-            let min: Vec<_> = self.minimized(ws).into_iter().cloned().collect();
-            let tray_h = 50.0f32.min(rect.height * 0.35);
-            let icon_size = (tray_h - 12.0).max(16.0);
-            let pitch = icon_size + 5.0;
-            let max_width = (rect.width - 24.0).max(0.0);
-            // Room for two paging controls when several pages exist.
-            let paging_w = 2.0 * 28.0 + 6.0;
-            let capacity =
-                (((max_width - 12.0 - paging_w) / pitch).floor() as usize).clamp(1, PAGE_SIZE);
-            self.page = self.page.min(min.len().saturating_sub(1) / capacity);
-            let first = self.page * capacity;
-            let shown = min.len().saturating_sub(first).min(capacity);
-            let span = (shown as f32 - 1.0) * pitch + icon_size;
-            let tray_w = if min.len() > capacity {
-                12.0 + span + paging_w
-            } else {
-                12.0 + span
-            }
-            .min(max_width);
-            let mut tray = panel(
-                id + 3,
-                Rect::new(12.0, (rect.height - tray_h - 12.0).max(0.0), tray_w, tray_h),
-            );
-            tray.classes.push("overview-tray".into());
-            tray.style.background = Some(ShapePaint::fill(Color::rgba(0, 0, 0, 0)));
-            tray.layout.clip = ClipMode::Bounds;
-            for (n, window) in min.iter().skip(first).take(shown).enumerate() {
-                let wid = self.window_ids[&window.id];
-                let title = if window.title.is_empty() {
-                    window.app_id.as_str()
-                } else {
-                    window.title.as_str()
-                };
-                let icon_name = self.window_icon_name(&window.app_id);
-                // Failed submits retry on the next frame, which the worker's results trigger.
-                if self.icons.needs_request(&icon_name)
-                    && self.loader().submit(loader::Job::Icon(icon_name.clone()))
-                {
-                    self.icons.requested(&icon_name);
-                }
-                let mut icon = placed(
-                    Element::new(wid.0, Widget::Button(String::new())),
-                    Rect::new(6.0 + n as f32 * pitch, 6.0, icon_size, icon_size),
-                );
-                icon.style.background = Some(ShapePaint::fill(Color::rgba(0, 0, 0, 0)));
-                icon.classes.push("overview-window-icon".into());
-                // Hover and accessibility name the exact window, not its application.
-                icon.tooltip = Some(format!("Restore {}", short(title, 120)));
-                icon.enabled = !self.pending;
-                if let Some(image) = self.icons.get(&icon_name).cloned() {
-                    let side = (icon_size - 8.0).max(10.0);
-                    let inset = (icon_size - side) / 2.0;
-                    icon.children.push(placed(
-                        Element::new(
-                            TRAY_ICON_ELEMENT_BASE + wid.0,
-                            Widget::Image(
-                                image,
-                                ImageStyle {
-                                    fit: ImageFit::Contain,
-                                    ..Default::default()
-                                },
-                            ),
-                        ),
-                        Rect::new(inset, inset, side, side),
-                    ));
-                } else {
-                    let mut fallback = text(
-                        TRAY_ICON_ELEMENT_BASE + wid.0,
-                        "▣",
-                        Rect::new(0.0, 0.0, icon_size, icon_size),
-                        icon_size * 0.72,
-                        "overview-muted",
-                    );
-                    fallback.style.text.align = TextAlign::Center;
-                    icon.children.push(fallback);
-                }
-                self.targets.insert(wid, Target::Window(window.id));
-                tray.children.push(icon);
-            }
-            if min.len() > capacity {
-                for (bid, label, next, bx) in [(30, "‹", false, 6.0), (31, "›", true, 34.0)] {
-                    let mut b = control(
-                        bid,
-                        label,
-                        Rect::new(
-                            (tray_w - 6.0 - paging_w + bx).max(0.0),
-                            (tray_h - 23.0) / 2.0,
-                            28.0,
-                            23.0,
-                        ),
-                    );
-                    b.layout.padding_edges = Some(Insets::symmetric(1.0, 8.0));
-                    b.enabled = if next {
-                        first + capacity < min.len()
-                    } else {
-                        self.page > 0
-                    };
-                    self.targets.insert(ElementId(bid), Target::Page(next));
-                    tray.children.push(b);
-                }
-            }
-            card.children.push(tray);
-        }
+
         card
+    }
+    fn minimized_shelf(&mut self, ws: WorkspaceId, rect: Rect) -> Option<Element> {
+        let min: Vec<_> = self.minimized(ws).into_iter().cloned().collect();
+        if min.is_empty() {
+            return None;
+        }
+        let id = 0x100_0000_0000 + u64::from(ws.0) * 32;
+        let tray_h = 42.0f32.min(rect.height * 0.35);
+        let icon_size = (tray_h - 10.0).max(16.0);
+        let pitch = icon_size + 4.0;
+        let max_width = (rect.width - 24.0).max(0.0);
+        // Room for two paging controls when several pages exist.
+        let paging_w = 2.0 * 28.0 + 6.0;
+        let leading_w = 64.0;
+        let capacity =
+            (((max_width - leading_w - paging_w) / pitch).floor() as usize).clamp(1, PAGE_SIZE);
+        self.page = self.page.min(min.len().saturating_sub(1) / capacity);
+        let first = self.page * capacity;
+        let shown = min.len().saturating_sub(first).min(capacity);
+        let span = (shown as f32 - 1.0) * pitch + icon_size;
+        let tray_w = if min.len() > capacity {
+            leading_w + span + paging_w
+        } else {
+            leading_w + span
+        }
+        .min(max_width);
+        let mut tray = panel(
+            id + 3,
+            Rect::new(rect.x + 12.0, rect.y + rect.height + 12.0, tray_w, tray_h),
+        );
+        tray.classes.push("overview-tray".into());
+        tray.style.background = Some(ShapePaint::fill(Color::rgba(0, 0, 0, 0)));
+        tray.layout.clip = ClipMode::Bounds;
+        tray.children.push(text(
+            id + 4,
+            format!("▣ {}", min.len()),
+            Rect::new(4.0, 5.0, 42.0, 30.0),
+            13.0,
+            "overview-muted",
+        ));
+        let mut divider = panel(id + 5, Rect::new(51.0, 6.0, 1.0, 30.0));
+        divider.classes.push("overview-tray-divider".into());
+        tray.children.push(divider);
+        for (n, window) in min.iter().skip(first).take(shown).enumerate() {
+            let wid = self.window_ids[&window.id];
+            let title = if window.title.is_empty() {
+                window.app_id.as_str()
+            } else {
+                window.title.as_str()
+            };
+            let icon_name = self.window_icon_name(&window.app_id);
+            // Failed submits retry on the next frame, which the worker's results trigger.
+            if self.icons.needs_request(&icon_name)
+                && self.loader().submit(loader::Job::Icon(icon_name.clone()))
+            {
+                self.icons.requested(&icon_name);
+            }
+            let mut icon = placed(
+                Element::new(wid.0, Widget::Button(String::new())),
+                Rect::new(60.0 + n as f32 * pitch, 5.0, icon_size, icon_size),
+            );
+            icon.style.background = Some(ShapePaint::fill(Color::rgba(0, 0, 0, 0)));
+            icon.classes.push("overview-window-icon".into());
+            // Hover and accessibility name the exact window, not its application.
+            icon.tooltip = Some(format!("Restore {}", short(title, 120)));
+            icon.enabled = !self.pending;
+            if let Some(image) = self.icons.get(&icon_name).cloned() {
+                let side = (icon_size - 8.0).max(10.0);
+                let inset = (icon_size - side) / 2.0;
+                icon.children.push(placed(
+                    Element::new(
+                        TRAY_ICON_ELEMENT_BASE + wid.0,
+                        Widget::Image(
+                            image,
+                            ImageStyle {
+                                fit: ImageFit::Contain,
+                                ..Default::default()
+                            },
+                        ),
+                    ),
+                    Rect::new(inset, inset, side, side),
+                ));
+            } else {
+                let mut fallback = text(
+                    TRAY_ICON_ELEMENT_BASE + wid.0,
+                    "▣",
+                    Rect::new(0.0, 0.0, icon_size, icon_size),
+                    icon_size * 0.72,
+                    "overview-muted",
+                );
+                fallback.style.text.align = TextAlign::Center;
+                icon.children.push(fallback);
+            }
+            self.targets.insert(wid, Target::Window(window.id));
+            tray.children.push(icon);
+        }
+        if min.len() > capacity {
+            for (bid, label, next, bx) in [(30, "‹", false, 6.0), (31, "›", true, 34.0)] {
+                let mut b = control(
+                    bid,
+                    label,
+                    Rect::new(
+                        (tray_w - 6.0 - paging_w + bx).max(0.0),
+                        (tray_h - 23.0) / 2.0,
+                        28.0,
+                        23.0,
+                    ),
+                );
+                b.layout.padding_edges = Some(Insets::symmetric(1.0, 8.0));
+                b.enabled = if next {
+                    first + capacity < min.len()
+                } else {
+                    self.page > 0
+                };
+                self.targets.insert(ElementId(bid), Target::Page(next));
+                tray.children.push(b);
+            }
+        }
+        Some(tray)
     }
     fn search_results(&mut self, search: Rect) -> Element {
         let matches = self.search();

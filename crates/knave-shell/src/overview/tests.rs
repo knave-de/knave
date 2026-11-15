@@ -225,7 +225,7 @@ fn minimized_shelf_is_workspace_scoped_and_paginated() {
 }
 
 #[test]
-fn single_icon_tray_uses_only_the_visible_icon_width() {
+fn single_icon_tray_keeps_room_for_its_heading() {
     let mut app = app();
     let mut next = app.snapshot().unwrap().clone();
     for window in &mut next.windows {
@@ -237,7 +237,7 @@ fn single_icon_tray_uses_only_the_visible_icon_width() {
     let tray = app.scene.bounds(tray_id(2)).unwrap();
     let icon = app.scene.bounds(app.window_ids[&WindowId(2)]).unwrap();
     assert!(
-        tray.width <= icon.width + 13.0,
+        tray.width >= icon.width + 50.0,
         "tray: {tray:?}, icon: {icon:?}"
     );
 }
@@ -253,7 +253,7 @@ fn tooltip_visible(app: &Overview, label: &str) -> bool {
     })
 }
 #[test]
-fn the_minimized_tray_is_icon_only_in_the_lower_left_of_the_selected_card() {
+fn the_minimized_tray_is_a_separate_shelf_below_the_selected_card() {
     let mut app = app();
     settle(&mut app, [1200.0, 800.0]);
     let card = app
@@ -264,17 +264,11 @@ fn the_minimized_tray_is_icon_only_in_the_lower_left_of_the_selected_card() {
         .scene
         .bounds(tray_id(2))
         .expect("tray on the selected card");
-    assert!(tray.height <= 50.0 && tray.height >= 30.0);
+    assert!(tray.height <= 45.0 && tray.height >= 35.0);
     assert!(tray.width < card.width);
-    assert!(
-        (tray.x - (card.x + 14.0)).abs() < 1.0,
-        "tray: {tray:?}, card: {card:?}"
-    );
-    assert!(
-        ((card.y + card.height) - (tray.y + tray.height) - 10.0).abs() < 1.0,
-        "tray: {tray:?}, card: {card:?}"
-    );
-    // Entries are small icon buttons inside the tray, not heading/chip cards.
+    assert!((tray.x - (card.x + 12.0)).abs() < 1.0);
+    assert!((tray.y - (card.y + card.height + 12.0)).abs() < 1.0);
+    // A compact count and icon-only buttons share the separate shelf.
     let icon = app.scene.bounds(app.window_ids[&WindowId(2)]).unwrap();
     assert!(icon.width <= 40.0 && icon.height <= 40.0);
     assert!(icon.x >= tray.x && icon.y >= tray.y);
@@ -295,10 +289,14 @@ fn the_minimized_tray_is_icon_only_in_the_lower_left_of_the_selected_card() {
                 && bounds.y + bounds.height <= tray.y + tray.height
                 && clip.is_some()
     )));
-    // No heading, no app id or window title subtitles, no empty-shelf note.
+    assert!(
+        app.scene
+            .bounds(ElementId(0x100_0000_0000 + 2 * 32 + 4))
+            .is_some()
+    );
+    // Window titles remain on hover instead of cluttering the shelf.
     for command in &list.commands {
         if let knave_ui::DisplayCommand::Text { text, .. } = command {
-            assert!(!text.contains("Minimized"), "{text:?}");
             assert!(!text.contains("Editor"), "{text:?}");
         }
     }
@@ -311,10 +309,14 @@ fn tray_icons_name_the_exact_window_on_hover() {
         [r.x + r.width / 2.0, r.y + r.height / 2.0]
     };
     for id in 2..=6 {
-        app.input(Input::PointerMove(point(
-            &app,
-            app.window_ids[&WindowId(id)],
-        )));
+        let point = point(&app, app.window_ids[&WindowId(id)]);
+        assert_eq!(
+            app.scene.hit_test(point),
+            Some(app.window_ids[&WindowId(id)]),
+            "point {point:?}, bounds {:?}",
+            app.scene.bounds(app.window_ids[&WindowId(id)])
+        );
+        app.input(Input::PointerMove(point));
         app.frame([1200.0, 800.0], &mut Metrics);
         // Same-application windows are still told apart.
         assert!(
@@ -773,7 +775,7 @@ fn clicking_a_result_launches_it_and_failure_keeps_overview_open() {
 }
 
 #[test]
-fn dock_keeps_pins_in_order_and_adds_only_unpinned_apps_from_the_active_workspace() {
+fn dock_places_running_apps_before_pins_with_a_divider() {
     let app = dock_app();
     assert!(
         app.scene
@@ -797,30 +799,82 @@ fn dock_keeps_pins_in_order_and_adds_only_unpinned_apps_from_the_active_workspac
     );
     assert!(matches!(
         app.targets.get(&ElementId(DOCK_ELEMENT_ID_BASE + 1)),
+        Some(Target::DockWindow(WindowId(15)))
+    ));
+    assert!(matches!(
+        app.targets.get(&ElementId(DOCK_ELEMENT_ID_BASE + 2)),
         Some(Target::App(index))
             if matches!(&app.apps, Apps::Ready(catalog) if catalog.get(*index).is_some_and(|app| app.id == "tool01.desktop"))
     ));
     assert!(matches!(
-        app.targets.get(&ElementId(DOCK_ELEMENT_ID_BASE + 2)),
+        app.targets.get(&ElementId(DOCK_ELEMENT_ID_BASE + 3)),
         Some(Target::DockWindow(WindowId(1)))
     ));
-    assert!(matches!(
-        app.targets.get(&ElementId(DOCK_ELEMENT_ID_BASE + 3)),
-        Some(Target::DockWindow(WindowId(15)))
-    ));
+    assert!(
+        app.scene
+            .bounds(ElementId(DOCK_ELEMENT_ID_BASE + 0x5000))
+            .is_some()
+    );
+}
+
+#[test]
+fn dock_shows_pins_while_the_application_catalog_is_unavailable() {
+    let mut app = Overview::new();
+    app.workspace = Some(WorkspaceId(1));
+    app.pinned_apps = vec!["kitty.desktop".into()];
+    app.frame([1200.0, 800.0], &mut Metrics);
+
+    assert!(
+        app.scene
+            .bounds(ElementId(DOCK_ELEMENT_ID_BASE + 1))
+            .is_some()
+    );
+    assert!(matches!(app.apps, Apps::Unloaded));
+}
+
+#[test]
+fn dock_loads_no_display_window_icon_without_listing_it_in_search() {
+    let root = apps_root();
+    let icon = root.join("no-display.png");
+    std::fs::write(&icon, png_bytes([180, 40, 190, 255])).unwrap();
+    let apps = root.join("applications");
+    std::fs::write(
+        apps.join("com.t3tools.T3Code.desktop"),
+        format!(
+            "[Desktop Entry]\nType=Application\nName=T3 Code\nExec=t3code\nIcon={}\nNoDisplay=true\n",
+            icon.display()
+        ),
+    )
+    .unwrap();
+    let catalog = knave_apps::Catalog::load_with(&knave_apps::Environment {
+        data_dirs: vec![root],
+        ..Default::default()
+    })
+    .unwrap();
+    assert!(catalog.search("T3", 10).is_empty());
+
+    let mut desktop = snapshot();
+    desktop.windows.retain(|window| window.id == WindowId(1));
+    desktop.windows[0].app_id = "com.t3tools.T3Code".into();
+    let mut app = Overview::new()
+        .with_catalog(catalog)
+        .with_icon_lookup(icon_lookup(true));
+    app.desktop_snapshot(&desktop);
+    settle(&mut app, [1200.0, 800.0]);
+    assert!(app.icons.get(icon.to_str().unwrap()).is_some());
 }
 
 #[test]
 fn dock_launches_idle_pins() {
     let mut app = dock_app();
-    click(&mut app, ElementId(DOCK_ELEMENT_ID_BASE + 1));
+    click(&mut app, ElementId(DOCK_ELEMENT_ID_BASE + 2));
     assert_eq!(spawned(&mut app), Some(vec!["tool01".into()]));
 }
 
 #[test]
 fn dock_restores_running_minimized_apps() {
     let mut app = dock_app();
-    click(&mut app, ElementId(DOCK_ELEMENT_ID_BASE + 3));
+    click(&mut app, ElementId(DOCK_ELEMENT_ID_BASE + 1));
     assert!(matches!(
         app.take_request(),
         Some(HostRequest::Desktop(DesktopCommand::RestoreWindow {
@@ -1746,17 +1800,19 @@ fn quick_settings_hides_overview_before_transferring_focus() {
 }
 
 #[test]
-fn the_workspace_stage_keeps_a_compact_band_under_the_strip() {
+fn the_workspace_stage_reserves_space_for_the_minimized_shelf() {
     let mut app = app();
     app.frame([1200.0, 800.0], &mut Metrics);
-    // The reduced stage margins leave more room for the preview.
+    // The shelf occupies a reserved band below a substantial preview.
     let search = app.scene.bounds(SEARCH).unwrap();
     let card = app
         .scene
         .bounds(ElementId(0x100_0000_0000 + 2 * 32))
         .unwrap();
     assert!(search.y >= STATUS_BAR_HEIGHT);
+    let shelf = app.scene.bounds(tray_id(2)).unwrap();
     assert!(card.height >= 400.0);
+    assert!(shelf.y + shelf.height <= 800.0 - STATUS_BAR_HEIGHT);
     // The overview no longer renders its redundant workspace dot row.
     assert!(app.scene.bounds(ElementId(0x200_0000_0000 + 2)).is_none());
 }

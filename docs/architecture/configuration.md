@@ -232,10 +232,10 @@ pinned_apps = ["org.gnome.Nautilus.desktop", "firefox.desktop"]
 ```
 
 `pinned_apps` is an ordered list of installed freedesktop desktop-file IDs. The
-Overview dock shows these first, followed by apps with windows on the active
-workspace. Clicking a running app focuses or restores one of its windows;
-clicking a pinned app without a window launches it. The setting is read when
-the Overview service starts, so restart the session after changing it.
+Overview dock shows active-workspace apps on the left and these pins, in order,
+on the right of a divider. Clicking a running app focuses or restores one of its windows;
+clicking a pinned app without a window launches it. `knave dispatch reload` refreshes
+the running Overview dock after the configuration has been validated.
 
 ## Desktop theme
 

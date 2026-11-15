@@ -79,7 +79,7 @@ impl Worker {
             let catalog = catalog.get_or_insert_with(|| Catalog::load().ok());
             let icon = catalog
                 .as_ref()
-                .and_then(|catalog| app_icon(catalog, app_id));
+                .and_then(|catalog| catalog.running_icon(app_id).map(str::to_owned));
             let lookup = lookup.get_or_insert_with(IconLookup::from_process);
             icon_candidates(icon.as_deref())
                 .iter()
@@ -205,18 +205,6 @@ fn load(lookup: &mut IconLookup, name: &str) -> Option<UiImage> {
             None
         }
     }
-}
-
-fn app_icon(catalog: &Catalog, app_id: &str) -> Option<String> {
-    let id = if app_id.ends_with(".desktop") {
-        app_id.to_owned()
-    } else {
-        format!("{app_id}.desktop")
-    };
-    (0..catalog.len())
-        .filter_map(|index| catalog.get(index))
-        .find(|app| app.id == id)
-        .and_then(|app| app.icon.clone())
 }
 
 fn icon_candidates(name: Option<&str>) -> Vec<String> {

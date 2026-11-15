@@ -1,6 +1,7 @@
 //! Workspace-first overview with a compact minimized-window icon tray.
 pub(crate) mod icons;
 pub(crate) mod loader;
+mod pins_reload;
 mod view;
 mod watch;
 use knave_apps::{Catalog, Environment};
@@ -73,6 +74,7 @@ pub struct Overview {
     lookup: Option<IconLookup>,
     catalog_env: Option<Environment>,
     pinned_apps: Vec<String>,
+    pins_reload: Option<pins_reload::PinsReload>,
     waker: Option<knave_wayland::Waker>,
     /// Enter arrived while the catalog was still loading.
     launch_when_ready: bool,
@@ -148,6 +150,7 @@ impl Overview {
             lookup: None,
             catalog_env: None,
             pinned_apps: Vec::new(),
+            pins_reload: None,
             waker: None,
             launch_when_ready: false,
             page: 0,
@@ -184,11 +187,28 @@ impl Overview {
     /// Desktop-file IDs shown before apps running in the active workspace.
     pub fn with_pinned_apps(mut self, pinned_apps: Vec<String>) -> Self {
         self.pinned_apps = pinned_apps;
+        if !self.pinned_apps.is_empty() {
+            self.ensure_catalog();
+        }
         self
     }
     /// True while the worker still owes the UI a catalog or icons.
     pub fn is_loading(&self) -> bool {
         matches!(self.apps, Apps::Loading) || self.icons.is_loading()
+    }
+    fn absorb_pins(&mut self) {
+        if let Some(pins) = self
+            .pins_reload
+            .as_ref()
+            .and_then(pins_reload::PinsReload::take)
+        {
+            self.pinned_apps = pins;
+            self.dock_page = 0;
+            if !self.pinned_apps.is_empty() {
+                self.ensure_catalog();
+            }
+            self.dirty = true;
+        }
     }
     pub fn browsed_workspace(&self) -> Option<WorkspaceId> {
         self.workspace
@@ -797,10 +817,15 @@ impl Application for Overview {
     fn needs_frame(&self) -> bool {
         self.dirty
             || self.scene.needs_frame()
+            || self
+                .pins_reload
+                .as_ref()
+                .is_some_and(|worker| worker.has_update())
             || self.loader.as_ref().is_some_and(Loader::has_results)
     }
     fn set_waker(&mut self, waker: knave_wayland::Waker) {
-        self.waker = Some(waker);
+        self.waker = Some(waker.clone());
+        self.pins_reload = Some(pins_reload::PinsReload::start(waker));
     }
     fn input(&mut self, event: Input) {
         if let Input::Scroll { position, delta } = &event
@@ -899,6 +924,7 @@ impl Application for Overview {
         }
     }
     fn frame(&mut self, size: [f32; 2], text: &mut dyn TextMeasurer) -> &DisplayList {
+        self.absorb_pins();
         self.absorb();
         if size != self.size {
             self.size = size;

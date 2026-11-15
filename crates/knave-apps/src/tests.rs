@@ -54,7 +54,7 @@ fn only_visible_graphical_applications_are_listed() {
     );
     d.write(
         "applications/hidden.desktop",
-        &desktop("Hid", "h", "NoDisplay=true\n"),
+        &desktop("Hid", "h", "NoDisplay=true\nIcon=hidden-icon\n"),
     );
     d.write(
         "applications/gone.desktop",
@@ -87,6 +87,59 @@ fn only_visible_graphical_applications_are_listed() {
     assert_eq!(catalog.len(), 2);
     assert_eq!(catalog.get(0).unwrap().id, "a.desktop");
     assert_eq!(catalog.get(0).unwrap().icon, None);
+    assert_eq!(catalog.running_icon("hidden.desktop"), Some("hidden-icon"));
+    assert_eq!(catalog.running_icon("hidden"), Some("hidden-icon"));
+    assert_eq!(catalog.running_icon("Hid"), Some("hidden-icon"));
+    assert_eq!(catalog.running_icon("gone.desktop"), None);
+}
+
+#[test]
+fn exact_running_id_wins_over_visible_name_and_missing_icon_stays_missing() {
+    let d = Dir::new();
+    d.write(
+        "applications/visible.desktop",
+        &desktop("hidden", "visible", "Icon=visible-icon\n"),
+    );
+    d.write(
+        "applications/hidden.desktop",
+        &desktop("Hidden", "hidden", "NoDisplay=true\nIcon=hidden-icon\n"),
+    );
+    d.write(
+        "applications/visible-no-icon.desktop",
+        &desktop("no-icon", "visible", "Icon=visible-icon\n"),
+    );
+    d.write(
+        "applications/no-icon.desktop",
+        &desktop("Other", "other", "NoDisplay=true\n"),
+    );
+    let catalog = Catalog::load_with(&env(&[&d])).unwrap();
+    assert_eq!(catalog.running_icon("hidden.desktop"), Some("hidden-icon"));
+    assert_eq!(catalog.running_icon("hidden"), Some("hidden-icon"));
+    assert_eq!(catalog.running_icon("no-icon.desktop"), None);
+}
+
+#[test]
+fn launcher_hidden_icon_metadata_obeys_catalog_memory_limit() {
+    let d = Dir::new();
+    d.write(
+        "applications/a.desktop",
+        &desktop("A", "a", "NoDisplay=true\nIcon=a-icon\n"),
+    );
+    d.write(
+        "applications/b.desktop",
+        &desktop("B", "b", "NoDisplay=true\nIcon=b-icon\n"),
+    );
+    let catalog = Catalog::load_with(&Environment {
+        limits: Limits {
+            entries: 100,
+            apps: 1,
+        },
+        ..env(&[&d])
+    })
+    .unwrap();
+    assert!(catalog.truncated());
+    assert_eq!(catalog.running_icon("a.desktop"), Some("a-icon"));
+    assert!(catalog.running_icon("b.desktop").is_none());
 }
 
 #[test]
@@ -107,6 +160,22 @@ fn earlier_directories_override_and_can_delete_later_entries() {
     assert_eq!(listed, ["System Z"]);
     assert_eq!(names(&catalog, "user"), ["User X"]);
     assert_eq!(catalog.len(), 2);
+}
+
+#[test]
+fn hidden_tombstone_masks_running_icon_from_lower_priority_directory() {
+    let user = Dir::new();
+    let system = Dir::new();
+    user.write(
+        "applications/x.desktop",
+        &desktop("X", "x", "Hidden=true\nNoDisplay=true\nIcon=user-icon\n"),
+    );
+    system.write(
+        "applications/x.desktop",
+        &desktop("X", "x", "NoDisplay=true\nIcon=system-icon\n"),
+    );
+    let catalog = Catalog::load_with(&env(&[&user, &system])).unwrap();
+    assert!(catalog.running_icon("x.desktop").is_none());
 }
 
 #[test]

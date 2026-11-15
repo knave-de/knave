@@ -10,6 +10,11 @@ button.overview-dock-app {
     border: 1px solid transparent;
     border-radius: 12px;
 }
+button.overview-dock-app-idle,
+button.overview-dock-app-idle:hover,
+button.overview-dock-app-idle:focus {
+    box-shadow: none;
+}
 button.overview-dock-app:hover,
 button.overview-dock-app:focus {
     background-color: var(--surface-selected);
@@ -30,6 +35,22 @@ button.overview-dock-app:focus {
     border: 2px solid var(--accent);
     border-radius: 8px;
     margin: 0;
+}
+.overview-tray {
+    background-color: transparent;
+}
+.overview-tray-divider {
+    background-color: var(--border-strong);
+}
+button.overview-window-icon {
+    background-color: var(--surface-raised);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+}
+button.overview-window-icon:hover,
+button.overview-window-icon:focus {
+    background-color: var(--surface-selected);
+    border-color: var(--border-strong);
 }
 .overview-card-idle {
     background-color: transparent;
