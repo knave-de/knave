@@ -45,7 +45,10 @@ excluded. An overlapping native popup temporarily displaces shared controls.
 Knave owns the additive typed rule field, parser, writer, and matching semantics;
 Villain owns rendering and input. Shared config consumers rebuild together.
 There is no schema version, wire/API change, data migration, or package bump.
-Remove the rules and GTK adapter fragments together to roll back. No development
+To roll back, exit the Knave session to release its button-layout lock, then
+remove the rules and GTK adapter fragments together and start the prior build.
+Removing only rules/styles during an active policy session does not restore
+application buttons. No development
 artifacts are installed into the contributor's regular session.
 
 ## Theme and resource behavior

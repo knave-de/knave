@@ -25,19 +25,16 @@ pub(super) struct Policy {
 
 impl Policy {
     pub(super) fn start(runtime: &Path) -> Result<Self, SessionError> {
-        let inherited = match env::var_os("DCONF_PROFILE") {
-            Some(path) => {
-                let path = PathBuf::from(path);
-                Some(if path.is_absolute() {
-                    path
-                } else {
-                    Path::new("/etc/dconf/profile").join(path)
-                })
-            }
-            None => Some(PathBuf::from("/etc/dconf/profile/user")),
-        };
-        let base = read_profile(inherited.as_deref(), env::var_os("DCONF_PROFILE").is_some())
-            .map_err(|source| error("read inherited profile", source))?;
+        let data_dirs = env::var_os("XDG_DATA_DIRS")
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "/usr/local/share:/usr/share".into());
+        let base = inherited_profile(
+            env::var_os("DCONF_PROFILE").as_deref(),
+            runtime,
+            Path::new("/etc/dconf/profile"),
+            &env::split_paths(&data_dirs).collect::<Vec<_>>(),
+        )
+        .map_err(|source| error("read inherited profile", source))?;
         Self::create(runtime, &base, Path::new("dconf"))
     }
 
@@ -72,13 +69,13 @@ impl Policy {
         compile(compiler, &database, &source)?;
         let database_name = database
             .to_str()
-            .filter(|value| !value.contains(['\n', '\r']))
+            .filter(|value| !value.contains(['\n', '\r', '#']))
             .ok_or_else(|| {
                 error(
                     "write profile",
                     io::Error::new(
                         io::ErrorKind::InvalidInput,
-                        "runtime path must be UTF-8 without newlines",
+                        "runtime path must be UTF-8 without newlines or #",
                     ),
                 )
             })?;
@@ -110,6 +107,45 @@ pub(super) fn configure(command: &mut Command, profile: Option<&Path>) {
             .env("DCONF_PROFILE", profile)
             .env("GSETTINGS_BACKEND", "dconf")
             .env("KNAVE_GTK_SETTINGS_PROFILE", profile);
+    }
+}
+
+fn inherited_profile(
+    name: Option<&std::ffi::OsStr>,
+    runtime: &Path,
+    system: &Path,
+    data_dirs: &[PathBuf],
+) -> io::Result<String> {
+    if let Some(name) = name.filter(|name| Path::new(name).is_absolute()) {
+        return read_profile(Some(Path::new(name)), true);
+    }
+    if name.is_none() {
+        match read_profile(Some(&runtime.join("dconf/profile")), true) {
+            Ok(profile) => return Ok(profile),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+    }
+    let profile_name = name.unwrap_or_else(|| std::ffi::OsStr::new("user"));
+    let paths = std::iter::once(system.join(profile_name)).chain(
+        data_dirs
+            .iter()
+            .map(|data| data.join("dconf/profile").join(profile_name)),
+    );
+    for path in paths {
+        match read_profile(Some(&path), true) {
+            Ok(profile) => return Ok(profile),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+    }
+    if name.is_none() {
+        Ok("user-db:user\n".into())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "named dconf profile was not found in /etc or XDG_DATA_DIRS",
+        ))
     }
 }
 
@@ -323,6 +359,54 @@ mod tests {
         drop(policy);
         assert!(!active_profile.exists());
         assert_eq!(fs::read_to_string(fallback).unwrap(), base);
+    }
+
+    #[test]
+    fn named_and_default_profiles_follow_dconf_search_order() {
+        let root = tempfile::tempdir().unwrap();
+        let system = root.path().join("etc");
+        let data = root.path().join("share");
+        let runtime = root.path().join("runtime");
+        fs::create_dir_all(&system).unwrap();
+        fs::create_dir_all(data.join("dconf/profile")).unwrap();
+        fs::create_dir_all(&runtime).unwrap();
+        let dirs = [data.clone()];
+        fs::write(data.join("dconf/profile/site"), "user-db:xdg\n").unwrap();
+        assert_eq!(
+            inherited_profile(Some(std::ffi::OsStr::new("site")), &runtime, &system, &dirs)
+                .unwrap(),
+            "user-db:xdg\n"
+        );
+        fs::write(system.join("site"), "user-db:etc\n").unwrap();
+        assert_eq!(
+            inherited_profile(Some(std::ffi::OsStr::new("site")), &runtime, &system, &dirs)
+                .unwrap(),
+            "user-db:etc\n"
+        );
+        assert_eq!(
+            inherited_profile(None, &runtime, &system, &dirs).unwrap(),
+            "user-db:user\n"
+        );
+        fs::write(data.join("dconf/profile/user"), "user-db:default\n").unwrap();
+        assert_eq!(
+            inherited_profile(None, &runtime, &system, &dirs).unwrap(),
+            "user-db:default\n"
+        );
+        fs::create_dir(runtime.join("dconf")).unwrap();
+        fs::write(runtime.join("dconf/profile"), "user-db:runtime\n").unwrap();
+        assert_eq!(
+            inherited_profile(None, &runtime, &system, &dirs).unwrap(),
+            "user-db:runtime\n"
+        );
+    }
+
+    #[test]
+    fn runtime_comment_delimiter_cannot_disable_the_lock() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = root.path().join("runtime#comment");
+        fs::create_dir(&runtime).unwrap();
+        assert!(Policy::create(&runtime, "user-db:user\n", Path::new("dconf")).is_err());
+        assert_eq!(fs::read_dir(runtime).unwrap().count(), 0);
     }
 
     #[test]

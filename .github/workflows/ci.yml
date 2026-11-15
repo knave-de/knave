@@ -20,6 +20,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
             dbus \
+            dconf-cli \
+            dconf-gsettings-backend \
+            gsettings-desktop-schemas \
+            libglib2.0-bin \
             libdrm-dev \
             libegl1-mesa-dev \
             libgbm-dev \
