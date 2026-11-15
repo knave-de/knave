@@ -11,8 +11,18 @@ use std::time::Instant;
 
 const SLOW_TITLEBAR_RASTER_US: u128 = 1_000;
 
+#[cfg(test)]
 fn bgra(rgba: [u8; 4]) -> [u8; 4] {
     [rgba[2], rgba[1], rgba[0], rgba[3]]
+}
+
+fn blend_pixel(pixel: &mut [u8], color: [u8; 4]) {
+    let alpha = u32::from(color[3]);
+    for (channel, value) in [(2, color[0]), (1, color[1]), (0, color[2])] {
+        pixel[channel] =
+            ((u32::from(value) * alpha + u32::from(pixel[channel]) * (255 - alpha)) / 255) as u8;
+    }
+    pixel[3] = (alpha + u32::from(pixel[3]) * (255 - alpha) / 255) as u8;
 }
 
 fn stroke_segment(pixels: &mut [u8], width: i32, color: [u8; 4], a: (f32, f32), b: (f32, f32)) {
@@ -82,7 +92,7 @@ fn paint_hover(pixels: &mut [u8], width: i32, index: u8, color: [u8; 4]) {
     for y in 5..29 {
         for x in (right - 23).max(0)..right.min(width) {
             let i = (y as usize * width as usize + x as usize) * 4;
-            pixels[i..i + 4].copy_from_slice(&bgra(color));
+            blend_pixel(&mut pixels[i..i + 4], color);
         }
     }
 }
@@ -191,7 +201,7 @@ impl Titlebars {
         let mut pixels = vec![0u8; width as usize * 34 * 4];
         for px in pixels.as_chunks_mut::<4>().0 {
             if !state.controls_only {
-                px.copy_from_slice(&bgra(bg));
+                blend_pixel(px, bg);
             }
         }
         if let Some(index) = state.hovered {
@@ -213,7 +223,7 @@ impl Titlebars {
             self.palette.foreground[0],
             self.palette.foreground[1],
             self.palette.foreground[2],
-            255,
+            self.palette.foreground[3],
         );
         text.draw(&mut self.fonts, &mut self.glyphs, color, |x, y, w, h, c| {
             let [r, g, b, a] = c.as_rgba();
@@ -224,12 +234,7 @@ impl Titlebars {
                         continue;
                     }
                     let i = (yy as usize * width as usize + xx as usize) * 4;
-                    let alpha = u32::from(a);
-                    for (n, v) in [(2, r), (1, g), (0, b)] {
-                        pixels[i + n] = ((u32::from(v) * alpha
-                            + u32::from(pixels[i + n]) * (255 - alpha))
-                            / 255) as u8;
-                    }
+                    blend_pixel(&mut pixels[i..i + 4], [r, g, b, a]);
                 }
             }
         });
@@ -498,6 +503,38 @@ mod tests {
         assert_eq!(
             super::bgra([0x12, 0x34, 0x56, 0x78]),
             [0x56, 0x34, 0x12, 0x78]
+        );
+    }
+
+    #[test]
+    fn translucent_close_hover_keeps_black_glyph_visible() {
+        let mut pixels = vec![0; 96 * 34 * 4];
+        super::paint_hover(&mut pixels, 96, 0, [0, 0, 0, 16]);
+        let before = pixels.clone();
+        super::stroke_path(
+            &mut pixels,
+            96,
+            [0, 0, 0, 255],
+            super::control_origin(96, 0),
+            &[(6.0, 6.0), (18.0, 18.0)],
+        );
+        assert!(
+            pixels
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .zip(before.as_chunks::<4>().0)
+                .any(|(glyph, hover)| glyph[3] > hover[3])
+        );
+        let mut opaque = [255; 4];
+        super::blend_pixel(&mut opaque, [0, 0, 0, 16]);
+        assert_eq!(opaque, [239, 239, 239, 255]);
+        assert!(
+            pixels
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|p| p[..3].iter().all(|c| *c <= p[3]))
         );
     }
 

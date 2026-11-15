@@ -61,9 +61,9 @@ impl DecorationPalette {
                 .background
                 .and_then(|background| background.fill)
                 .ok_or("decoration fill missing")?;
-            colors.push([fill.red, fill.green, fill.blue, 255]);
+            colors.push([fill.red, fill.green, fill.blue, fill.alpha]);
             let text = style.text.color;
-            foreground = [text.red, text.green, text.blue, 255];
+            foreground = [text.red, text.green, text.blue, text.alpha];
         }
         Ok(Self {
             background: colors[0],
@@ -100,6 +100,10 @@ mod tests {
         let custom =
             DecorationPalette::resolve(&appearance, 2, ":root { --text: #123456; }").unwrap();
         assert_eq!(custom.foreground, [0x12, 0x34, 0x56, 255]);
+        let translucent =
+            DecorationPalette::resolve(&appearance, 2, ":root { --danger-surface: #00000010; }")
+                .unwrap();
+        assert_eq!(translucent.close_hover, [0, 0, 0, 16]);
         appearance.contrast = ContrastPreference::High;
         appearance.chroma = ChromaPreference::Monochrome;
         let accessible = DecorationPalette::resolve(&appearance, 2, "").unwrap();
