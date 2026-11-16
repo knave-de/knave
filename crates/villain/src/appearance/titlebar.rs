@@ -16,6 +16,14 @@ fn bgra(rgba: [u8; 4]) -> [u8; 4] {
     [rgba[2], rgba[1], rgba[0], rgba[3]]
 }
 
+fn close_glyph_color(palette: DecorationPalette, hovered: Option<u8>) -> [u8; 4] {
+    if hovered == Some(0) {
+        palette.close_foreground
+    } else {
+        palette.foreground
+    }
+}
+
 fn blend_pixel(pixel: &mut [u8], color: [u8; 4]) {
     let alpha = u32::from(color[3]);
     for (channel, value) in [(2, color[0]), (1, color[1]), (0, color[2])] {
@@ -352,17 +360,18 @@ impl Titlebars {
                 ],
             );
         }
+        let close_glyph = close_glyph_color(self.palette, state.hovered);
         stroke_path(
             &mut pixels,
             width,
-            glyph,
+            close_glyph,
             center(crate::appearance::TitlebarControl::Close),
             &[(6.0, 6.0), (18.0, 18.0)],
         );
         stroke_path(
             &mut pixels,
             width,
-            glyph,
+            close_glyph,
             center(crate::appearance::TitlebarControl::Close),
             &[(6.0, 18.0), (18.0, 6.0)],
         );
@@ -507,14 +516,14 @@ mod tests {
     }
 
     #[test]
-    fn translucent_close_hover_keeps_black_glyph_visible() {
+    fn translucent_close_hover_keeps_on_danger_glyph_visible() {
         let mut pixels = vec![0; 96 * 34 * 4];
         super::paint_hover(&mut pixels, 96, 0, [0, 0, 0, 16]);
         let before = pixels.clone();
         super::stroke_path(
             &mut pixels,
             96,
-            [0, 0, 0, 255],
+            [255, 255, 255, 255],
             super::control_origin(96, 0),
             &[(6.0, 6.0), (18.0, 18.0)],
         );
@@ -536,6 +545,24 @@ mod tests {
                 .iter()
                 .all(|p| p[..3].iter().all(|c| *c <= p[3]))
         );
+    }
+
+    #[test]
+    fn close_hover_uses_on_danger_foreground() {
+        let palette = super::DecorationPalette {
+            foreground: [10, 20, 30, 255],
+            close_foreground: [255, 255, 255, 255],
+            ..super::DecorationPalette::default()
+        };
+        assert_eq!(
+            super::close_glyph_color(palette, Some(0)),
+            [255, 255, 255, 255]
+        );
+        assert_eq!(
+            super::close_glyph_color(palette, Some(1)),
+            [10, 20, 30, 255]
+        );
+        assert_eq!(super::close_glyph_color(palette, None), [10, 20, 30, 255]);
     }
 
     #[test]

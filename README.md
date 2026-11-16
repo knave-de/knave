@@ -54,6 +54,11 @@ Build and test it with:
     cargo clippy --workspace --all-targets -- -D warnings
     cargo build --workspace --release --locked
 
+This feature branch tests the paired sibling `../knave-ui` checkout through the
+Cargo `[patch]` entries in `Cargo.toml`; keep it on the matching visual-system
+branch. The toolkit revision is local until those linked changes are published.
+No build command installs binaries into the running desktop.
+
 ## Development workflow
 
 Isolate changes in a plain Git worktree; the source checkout stays untouched:

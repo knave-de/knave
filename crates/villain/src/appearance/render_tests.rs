@@ -30,6 +30,24 @@ fn adjacent_radii_fit_small_windows_proportionally() {
     );
     assert_eq!(r, [40.0, 20.0, 5.0, 10.0]);
 }
+
+#[test]
+fn focused_outline_adds_one_pixel_offset_and_two_pixel_edge() {
+    let body = Rectangle::new((10, 20).into(), (80, 40).into());
+    let (outline, radii, widths) = focus_outline_geometry(body, [3.0; 4]);
+    assert_eq!(outline, Rectangle::new((7, 17).into(), (86, 46).into()));
+    assert_eq!(radii, [6.0; 4]);
+    assert_eq!(
+        widths,
+        Edges {
+            top: 2,
+            right: 2,
+            bottom: 2,
+            left: 2,
+        }
+    );
+}
+
 #[test]
 #[ignore = "requires EGL_MESA_platform_surfaceless and a GLES renderer"]
 fn gpu_pixels_prove_borders_rounding_opacity_directional_shadows_and_blur() {

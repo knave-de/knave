@@ -2,13 +2,14 @@
 .overview-error { color: var(--danger); }
 .overview-dock {
     background-color: var(--surface-raised);
-    border: 1px solid var(--border-strong);
-    border-radius: 18px;
+    border: 1px solid var(--edge-control);
+    border-radius: 12px;
+    box-shadow: var(--shadow-overview);
 }
 button.overview-dock-app {
     background-color: transparent;
     border: 1px solid transparent;
-    border-radius: 12px;
+    border-radius: 8px;
 }
 button.overview-dock-app-idle,
 button.overview-dock-app-idle:hover,
@@ -31,9 +32,11 @@ button.overview-dock-app:focus {
     text-align: center;
 }
 .overview-card-selected {
+    /* Villain renders the real preview above this transparent Shell surface. */
     background-color: transparent;
-    border: 2px solid var(--accent);
-    border-radius: 8px;
+    border: 1px solid var(--edge-panel);
+    border-radius: 12px;
+    box-shadow: var(--shadow-overview);
     margin: 0;
 }
 .overview-tray {
@@ -54,15 +57,31 @@ button.overview-window-icon:focus {
 }
 .overview-card-idle {
     background-color: transparent;
-    border: 1px solid var(--border-strong);
-    border-radius: 8px;
+    border: 1px solid var(--edge-panel);
+    border-radius: 12px;
     margin: 0;
 }
 .overview-workspace-strip {
     background-color: transparent;
 }
 .overview-workspace-number {
-    color: var(--text-secondary);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 24px;
+    font-weight: 600;
+    text-align: center;
+}
+.overview-workspace-badge {
+    background-color: var(--surface-raised);
+    border: 1px solid var(--edge-panel);
+    border-radius: 4px;
+}
+.overview-card-selected .overview-workspace-badge {
+    background-color: var(--primary);
+    border-color: transparent;
+}
+.overview-card-selected .overview-workspace-number {
+    color: var(--on-primary);
 }
 .overview-workspace-indicator-rail {
     background-color: var(--surface-raised);
@@ -82,4 +101,58 @@ button.ghost.overview-workspace-dot-empty {
     background-color: transparent;
     border: 2px solid var(--text-secondary);
     border-radius: 8px;
+}
+
+/* App search results form one inset list with a pinned paging footer. */
+.overview-results {
+    background-color: var(--shell-panel-surface);
+    border: 1px solid var(--edge-panel);
+    border-radius: 8px;
+    box-shadow: var(--shadow-panel);
+}
+.catalog-heading {
+    background-color: var(--shell-header-surface);
+    border-bottom: 1px solid var(--edge-control);
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+}
+.catalog-title {
+    color: var(--text);
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+}
+.catalog-results-inset {
+    background-color: var(--shell-card-surface);
+    border-radius: 3px;
+}
+.overview-results button.overview-control {
+    background-color: transparent;
+    border: 0px solid transparent;
+    border-bottom: 1px solid var(--edge-control);
+    border-radius: 0;
+}
+.overview-results button.overview-control:hover,
+.overview-results button.overview-control:focus {
+    background-color: var(--surface-hover);
+}
+.overview-results button.overview-control:focus {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+}
+.overview-results .catalog-footer {
+    background-color: var(--shell-header-surface);
+    border-top: 1px solid var(--edge-control);
+}
+.catalog-footer .overview-muted {
+    font-size: 11px;
+}
+.overview-results button.catalog-footer-control {
+    background-color: var(--surface);
+    border: 1px solid var(--edge-control);
+    border-radius: 3px;
+}
+.overview-results .catalog-footer {
+    border-bottom-left-radius: 7px;
+    border-bottom-right-radius: 7px;
 }

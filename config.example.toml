@@ -189,44 +189,35 @@ start_overview_service = true
 # Example: pinned_apps = ["org.gnome.Nautilus.desktop", "firefox.desktop"]
 pinned_apps = []
 
-# Window appearance is optional; omitted values preserve the prior visuals.
-# Full fields and visible-effect example: docs/architecture/window-appearance.md
+# Per-edge gap contributions are 6 px, yielding 12 px tiled gaps and perimeter.
+# Borders default to 1 px; corners default to 3 px.
+# Focus colors/effects follow [appearance.theme] unless explicitly configured.
 [compositor.appearance.gaps.outer]
-top = 0
-right = 0
-bottom = 0
-left = 0
+top = 6
+right = 6
+bottom = 6
+left = 6
 [compositor.appearance.gaps.inner]
-top = 0
-right = 0
-bottom = 0
-left = 0
+top = 6
+right = 6
+bottom = 6
+left = 6
 [compositor.appearance.border.width]
-top = 0
-right = 0
-bottom = 0
-left = 0
+top = 1
+right = 1
+bottom = 1
+left = 1
 [compositor.appearance.border.radius]
-top_left = 0
-top_right = 0
-bottom_right = 0
-bottom_left = 0
+top_left = 3
+top_right = 3
+bottom_right = 3
+bottom_left = 3
 # Focused is the active window; unfocused covers inactive windows.
-# Set each profile's opacity and edge colors independently.
+# Set opacity and optional explicit edge colors independently.
 [compositor.appearance.focused]
 opacity = 100
-[compositor.appearance.focused.border_color]
-top = "#8aadffff"
-right = "#8aadffff"
-bottom = "#8aadffff"
-left = "#8aadffff"
 [compositor.appearance.unfocused]
-opacity = 85
-[compositor.appearance.unfocused.border_color]
-top = "#505868ff"
-right = "#505868ff"
-bottom = "#505868ff"
-left = "#505868ff"
+opacity = 100
 [compositor.appearance.views.maximized]
 gaps = false
 borders = false

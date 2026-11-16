@@ -91,8 +91,8 @@ impl Overview {
         let pad = (width * 0.045).clamp(12.0, 64.0);
         let button_width = 154.0f32.min((width - pad * 2.0).max(1.0) * 0.38);
         let gap = 10.0;
-        let search_width = (width - pad * 2.0 - button_width - gap).clamp(1.0, 760.0);
-        let group_width = search_width + gap + button_width;
+        let group_width = (width - pad * 2.0).min(720.0);
+        let search_width = (group_width - button_width - gap).max(1.0);
         let search_rect = Rect::new(
             (width - group_width) / 2.0,
             STATUS_BAR_HEIGHT + 28.0f32.min(height * 0.04),
@@ -182,14 +182,20 @@ impl Overview {
                     id,
                     Some(viewport_id),
                 );
+                let badge = placed(
+                    Element::new(id + 3, Widget::Panel).class("overview-workspace-badge"),
+                    Rect::new(7.0, (strip_h - 33.0).max(0.0), 24.0, 24.0),
+                );
+                card.children.push(badge);
                 let mut label = text(
                     id + 2,
                     workspace.0.to_string(),
-                    Rect::new(0.0, 0.0, item_w, strip_h),
-                    12.0,
+                    Rect::new(7.0, (strip_h - 33.0).max(0.0), 24.0, 24.0),
+                    14.0,
                     "overview-workspace-number",
                 );
                 label.style.text.align = TextAlign::Center;
+                label.style.text.weight = 600;
                 card.children.push(label);
                 strip.children.push(card);
             }
@@ -831,42 +837,77 @@ impl Overview {
                 (index, name, description, self.icons.get(&icon).cloned())
             })
             .collect();
+        const CATALOG_HEADER: f32 = 62.0;
+        const CATALOG_FOOTER: f32 = 48.0;
+        let panel_height = if rows.is_empty() {
+            CATALOG_HEADER + 48.0 + CATALOG_FOOTER
+        } else {
+            CATALOG_HEADER + rows.len() as f32 * 60.0 + CATALOG_FOOTER
+        };
         let mut panel = panel(
             40,
             Rect::new(
                 search.x,
                 search.y + search.height + 12.0,
                 search.width,
-                66.0 + rows.len() as f32 * 60.0,
+                panel_height,
             ),
         );
         panel.classes.push("overview-results".into());
-        if matches!(self.apps, Apps::Ready(_)) && !matches.is_empty() {
-            panel.children.push(text(
-                41,
-                match matches.len() {
-                    1 => "1 application".to_owned(),
-                    n => format!("{n} applications"),
-                },
-                Rect::new(18.0, 10.0, (search.width - 150.0).max(0.0), 22.0),
-                13.0,
-                "overview-muted",
+        panel.layout.clip = ClipMode::Bounds;
+        let mut heading = placed(
+            Element::new(47, Widget::Panel).class("catalog-heading"),
+            Rect::new(-1.0, -1.0, search.width + 2.0, CATALOG_HEADER),
+        );
+        let title = if self.query.text().is_empty() {
+            "Applications"
+        } else {
+            "Search results"
+        };
+        heading.children.push(text(
+            48,
+            title,
+            Rect::new(16.0, 8.0, (search.width - 32.0).max(0.0), 20.0),
+            14.0,
+            "catalog-title",
+        ));
+        let count = match matches.len() {
+            1 => "1 application".to_owned(),
+            n => format!("{n} applications"),
+        };
+        heading.children.push(text(
+            49,
+            count,
+            Rect::new(16.0, 32.0, (search.width - 32.0).max(0.0), 16.0),
+            11.0,
+            "overview-muted",
+        ));
+        panel.children.push(heading);
+        if !rows.is_empty() {
+            panel.children.push(placed(
+                Element::new(45, Widget::Panel).class("catalog-results-inset"),
+                Rect::new(
+                    7.0,
+                    CATALOG_HEADER - 1.0,
+                    (search.width - 16.0).max(0.0),
+                    (rows.len() as f32 * 60.0).max(1.0),
+                ),
             ));
         }
         for (n, (index, name, description, image)) in rows.into_iter().enumerate() {
             let id = app_element(index);
             let row = Rect::new(
-                12.0,
-                38.0 + n as f32 * 60.0,
-                (search.width - 24.0).max(0.0),
-                54.0,
+                7.0,
+                CATALOG_HEADER - 1.0 + n as f32 * 60.0,
+                (search.width - 16.0).max(0.0),
+                60.0,
             );
             let mut result = control(id.0, String::new(), row);
             let pad = Insets {
-                top: 6.0,
+                top: 10.0,
                 right: 14.0,
-                bottom: 6.0,
-                left: 62.0,
+                bottom: 10.0,
+                left: 66.0,
             };
             result.layout = result.layout.with_padding(pad);
             result.layout.clip = ClipMode::Bounds;
@@ -886,7 +927,7 @@ impl Overview {
                             },
                         ),
                     ),
-                    Rect::new(14.0 - pad.left, 11.0 - pad.top, 32.0, 32.0),
+                    Rect::new(14.0 - pad.left, 10.0 - pad.top, 40.0, 40.0),
                 );
                 result.children.push(icon);
             }
@@ -894,10 +935,10 @@ impl Overview {
             let description_id = name_id + 1;
             let mut name_text = placed(
                 Element::new(name_id, Widget::Text(name)),
-                Rect::new(0.0, 0.0, (row.width - pad.left - pad.right).max(0.0), 21.0),
+                Rect::new(0.0, 0.0, (row.width - pad.left - pad.right).max(0.0), 18.0),
             );
-            name_text.style.text.font_size = 15.0;
-            name_text.style.text.line_height = 20.0;
+            name_text.style.text.font_size = 13.0;
+            name_text.style.text.line_height = 18.0;
             name_text.style.text.align = TextAlign::Start;
             name_text.style.text.weight = 600;
             result.children.push(name_text);
@@ -905,8 +946,8 @@ impl Overview {
                 let mut description_text = text(
                     description_id,
                     description,
-                    Rect::new(0.0, 21.0, (row.width - pad.left - pad.right).max(0.0), 18.0),
-                    12.0,
+                    Rect::new(0.0, 20.0, (row.width - pad.left - pad.right).max(0.0), 16.0),
+                    11.0,
                     "overview-muted",
                 );
                 description_text.style.text.align = TextAlign::Start;
@@ -924,26 +965,51 @@ impl Overview {
                     Apps::Unloaded | Apps::Loading => "Loading applications…",
                     Apps::Ready(_) => "No applications found",
                 },
-                Rect::new(18.0, 36.0, (search.width - 36.0).max(0.0), 24.0),
+                Rect::new(
+                    18.0,
+                    CATALOG_HEADER + 12.0,
+                    (search.width - 36.0).max(0.0),
+                    24.0,
+                ),
                 13.0,
                 "overview-muted",
             ));
         }
-        if matches.len() > page_size {
-            for (id, label, next, x) in [
-                (30, "‹", false, search.width - 86.0),
-                (31, "›", true, search.width - 48.0),
-            ] {
-                let mut b = control(id, label, Rect::new(x, 6.0, 32.0, 26.0));
-                b.layout.padding_edges = Some(Insets::symmetric(2.0, 10.0));
-                b.enabled = if next {
-                    start + page_size < matches.len()
-                } else {
-                    self.result_page > 0
-                };
-                self.targets.insert(ElementId(id), Target::Page(next));
-                panel.children.push(b);
-            }
+        let footer_y = (panel_height - CATALOG_FOOTER).max(0.0);
+        let footer = placed(
+            Element::new(43, Widget::Panel).class("catalog-footer"),
+            Rect::new(-1.0, footer_y - 1.0, search.width + 2.0, CATALOG_FOOTER),
+        );
+        panel.children.push(footer);
+        panel.children.push(text(
+            46,
+            "Choose an application to open",
+            Rect::new(16.0, footer_y + 14.0, (search.width - 152.0).max(0.0), 20.0),
+            11.0,
+            "overview-muted",
+        ));
+        let page_count = matches.len().div_ceil(page_size).max(1);
+        panel.children.push(text(
+            44,
+            format!("{} / {page_count}", self.result_page + 1),
+            Rect::new((search.width - 60.0).max(0.0), footer_y + 14.0, 28.0, 20.0),
+            11.0,
+            "overview-muted",
+        ));
+        for (id, label, next, x) in [
+            (30, "‹", false, search.width - 88.0),
+            (31, "›", true, search.width - 32.0),
+        ] {
+            let mut b = control(id, label, Rect::new(x, footer_y + 10.0, 28.0, 28.0));
+            b.classes.push("catalog-footer-control".into());
+            b.layout.padding_edges = Some(Insets::symmetric(2.0, 8.0));
+            b.enabled = if next {
+                start + page_size < matches.len()
+            } else {
+                self.result_page > 0
+            };
+            self.targets.insert(ElementId(id), Target::Page(next));
+            panel.children.push(b);
         }
         panel
     }

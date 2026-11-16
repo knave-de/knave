@@ -5,3 +5,48 @@
 .quick-settings-root {
     background-color: transparent;
 }
+
+/* Side panels use the same canvas, raised chrome, and inset content hierarchy. */
+.notifications-panel,
+.quick-settings-panel {
+    background-color: var(--shell-panel-surface);
+    border: 1px solid var(--edge-panel);
+    border-radius: 8px;
+    box-shadow: var(--shadow-panel);
+}
+.notifications-panel .notifications-heading,
+.quick-settings-panel .quick-settings-header,
+.notifications-footer {
+    background-color: var(--shell-header-surface);
+}
+.notifications-panel .notifications-heading,
+.quick-settings-panel .quick-settings-header {
+    border-bottom: 1px solid var(--edge-control);
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+}
+.notifications-footer {
+    border-top: 1px solid var(--edge-panel);
+    border-bottom-left-radius: 7px;
+    border-bottom-right-radius: 7px;
+}
+.notifications-close,
+.quick-settings-header-button {
+    background-color: var(--surface);
+    border: 1px solid var(--edge-control);
+    border-radius: 3px;
+}
+.notifications-toggle {
+    color: var(--primary);
+}
+.notifications-dnd,
+.notifications-card,
+.quick-settings-card,
+.quick-settings-device-link {
+    background-color: var(--shell-card-surface);
+    border: 1px solid var(--edge-control);
+}
+.notifications-list {
+    background-color: var(--shell-card-surface);
+    border-radius: 3px;
+}

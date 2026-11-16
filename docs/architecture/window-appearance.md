@@ -11,15 +11,17 @@ leave the entire running configuration unchanged.
 
 | Table | Independent fields | Default | Valid range |
 | --- | --- | --- | --- |
-| `gaps.outer` | `top`, `right`, `bottom`, `left` | 0 | 0–4096 |
-| `gaps.inner` | `top`, `right`, `bottom`, `left` | 0 | 0–4096 |
-| `border.width` | `top`, `right`, `bottom`, `left` | 0 | 0–128 |
-| `border.radius` | `top_left`, `top_right`, `bottom_right`, `bottom_left` | 0 | 0–4096 |
+| `gaps.outer` | `top`, `right`, `bottom`, `left` | 6 | 0–4096 |
+| `gaps.inner` | `top`, `right`, `bottom`, `left` | 6 | 0–4096 |
+| `border.width` | `top`, `right`, `bottom`, `left` | 1 | 0–128 |
+| `border.radius` | `top_left`, `top_right`, `bottom_right`, `bottom_left` | 3 | 0–4096 |
 
-Outer gaps inset the usable area after panel reservations. Each tiled window
-contributes its inner gaps on every edge: between two tiles the adjacent
-contributions add. At the workspace perimeter both the outer and the tile's
-inner contribution apply. Border widths reserve additional space outside client
+Gap values are per-edge contributions. Outer gaps inset the usable area after
+panel reservations. Each tiled window contributes its inner gaps on every edge:
+between two tiles the adjacent contributions add to 12 px. At the workspace
+perimeter the 6 px outer and 6 px tile inner contributions add to 12 px.
+Floating windows use outer gaps only, so their default clearance from the usable
+area is 6 px. Border widths reserve additional space outside client
 content, so increasing a border never covers application controls. One tiled
 window uses the same gap policy. Floating windows keep their saved client size
 and position, constrained inside the usable area, outer gaps and border allowance;
@@ -43,9 +45,9 @@ The `focused` and `unfocused` tables each define:
 | Field/table | Parameters | Default | Valid range |
 | --- | --- | --- | --- |
 | `opacity` | Window-content opacity | 100 | 0–100 |
-| `border_color` | `top`, `right`, `bottom`, `left` colors | `#8090b0ff` | RGBA color |
+| `border_color` | `top`, `right`, `bottom`, `left` colors | Theme-derived | RGBA color |
 | `blur` | `enabled`, `radius`, `passes` | false, 8, 1 | radius 0–64; passes 1–4 |
-| `shadows.top`, `.right`, `.bottom`, `.left` | Settings below | Disabled | Settings below |
+| `shadows.top`, `.right`, `.bottom`, `.left` | Settings below | Theme-derived when omitted | Settings below |
 
 A shadow side has `enabled` (false), `color` (`#00000060`), `blur_radius` (12,
 0–128), `spread` (0, −128–128), `offset_x` (0, −256–256), and `offset_y` (0,
@@ -54,6 +56,15 @@ nearest-edge sector outside the border contour; corner sectors meet diagonally.
 Its Gaussian falloff stops after four blur radii. Side colors contain their own
 opacity, independently of window-content opacity. Negative spread contracts the
 shadow source. Disabled sides contribute nothing.
+
+When no explicit focus border colors or focused shadow sides are configured,
+the active edge, inactive neutral edge, and focused shadow follow the selected desktop
+theme's color/light/dark and contrast policy. High contrast adds a 2 px
+`--text` outline offset 1 px around the focused window when that view enables
+borders, and disables the theme shadow. Explicit compositor edge colors and
+shadow tables take precedence over their theme-derived equivalents.
+Villain resolves these theme tokens when it loads configuration; run
+`knavectl reload` after changing a theme CSS file.
 
 Background blur samples only content below that window in stacking order, with
 padding for the blur footprint. It excludes the window itself, cursor and upper
@@ -85,8 +96,8 @@ Workspace previews and Overview panes use the same window appearance policy.
 ## Example
 
 Add these tables to an existing file; do not duplicate existing table headers.
-The example enables visible effects, while built-in defaults preserve the prior
-appearance. The equivalent unfocused shadow tables support every parameter too.
+The example overrides the theme-derived colors and enables an unfocused shadow.
+The equivalent unfocused shadow tables support every parameter too.
 
 ```toml
 [compositor.appearance.gaps.outer]

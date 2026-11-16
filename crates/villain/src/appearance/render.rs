@@ -81,6 +81,8 @@ struct SceneKey {
     layers: SceneLayers,
     size: Size<i32, Logical>,
     appearance: WindowAppearance,
+    theme_focused_shadows: Vec<knave_config::appearance::Shadow>,
+    theme_focused_outline: Option<knave_config::appearance::EdgeColors>,
     sources: Vec<SourceKey>,
     windows: Vec<(Geometry, bool, bool, bool, bool)>,
 }
@@ -157,6 +159,34 @@ fn log_slow_scene_total(path: &'static str, started: Option<Instant>, windows: u
 
 fn scene_render_scale(target_scale: f64, has_effects: bool) -> f64 {
     if has_effects { 1.0 } else { target_scale }
+}
+
+fn focus_outline(
+    program: &GlesPixelProgram,
+    body: Geometry,
+    radii: [f32; 4],
+    color: &knave_config::appearance::EdgeColors,
+) -> PixelShaderElement {
+    let (outline, outline_radii, widths) = focus_outline_geometry(body, radii);
+    border(program, outline, widths, outline_radii, color)
+}
+
+fn focus_outline_geometry(body: Geometry, radii: [f32; 4]) -> (Geometry, [f32; 4], Edges) {
+    const OFFSET: i32 = 1;
+    const WIDTH: i32 = 2;
+    let expansion = OFFSET + WIDTH;
+    let outline = Rectangle::new(
+        (body.loc.x - expansion, body.loc.y - expansion).into(),
+        (body.size.w + expansion * 2, body.size.h + expansion * 2).into(),
+    );
+    let outline_radii = radii.map(|radius| radius + expansion as f32);
+    let widths = Edges {
+        top: WIDTH as u16,
+        right: WIDTH as u16,
+        bottom: WIDTH as u16,
+        left: WIDTH as u16,
+    };
+    (outline, outline_radii, widths)
 }
 
 fn physical_window_crop(rect: Geometry, scale: f64) -> Rectangle<i32, Physical> {
@@ -317,7 +347,7 @@ impl EffectsRenderer {
         }
         let any_effect = windows
             .iter()
-            .any(|(_, _, fullscreen, maximized, tiled, _)| {
+            .any(|(window, _, fullscreen, maximized, tiled, _)| {
                 let a = &state.config.appearance;
                 let view = if *fullscreen {
                     ViewEffects::NONE
@@ -343,6 +373,13 @@ impl EffectsRenderer {
                                 .iter()
                                 .any(|s| s.enabled))
                     })
+                    || (view.shadows
+                        && !state.config.theme_focused_shadows.is_empty()
+                        && KeyboardFocus::for_window(window) == focused)
+                    || (view.borders
+                        && !*fullscreen
+                        && state.config.theme_focused_outline.is_some()
+                        && KeyboardFocus::for_window(window) == focused)
             });
         log_slow_scene_stage("workspace_layout", stage_started, window_count);
         // Effects are composed into a logical-size offscreen target. The fast
@@ -354,6 +391,8 @@ impl EffectsRenderer {
             layers,
             size,
             appearance: state.config.appearance.clone(),
+            theme_focused_shadows: state.config.theme_focused_shadows.clone(),
+            theme_focused_outline: state.config.theme_focused_outline.clone(),
             sources: Vec::new(),
             windows: Vec::new(),
         };
@@ -533,7 +572,8 @@ impl EffectsRenderer {
             } else {
                 appearance.views.floating
             };
-            let style = if KeyboardFocus::for_window(&window) == focused {
+            let is_focused = KeyboardFocus::for_window(&window) == focused;
+            let style = if is_focused {
                 &appearance.focused
             } else {
                 &appearance.unfocused
@@ -781,8 +821,33 @@ impl EffectsRenderer {
                         )));
                     }
                 }
+                if is_focused {
+                    for shadow in &state.config.theme_focused_shadows {
+                        for side in 0..4 {
+                            window_elements.push(EffectElement::Shape(shadow_element(
+                                shape_program,
+                                outer,
+                                radii,
+                                side,
+                                shadow,
+                            )));
+                        }
+                    }
+                }
             }
             window_elements.extend(elements);
+            if view.borders
+                && !fullscreen
+                && is_focused
+                && let Some(color) = &state.config.theme_focused_outline
+            {
+                window_elements.push(EffectElement::Shape(focus_outline(
+                    shape_program,
+                    outer,
+                    radii,
+                    color,
+                )));
+            }
             elements = window_elements;
         }
         unmanaged.extend(elements);

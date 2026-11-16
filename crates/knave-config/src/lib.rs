@@ -1142,10 +1142,36 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
         devices.push(table);
     }
     document["compositor"]["device"] = Item::ArrayOfTables(devices);
-    let appearance = toml::to_string(&config.compositor.appearance)
+    let defaults = WindowAppearance::default();
+    let mut appearance = toml::to_string(&config.compositor.appearance)
         .expect("validated appearance is serializable")
         .parse::<DocumentMut>()
         .expect("serialized appearance is TOML");
+    // Theme-derived window colors and focused shadows stay implicit during
+    // unrelated settings writes. Existing source tables remain untouched by
+    // the leaf merge, while nondefault values are still serialized.
+    for (profile, current, default) in [
+        (
+            "focused",
+            &config.compositor.appearance.focused,
+            &defaults.focused,
+        ),
+        (
+            "unfocused",
+            &config.compositor.appearance.unfocused,
+            &defaults.unfocused,
+        ),
+    ] {
+        let table = appearance[profile]
+            .as_table_mut()
+            .expect("serialized focus profile is a table");
+        if current.border_color == default.border_color {
+            table.remove("border_color");
+        }
+        if profile == "focused" && current.shadows == default.shadows {
+            table.remove("shadows");
+        }
+    }
     merge_known_table(
         &mut document["compositor"],
         "appearance",

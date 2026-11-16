@@ -919,22 +919,93 @@ fn results_are_applications_only_and_paginate() {
 }
 
 #[test]
-fn search_results_leave_room_for_the_overview_dock() {
-    let mut compact = app();
-    type_query(&mut compact, "tool");
-    compact.frame([1200.0, 700.0], &mut Metrics);
+fn catalog_uses_header_inset_rows_footer_and_disabled_page_bounds() {
+    let mut app = app();
+    type_query(&mut app, "tool");
+    app.frame([1200.0, 800.0], &mut Metrics);
 
-    let result_panel = compact.scene.bounds(ElementId(40)).unwrap();
-    let dock = compact
+    let panel = app.scene.bounds(ElementId(40)).unwrap();
+    let heading = app.scene.bounds(ElementId(47)).unwrap();
+    let title = app.scene.bounds(ElementId(48)).unwrap();
+    let count = app.scene.bounds(ElementId(49)).unwrap();
+    let list = app.scene.bounds(ElementId(45)).unwrap();
+    let first_row = app.scene.bounds(app_element(app.search()[0])).unwrap();
+    let footer = app.scene.bounds(ElementId(43)).unwrap();
+    assert_eq!(heading.y, panel.y);
+    assert_eq!(heading.height, 62.0);
+    assert_eq!(title.y, heading.y + 8.0);
+    assert_eq!(count.y, heading.y + 32.0);
+    assert_eq!(list.y, heading.y + heading.height);
+    assert_eq!(first_row.x, list.x);
+    assert_eq!(first_row.y, list.y);
+    assert_eq!(first_row.width, list.width);
+    assert_eq!(first_row.height, 60.0);
+    assert_eq!(footer.y, list.y + list.height);
+    assert_eq!(panel.y + panel.height, footer.y + 48.0);
+
+    let previous = app.scene.bounds(ElementId(30)).unwrap();
+    let page = app.scene.bounds(ElementId(44)).unwrap();
+    let next = app.scene.bounds(ElementId(31)).unwrap();
+    assert!(previous.x < page.x && page.x < next.x);
+    click(&mut app, ElementId(30));
+    assert_eq!(app.result_page, 0, "previous is disabled on the first page");
+    click(&mut app, ElementId(31));
+    app.frame([1200.0, 800.0], &mut Metrics);
+    assert_eq!(app.result_page, 1);
+    click(&mut app, ElementId(31));
+    assert_eq!(app.result_page, 1, "next is disabled on the last page");
+}
+
+#[test]
+fn overview_workspace_badge_is_opaque_and_uses_fourteen_pixel_text() {
+    let mut app = app();
+    app.frame([1200.0, 800.0], &mut Metrics);
+    let card = 0x100_0000_0000 + u64::from(WorkspaceId(2).0) * 512 + 2;
+    let badge = ElementId(card + 3);
+    let card_bounds = app.scene.bounds(ElementId(card)).unwrap();
+    let badge_bounds = app.scene.bounds(badge).unwrap();
+    assert_eq!(badge_bounds.width, 24.0);
+    assert_eq!(badge_bounds.height, 24.0);
+    assert_eq!(badge_bounds.x, card_bounds.x + 8.0);
+    assert_eq!(badge_bounds.y, card_bounds.y + card_bounds.height - 32.0);
+    let fill = app
         .scene
-        .bounds(ElementId(DOCK_ELEMENT_ID_BASE))
-        .unwrap();
-    assert!(
-        result_panel.y + result_panel.height <= dock.y,
-        "search results end at {}, overlapping dock starting at {}",
-        result_panel.y + result_panel.height,
-        dock.y
-    );
+        .computed_style(badge)
+        .and_then(|style| style.style.background)
+        .and_then(|paint| paint.fill);
+    assert_eq!(fill, app.scene.theme_color("--primary"));
+    let number = app
+        .scene
+        .computed_style(ElementId(card + 2))
+        .expect("workspace number style");
+    assert_eq!(number.style.text.font_size, 14.0);
+}
+
+#[test]
+fn search_results_leave_room_for_the_overview_dock() {
+    for height in [568.0, 700.0, 800.0] {
+        let mut compact = app();
+        type_query(&mut compact, "tool");
+        compact.frame([1200.0, height], &mut Metrics);
+
+        let result_panel = compact.scene.bounds(ElementId(40)).unwrap();
+        let footer = compact.scene.bounds(ElementId(43)).unwrap();
+        let dock = compact
+            .scene
+            .bounds(ElementId(DOCK_ELEMENT_ID_BASE))
+            .unwrap();
+        assert_eq!(
+            result_panel.y + result_panel.height,
+            footer.y + 48.0,
+            "footer must stay inside the catalog at {height}px"
+        );
+        assert!(
+            result_panel.y + result_panel.height <= dock.y,
+            "search results end at {}, overlapping dock starting at {} at {height}px",
+            result_panel.y + result_panel.height,
+            dock.y
+        );
+    }
 }
 #[test]
 fn disconnected_overview_clears_search_without_launching() {
@@ -1005,7 +1076,7 @@ fn rows_show_an_icon_and_keep_the_text_column_aligned() {
     let index = app.search()[0];
     let row = app.scene.bounds(app_element(index)).unwrap();
     let icon = app.scene.bounds(icon_element(index)).expect("icon element");
-    assert_eq!((icon.width, icon.height), (32.0, 32.0));
+    assert_eq!((icon.width, icon.height), (40.0, 40.0));
     assert!(icon.x >= row.x && icon.x + icon.width <= row.x + row.width);
     assert!(icon.y >= row.y && icon.y + icon.height <= row.y + row.height);
     // Clicking the icon activates its row.
@@ -1277,7 +1348,7 @@ fn overview_controls_follow_the_selected_toolkit_theme() {
         search_paint.fill,
         baseline.style.background.and_then(|paint| paint.fill)
     );
-    assert_eq!(search.outline.map(|outline| outline.width), Some(1.0));
+    assert_eq!(search.outline, baseline.outline);
     let selected_card = app
         .scene
         .computed_style(ElementId(0x100_0000_0000 + 2 * 32))

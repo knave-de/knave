@@ -111,6 +111,7 @@ impl Notifications {
         let height = self.size[1].max(1.0);
         let (gap, panel_width) = panel_geometry(width);
         let top = if height > 160.0 { 44.0 } else { 0.0 };
+        let content_inset = if height < 480.0 { 0.0 } else { 12.0 };
         let mut root = p.panel(0);
         root.layout.flow = Flow::Overlay;
         root.layout.height = Length::Fill;
@@ -127,12 +128,13 @@ impl Notifications {
                 Length::Auto
             },
             offset: [(width - panel_width - gap).max(0.0), top],
-            padding: 12.0,
-            gap: 8.0,
+            padding: 0.0,
+            gap: 0.0,
             ..Default::default()
         });
         if self.state.center_open {
             panel = panel.class("notifications-panel");
+            panel.layout.clip = ClipMode::Bounds;
             panel.component = Some(ComponentKind::Card);
             panel.style.background = None;
             let mut heading = p.panel(10).layout(Layout {
@@ -140,8 +142,10 @@ impl Notifications {
                 align: Align::Center,
                 height: Length::Auto,
                 gap: 8.0,
+                padding: 12.0,
                 ..Default::default()
             });
+            heading = heading.class("notifications-heading");
             let mut title = p.text(11, "Notifications".into(), false);
             title.layout.height = Length::Auto;
             title = title.class("notifications-title");
@@ -155,6 +159,7 @@ impl Notifications {
                 align: Align::Center,
                 gap: 10.0,
                 padding: 12.0,
+                margin: Insets::symmetric(8.0, content_inset),
                 ..Default::default()
             });
             dnd = dnd.class("notifications-dnd");
@@ -210,6 +215,7 @@ impl Notifications {
                     Align::Center
                 },
                 gap: 8.0,
+                padding_edges: Some(Insets::symmetric(4.0, content_inset)),
                 ..Default::default()
             });
             let mut recent = p.text(
@@ -230,19 +236,28 @@ impl Notifications {
             controls.children.push(clear);
             panel.children.push(controls);
             if !self.state.owned {
-                panel.children.push(p.text(13,
-                    "An external service delivers new notifications; saved Knave history is below.".into(),
+                let mut external = p.text(
+                    13,
+                    "An external service delivers new notifications; saved Knave history is below."
+                        .into(),
                     true,
-                ));
+                );
+                external.layout.margin = Insets::symmetric(4.0, content_inset);
+                panel.children.push(external);
             }
             if let Some(error) = &self.error {
-                panel.children.push(p.text(14, short(error, 180), true));
+                let mut message = p.text(14, short(error, 180), true);
+                message.layout.margin = Insets::symmetric(2.0, content_inset);
+                panel.children.push(message);
             }
             if let Some(error) = &self.state.error {
-                panel.children.push(p.text(15, short(error, 180), true));
+                let mut message = p.text(15, short(error, 180), true);
+                message.layout.margin = Insets::symmetric(2.0, content_inset);
+                panel.children.push(message);
             }
             let mut scroll = Element::new(SCROLL, Widget::Scroll).layout(Layout {
                 height: Length::Fill,
+                padding: 12.0,
                 ..Default::default()
             });
             let compact_controls = if height < 480.0 {
@@ -250,10 +265,13 @@ impl Notifications {
             } else {
                 Vec::new()
             };
-            let mut entries = p.panel(16).layout(Layout {
-                gap: 9.0,
-                ..Default::default()
-            });
+            let mut entries = p
+                .panel(16)
+                .layout(Layout {
+                    gap: 9.0,
+                    ..Default::default()
+                })
+                .class("notifications-list");
             entries.children.extend(compact_controls);
             let notifications: Vec<_> = self
                 .state
@@ -282,12 +300,16 @@ impl Notifications {
             }
             scroll.children.push(entries);
             panel.children.push(scroll);
-            let mut footer = p.panel(18).layout(Layout {
-                flow: Flow::Row,
-                align: Align::Center,
-                gap: 6.0,
-                ..Default::default()
-            });
+            let mut footer = p
+                .panel(18)
+                .layout(Layout {
+                    flow: Flow::Row,
+                    align: Align::Center,
+                    gap: 6.0,
+                    padding_edges: Some(Insets::symmetric(4.0, 12.0)),
+                    ..Default::default()
+                })
+                .class("notifications-footer");
             let mut previous = p.page_button(PREVIOUS, "‹");
             previous.enabled = self.page > 0;
             previous.tooltip = Some("Previous notifications".into());

@@ -37,6 +37,71 @@ future_edge = 7
 }
 
 #[test]
+fn theme_defaults_stay_implicit_after_unrelated_settings_write() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("config.toml");
+    fs::write(
+        &path,
+        "[appearance.theme]\ntheme = \"knave\"\nmode = \"dark\"\n",
+    )
+    .unwrap();
+    let mut document = ConfigDocument::load(&path).unwrap();
+    let mut config = document.config().clone();
+    config.portal.reduced_motion = true;
+    document.write(config).unwrap();
+    let source: toml::Value = toml::from_str(&document.source()).unwrap();
+    let focused = &source["compositor"]["appearance"]["focused"];
+    assert!(focused.get("border_color").is_none());
+    assert!(focused.get("shadows").is_none());
+    let reloaded = ConfigDocument::load(&path).unwrap();
+    assert!(reloaded.config().portal.reduced_motion);
+    assert_eq!(reloaded.config().compositor.appearance.gaps.inner.top, 6);
+    assert_eq!(reloaded.config().compositor.appearance.gaps.outer.top, 6);
+}
+
+#[test]
+fn explicit_theme_appearance_tables_survive_settings_write() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("config.toml");
+    fs::write(
+        &path,
+        r##"[compositor.appearance.focused.border_color]
+top = "#8090b0ff"
+right = "#8090b0ff"
+bottom = "#8090b0ff"
+left = "#8090b0ff"
+
+[compositor.appearance.focused.shadows.top]
+enabled = true
+color = "#12345678"
+blur_radius = 9
+spread = 1
+offset_x = 2
+offset_y = 3
+"##,
+    )
+    .unwrap();
+    let mut document = ConfigDocument::load(&path).unwrap();
+    let mut config = document.config().clone();
+    config.portal.reduced_motion = true;
+    document.write(config).unwrap();
+    let source: toml::Value = toml::from_str(&document.source()).unwrap();
+    let appearance = &source["compositor"]["appearance"];
+    assert_eq!(
+        appearance["focused"]["border_color"]["top"].as_str(),
+        Some("#8090b0ff")
+    );
+    assert_eq!(
+        appearance["focused"]["shadows"]["top"]["enabled"].as_bool(),
+        Some(true)
+    );
+    assert_eq!(
+        appearance["focused"]["shadows"]["top"]["color"].as_str(),
+        Some("#12345678")
+    );
+}
+
+#[test]
 fn invalid_effects_reject_before_touching_source() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("config.toml");

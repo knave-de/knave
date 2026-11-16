@@ -202,11 +202,15 @@ settings writes persist the projection, matching the existing
 
 ## Window appearance
 
-The additive `[compositor.appearance]` settings configure window gaps, borders,
-corner radii, focus appearance, side shadows and background blur. See the
-[complete contract and example](window-appearance.md). Existing files retain
-the prior appearance, maximization disables all effects by default, and fullscreen
-always bypasses them. No desktop API change is required.
+The `[compositor.appearance]` settings configure window gaps, borders, corner
+radii, focus appearance, side shadows and background blur. Gap contributions
+default to 6 px per side; the two inner contributions form a 12 px intertile
+gap, and inner plus outer contributions form a 12 px tiled perimeter. Borders
+default to 1 px and corners to 3 px. Omitted focus colors and focused shadows
+follow the selected desktop theme. See the
+[complete contract and example](window-appearance.md). Maximization disables
+effects by default, and fullscreen always bypasses them. The private desktop
+API shape is unchanged.
 
 ## Wallpaper
 
@@ -245,21 +249,22 @@ theme = "knave"
 mode = "system" # system, dark, or light
 ```
 
-Knave UI applications using the standard host load CSS from
+Knave UI applications using the standard host and the Knave Shell load CSS from
 `$XDG_DATA_HOME/knave/themes/<theme>/<mode>.css`; when `XDG_DATA_HOME` is
 unset or relative it defaults to `~/.local/share`. Theme names contain only
-ASCII letters, digits, `_` and `-`. `system` currently selects `dark.css`;
-there is no authoritative system color preference yet. The bundled Knave
-palette remains the base, desktop CSS overrides it, and app CSS follows it.
-Missing CSS uses the bundled palette. Invalid configuration or CSS keeps the
-last valid appearance and reports an error. Saving the selected CSS or config
-updates running themed apps, including atomic file replacements.
+ASCII letters, digits, `_` and `-`. `system` follows `[portal] color_scheme`
+when it is 1 (dark) or 2 (light), and defaults to dark when it is 0. The
+bundled Knave palette remains the base, desktop CSS overrides it, and app CSS
+follows it. Missing CSS uses the bundled palette. Shell surfaces reload CSS
+changes live, including atomic file replacements. Villain resolves compositor
+border and shadow tokens when configuration loads; run `knavectl reload` after
+editing a theme CSS file. Invalid updates retain the last valid appearance and
+report an error.
 
 Only the `[appearance.theme]` table form is supported. A scalar theme value
-under `[appearance]` is invalid. The shell continues to select its
-bundled palette at startup; named CSS and live updates for shell surfaces are
-future work. The portal publishes `mode` as `color-scheme` (0/1/2) and still
-uses `[portal] color_scheme` when `mode` is `system`.
+under `[appearance]` is invalid. The portal publishes the selected mode as
+`color-scheme` (0/1/2) and uses `[portal] color_scheme` when `mode` is
+`system`.
 
 ## Workspace gestures
 

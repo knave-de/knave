@@ -413,14 +413,25 @@ impl Overview {
         self.error = None;
         self.dirty = true;
     }
+    fn is_background(&self, point: [f32; 2]) -> bool {
+        // Disabled paging controls and empty catalog space still belong to the panel.
+        let in_catalog = self.scene.bounds(ElementId(40)).is_some_and(|bounds| {
+            point[0] >= bounds.x
+                && point[0] < bounds.x + bounds.width
+                && point[1] >= bounds.y
+                && point[1] < bounds.y + bounds.height
+        });
+        !in_catalog && self.scene.hit_test(point).is_none()
+    }
+
     fn search_page_size(&self) -> usize {
         (((self.size[1]
             - STATUS_BAR_HEIGHT
             - 28.0f32.min(self.size[1] * 0.04)
             - 54.0f32.min(self.size[1] * 0.15)
-            // Keep the result panel's gap and header above the bottom dock.
+            // Keep its gap, 62px heading, 48px footer, and bottom dock visible.
             - 12.0
-            - 66.0
+            - 110.0
             - 80.0)
             / 60.0)
             .floor() as usize)
@@ -845,9 +856,9 @@ impl Application for Overview {
                 self.pointer = None;
                 self.background_pressed = false;
             }
-            Input::PointerDown(p) => self.background_pressed = self.scene.hit_test(*p).is_none(),
+            Input::PointerDown(p) => self.background_pressed = self.is_background(*p),
             Input::PointerUp(p) => {
-                if self.background_pressed && self.scene.hit_test(*p).is_none() {
+                if self.background_pressed && self.is_background(*p) {
                     if self.query.text().is_empty() {
                         self.dispatch(DesktopCommand::SetOverviewVisible { visible: false });
                     } else {

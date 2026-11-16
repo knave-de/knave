@@ -3,6 +3,20 @@
     text-align: center;
 }
 
-.quick-settings-active {
-    background-color: var(--surface-selected);
+.quick-settings-tile {
+    background-color: var(--shell-card-surface);
+    border-color: var(--edge-control);
+}
+
+.quick-settings-active,
+.quick-settings-active:hover,
+.quick-settings-active:focus {
+    background-color: var(--primary);
+    border-color: transparent;
+    color: var(--on-primary);
+}
+
+.quick-settings-active .quick-settings-text,
+.quick-settings-active .quick-settings-muted {
+    color: var(--on-primary);
 }
