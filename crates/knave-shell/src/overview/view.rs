@@ -652,19 +652,6 @@ impl Overview {
         }
         .unwrap_or_else(|| icons::FALLBACK.to_owned())
     }
-    fn workspace_card(&mut self, ws: WorkspaceId, rect: Rect, selected: bool) -> Element {
-        let id = 0x100_0000_0000 + u64::from(ws.0) * 32;
-        self.workspace_card_with_id(ws, rect, selected, id)
-    }
-    fn workspace_card_with_id(
-        &mut self,
-        ws: WorkspaceId,
-        rect: Rect,
-        selected: bool,
-        id: u64,
-    ) -> Element {
-        self.workspace_card_with_preview(ws, rect, selected, id, None)
-    }
     fn workspace_card_with_preview(
         &mut self,
         ws: WorkspaceId,
