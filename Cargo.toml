@@ -37,8 +37,8 @@ knave-shell = { path = "crates/knave-shell" }
 villain = { path = "crates/villain" }
 
 # Standalone UI toolkit and renderer, released independently.
-knave-ui = { git = "https://github.com/knave-de/knave-ui.git", rev = "c73c6c068a53917afd4417e8e5213001c692c9ca" }
-knave-renderer = { git = "https://github.com/knave-de/knave-ui.git", rev = "c73c6c068a53917afd4417e8e5213001c692c9ca" }
+knave-ui = { git = "https://github.com/knave-de/knave-ui.git", rev = "a94a299e310acfa06f7756f4df55685147d56b37" }
+knave-renderer = { git = "https://github.com/knave-de/knave-ui.git", rev = "a94a299e310acfa06f7756f4df55685147d56b37" }
 
 base64 = "0.22"
 libc = "0.2"
