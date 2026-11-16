@@ -20,18 +20,50 @@ pub struct Corners {
     pub bottom_left: u16,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default)]
 pub struct Gaps {
     pub outer: Edges,
     pub inner: Edges,
 }
+impl Default for Gaps {
+    fn default() -> Self {
+        let uniform = Edges {
+            top: 6,
+            right: 6,
+            bottom: 6,
+            left: 6,
+        };
+        Self {
+            outer: uniform,
+            inner: uniform,
+        }
+    }
+}
 
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(default)]
 pub struct Border {
     pub width: Edges,
     pub radius: Corners,
+}
+impl Default for Border {
+    fn default() -> Self {
+        Self {
+            width: Edges {
+                top: 2,
+                right: 2,
+                bottom: 2,
+                left: 2,
+            },
+            radius: Corners {
+                top_left: 3,
+                top_right: 3,
+                bottom_right: 3,
+                bottom_left: 3,
+            },
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

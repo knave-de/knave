@@ -164,6 +164,30 @@ mod tests {
     }
 
     #[test]
+    fn default_tiled_frames_have_twelve_pixel_perimeter_and_intertile_gaps() {
+        let appearance = WindowAppearance::default();
+        let workspace = inset(
+            Rectangle::from_size((200, 200).into()),
+            appearance.gaps.outer,
+        );
+        let left_slot = Rectangle::new(workspace.loc, (94, workspace.size.h).into());
+        let right_slot = Rectangle::new(
+            (workspace.loc.x + 94, workspace.loc.y).into(),
+            (94, workspace.size.h).into(),
+        );
+        let left_client = client_rect(left_slot, &appearance, appearance.views.tiled, true);
+        let right_client = client_rect(right_slot, &appearance, appearance.views.tiled, true);
+        let left_frame = outer_rect(left_client, None, appearance.border.width);
+        let right_frame = outer_rect(right_client, None, appearance.border.width);
+        assert_eq!(left_frame.loc, (12, 12).into());
+        assert_eq!(
+            right_frame.loc.x - (left_frame.loc.x + left_frame.size.w),
+            12
+        );
+        assert_eq!(200 - (right_frame.loc.x + right_frame.size.w), 12);
+    }
+
+    #[test]
     fn server_titlebar_is_inside_the_border_frame() {
         let client = Rectangle::new((20, 70).into(), (100, 80).into());
         let titlebar = Rectangle::new((20, 36).into(), (100, 34).into());

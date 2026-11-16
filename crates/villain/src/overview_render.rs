@@ -262,6 +262,7 @@ pub fn elements(
             renderer,
             pane.workspace.0 as usize - 1,
             Rectangle::new((pane.x, pane.y).into(), (width, height).into()),
+            pane.corner_radius,
         );
         state.appearance_renderer = effects;
         let element = match element {

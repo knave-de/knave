@@ -417,9 +417,13 @@ impl QuickSettings {
         e
     }
     fn icon(&mut self, icon: Icon) -> Element {
+        let color = self.icon_color;
+        self.icon_with_color(icon, color)
+    }
+    fn icon_with_color(&mut self, icon: Icon, color: Color) -> Element {
         Element::new(
             self.id(),
-            Widget::Image(icon_image(icon, self.icon_color), Default::default()),
+            Widget::Image(icon_image(icon, color), Default::default()),
         )
         .layout(Layout {
             width: Length::Px(18.0),
@@ -443,7 +447,7 @@ impl QuickSettings {
     }
     fn icon_control(&mut self, mut control: Element, icon: Icon, label: &str) -> Element {
         control.layout.flow = Flow::Overlay;
-        control.layout.padding = 6.0;
+        control.layout.padding = 5.0;
         control.layout.padding_edges = None;
         control.button_variant = Some(ButtonVariant::Ghost);
         control = control.class("quick-settings-icon-control");
@@ -476,7 +480,14 @@ impl QuickSettings {
         b.layout.gap = 8.0;
         b.layout.height = Length::Px(64.0);
         b = b.class("quick-settings-tile");
-        b.children.push(self.icon(icon));
+        let icon_color = if active {
+            self.scene
+                .theme_color("--on-primary")
+                .unwrap_or(self.icon_color)
+        } else {
+            self.icon_color
+        };
+        b.children.push(self.icon_with_color(icon, icon_color));
         let mut copy = self.stack(p);
         copy.layout.gap = 2.0;
         copy.children.push(self.label(p, title, false));
@@ -574,14 +585,19 @@ impl QuickSettings {
             width: Length::Px(width),
             height: Length::Px((self.size[1] - top - gap).max(1.0)),
             offset: [(self.size[0] - width - gap).max(0.0), top],
-            padding: 14.0,
-            gap: 10.0,
+            padding: 0.0,
+            gap: 0.0,
             ..Default::default()
         });
         panel = panel.class("quick-settings-panel");
+        panel.layout.clip = ClipMode::Bounds;
         panel.component = Some(ComponentKind::Card);
         panel.style.background = None;
         let mut header = self.row(&p);
+        header = header.class("quick-settings-header");
+        header.paint_surface = true;
+        header.style.background = None;
+        header.layout.padding = 12.0;
         if self.page != Page::Main {
             header.children.push(p.header_button(BACK, "‹", 30.0));
         }
@@ -617,6 +633,7 @@ impl QuickSettings {
         panel.children.push(header);
         let mut scroll = p.element(20, Widget::Scroll).layout(Layout {
             height: Length::Fill,
+            padding: 12.0,
             ..Default::default()
         });
         let mut content = self.stack(&p);

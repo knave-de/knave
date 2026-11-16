@@ -428,6 +428,7 @@ impl Villain {
                 || pane.workspace.0 as usize > self.workspaces.len()
                 || width == 0
                 || height == 0
+                || pane.corner_radius > knave_desktop_api::MAX_OVERVIEW_PANE_RADIUS
                 || width > ow
                 || height > oh
                 || x < -ow
@@ -438,7 +439,8 @@ impl Villain {
                 || y + height <= 0
         }) {
             return invalid_request(
-                "overview pane is outside the logical output or workspace range".into(),
+                "overview pane geometry, radius, or workspace is outside the supported range"
+                    .into(),
             );
         }
         // Pane geometry arrives asynchronously after the shell lays out its

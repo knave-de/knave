@@ -81,6 +81,8 @@ struct SceneKey {
     layers: SceneLayers,
     size: Size<i32, Logical>,
     appearance: WindowAppearance,
+    theme_focused_shadows: Vec<knave_config::appearance::Shadow>,
+    theme_focused_outline: Option<knave_config::appearance::EdgeColors>,
     sources: Vec<SourceKey>,
     windows: Vec<(Geometry, bool, bool, bool, bool)>,
 }
@@ -114,6 +116,7 @@ impl SceneLayers {
 struct CachedPane {
     workspace: usize,
     geometry: Geometry,
+    corner_radius: u16,
     sources: Vec<SourceKey>,
     texture: TextureBuffer<GlesTexture>,
 }
@@ -157,6 +160,43 @@ fn log_slow_scene_total(path: &'static str, started: Option<Instant>, windows: u
 
 fn scene_render_scale(target_scale: f64, has_effects: bool) -> f64 {
     if has_effects { 1.0 } else { target_scale }
+}
+
+fn focus_outline(
+    program: &GlesPixelProgram,
+    body: Geometry,
+    radii: [f32; 4],
+    color: &knave_config::appearance::EdgeColors,
+) -> PixelShaderElement {
+    let (outline, outline_radii, widths) = focus_outline_geometry(body, radii);
+    border(program, outline, widths, outline_radii, color)
+}
+
+fn focus_outline_geometry(body: Geometry, radii: [f32; 4]) -> (Geometry, [f32; 4], Edges) {
+    const OFFSET: i32 = 1;
+    const WIDTH: i32 = 2;
+    let expansion = OFFSET + WIDTH;
+    let outline = Rectangle::new(
+        (body.loc.x - expansion, body.loc.y - expansion).into(),
+        (body.size.w + expansion * 2, body.size.h + expansion * 2).into(),
+    );
+    let outline_radii = radii.map(|radius| radius + expansion as f32);
+    let widths = Edges {
+        top: WIDTH as u16,
+        right: WIDTH as u16,
+        bottom: WIDTH as u16,
+        left: WIDTH as u16,
+    };
+    (outline, outline_radii, widths)
+}
+
+fn append_outline_before_lower<E>(
+    window_elements: &mut Vec<E>,
+    outline: Option<E>,
+    lower_elements: impl IntoIterator<Item = E>,
+) {
+    window_elements.extend(outline);
+    window_elements.extend(lower_elements);
 }
 
 fn physical_window_crop(rect: Geometry, scale: f64) -> Rectangle<i32, Physical> {
@@ -317,7 +357,7 @@ impl EffectsRenderer {
         }
         let any_effect = windows
             .iter()
-            .any(|(_, _, fullscreen, maximized, tiled, _)| {
+            .any(|(window, _, fullscreen, maximized, tiled, _)| {
                 let a = &state.config.appearance;
                 let view = if *fullscreen {
                     ViewEffects::NONE
@@ -343,6 +383,13 @@ impl EffectsRenderer {
                                 .iter()
                                 .any(|s| s.enabled))
                     })
+                    || (view.shadows
+                        && !state.config.theme_focused_shadows.is_empty()
+                        && KeyboardFocus::for_window(window) == focused)
+                    || (view.borders
+                        && !*fullscreen
+                        && state.config.theme_focused_outline.is_some()
+                        && KeyboardFocus::for_window(window) == focused)
             });
         log_slow_scene_stage("workspace_layout", stage_started, window_count);
         // Effects are composed into a logical-size offscreen target. The fast
@@ -354,6 +401,8 @@ impl EffectsRenderer {
             layers,
             size,
             appearance: state.config.appearance.clone(),
+            theme_focused_shadows: state.config.theme_focused_shadows.clone(),
+            theme_focused_outline: state.config.theme_focused_outline.clone(),
             sources: Vec::new(),
             windows: Vec::new(),
         };
@@ -533,7 +582,8 @@ impl EffectsRenderer {
             } else {
                 appearance.views.floating
             };
-            let style = if KeyboardFocus::for_window(&window) == focused {
+            let is_focused = KeyboardFocus::for_window(&window) == focused;
+            let style = if is_focused {
                 &appearance.focused
             } else {
                 &appearance.unfocused
@@ -781,8 +831,35 @@ impl EffectsRenderer {
                         )));
                     }
                 }
+                if is_focused {
+                    for shadow in &state.config.theme_focused_shadows {
+                        for side in 0..4 {
+                            window_elements.push(EffectElement::Shape(shadow_element(
+                                shape_program,
+                                outer,
+                                radii,
+                                side,
+                                shadow,
+                            )));
+                        }
+                    }
+                }
             }
-            window_elements.extend(elements);
+            let outline = if view.borders
+                && !fullscreen
+                && is_focused
+                && let Some(color) = &state.config.theme_focused_outline
+            {
+                Some(EffectElement::Shape(focus_outline(
+                    shape_program,
+                    outer,
+                    radii,
+                    color,
+                )))
+            } else {
+                None
+            };
+            append_outline_before_lower(&mut window_elements, outline, elements);
             elements = window_elements;
         }
         unmanaged.extend(elements);
@@ -818,6 +895,7 @@ impl EffectsRenderer {
         renderer: &mut GlesRenderer,
         workspace: usize,
         geometry: Geometry,
+        corner_radius: u16,
     ) -> Result<EffectElement, EffectError> {
         use smithay::backend::renderer::element::utils::{
             ConstrainAlign, ConstrainScaleBehavior, constrain_render_elements,
@@ -825,7 +903,10 @@ impl EffectsRenderer {
         let scene = self.scene(state, renderer, workspace, SceneLayers::Preview, 1.0)?;
         let sources: Vec<_> = scene.iter().map(source_key).collect();
         if let Some(index) = self.panes.iter().position(|p| {
-            p.workspace == workspace && p.geometry.size == geometry.size && p.sources == sources
+            p.workspace == workspace
+                && p.geometry.size == geometry.size
+                && p.corner_radius == corner_radius
+                && p.sources == sources
         }) {
             let cached = self.panes.remove(index).expect("pane cache index");
             let location = geometry
@@ -840,10 +921,11 @@ impl EffectsRenderer {
             return Ok(element);
         }
         if self.pane_refresh_budget == 0
-            && let Some(index) = self
-                .panes
-                .iter()
-                .position(|p| p.workspace == workspace && p.geometry.size == geometry.size)
+            && let Some(index) = self.panes.iter().position(|p| {
+                p.workspace == workspace
+                    && p.geometry.size == geometry.size
+                    && p.corner_radius == corner_radius
+            })
         {
             let cached = self.panes.remove(index).expect("pane cache index");
             let location = geometry
@@ -877,8 +959,11 @@ impl EffectsRenderer {
         if pixels <= 0 || pixels > MAX_PIXELS {
             return Err(EffectError::TargetTooLarge);
         }
-        self.panes
-            .retain(|p| p.workspace != workspace || p.geometry.size != geometry.size);
+        self.panes.retain(|p| {
+            p.workspace != workspace
+                || p.geometry.size != geometry.size
+                || p.corner_radius != corner_radius
+        });
         while self.panes.len() >= 128
             || self
                 .panes
@@ -903,7 +988,7 @@ impl EffectsRenderer {
         let texture = render_texture(renderer, geometry.size, &elements, [0.0, 0.0, 0.0, 1.0])?;
         self.ensure_programs(renderer)
             .map_err(EffectError::Renderer)?;
-        let radius = 22.0_f32
+        let radius = f32::from(corner_radius)
             .min(geometry.size.w as f32 / 2.0)
             .min(geometry.size.h as f32 / 2.0);
         let element = filtered(
@@ -926,6 +1011,7 @@ impl EffectsRenderer {
         self.panes.push_back(CachedPane {
             workspace,
             geometry,
+            corner_radius,
             sources,
             texture,
         });

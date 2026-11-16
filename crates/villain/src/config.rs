@@ -38,6 +38,8 @@ pub struct RuntimeConfig {
     pub switch_to_new_window_workspace: bool,
     pub workspace: knave_config::CompositorWorkspaceConfig,
     pub appearance: knave_config::WindowAppearance,
+    pub(crate) theme_focused_shadows: Vec<knave_config::appearance::Shadow>,
+    pub(crate) theme_focused_outline: Option<knave_config::appearance::EdgeColors>,
     pub(crate) decoration_palette: crate::appearance::palette::DecorationPalette,
     pub input: InputConfig,
     /// Ordered `[[compositor.device]]` rules; later matches override earlier ones.
@@ -178,6 +180,26 @@ impl RuntimeConfig {
         let document =
             ConfigDocument::load(&path).map_err(|error| ConfigError(error.to_string()))?;
         let compositor = &document.config().compositor;
+        let source = document.source();
+        let source_value =
+            toml::from_str::<toml::Value>(&source).expect("ConfigDocument source is valid TOML");
+        let theme_window_style =
+            crate::appearance::palette::ThemeWindowStyle::load(document.config())
+                .map_err(ConfigError)?;
+        let mut appearance = compositor.appearance.clone();
+        if !has_appearance_override(&source_value, "focused", "border_color") {
+            appearance.focused.border_color = theme_window_style.active_border;
+        }
+        if !has_appearance_override(&source_value, "unfocused", "border_color") {
+            appearance.unfocused.border_color = theme_window_style.inactive_border;
+        }
+        let theme_focused_outline = theme_window_style.focused_outline.clone();
+        let theme_focused_shadows = if has_appearance_override(&source_value, "focused", "shadows")
+        {
+            Vec::new()
+        } else {
+            theme_window_style.focused_shadows
+        };
         let output_scale = (compositor.scale * 120.0).round() / 120.0;
         let bindings: Vec<BindSpec> = compositor
             .bind
@@ -219,7 +241,9 @@ impl RuntimeConfig {
             focus_cycle_order: compositor.focus_cycle_order,
             switch_to_new_window_workspace: compositor.switch_to_new_window_workspace,
             workspace: compositor.workspace,
-            appearance: compositor.appearance.clone(),
+            appearance,
+            theme_focused_shadows,
+            theme_focused_outline,
             decoration_palette: crate::appearance::palette::DecorationPalette::load(
                 document.config(),
             )
@@ -238,6 +262,14 @@ impl RuntimeConfig {
             path,
         })
     }
+}
+
+fn has_appearance_override(source: &toml::Value, profile: &str, field: &str) -> bool {
+    source
+        .get("compositor")
+        .and_then(|compositor| compositor.get("appearance"))
+        .and_then(|appearance| appearance.get(profile))
+        .is_some_and(|style| style.get(field).is_some())
 }
 
 fn resolve_path(value: &str, base: Option<&Path>) -> Result<PathBuf, ConfigError> {

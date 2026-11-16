@@ -124,6 +124,58 @@ fn all_pages_fit_narrow_and_short_outputs() {
         }
     }
 }
+
+#[test]
+fn active_tile_uses_primary_fill_and_on_primary_content() {
+    let mut app = app();
+    app.state.bluetooth = Some(true);
+    app.dirty = true;
+    app.frame([1280.0, 800.0], &mut Metrics);
+
+    let accent = app.scene.theme_color("--primary").unwrap();
+    let foreground = app.scene.theme_color("--on-primary").unwrap();
+    let tile = app
+        .scene
+        .computed_style(ElementId(115))
+        .expect("Bluetooth tile style");
+    assert_eq!(
+        tile.style.background.as_ref().and_then(|paint| paint.fill),
+        Some(accent)
+    );
+    assert_eq!(
+        app.scene
+            .computed_style(ElementId(119))
+            .expect("Bluetooth description style")
+            .style
+            .text
+            .color,
+        foreground
+    );
+
+    let icon_bounds = app.scene.bounds(ElementId(116)).unwrap();
+    let icon = app
+        .display
+        .commands
+        .iter()
+        .find_map(|command| match command {
+            knave_ui::DisplayCommand::Image { bounds, image, .. } if *bounds == icon_bounds => {
+                Some(image)
+            }
+            _ => None,
+        })
+        .expect("Bluetooth icon image");
+    let pixel = icon
+        .pixels()
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .find(|pixel| pixel[3] != 0)
+        .expect("visible icon pixel");
+    assert_eq!(
+        &pixel[..3],
+        &[foreground.red, foreground.green, foreground.blue]
+    );
+}
 #[test]
 fn ethernet_is_preferred_and_volume_values_remain_local_until_commit() {
     let mut app = app();
@@ -636,4 +688,22 @@ fn full_named_themes_cannot_paint_the_fullscreen_positioning_host() {
             "a full {theme:?} theme must not cover the desktop outside the panel"
         );
     }
+}
+
+#[test]
+fn panel_header_paints_its_shared_raised_surface() {
+    let mut app = app();
+    let root = app.compose();
+    let header = root.children[0].children[0].id;
+    let list = app.frame([1600.0, 900.0], &mut Metrics).clone();
+    let bounds = app.scene.bounds(header).unwrap();
+    let panel = app.scene.bounds(PANEL).unwrap();
+    assert_eq!(bounds.x, panel.x + 1.0);
+    assert_eq!(bounds.y, panel.y + 1.0);
+    assert_eq!(bounds.width, panel.width - 2.0);
+    let color = app.scene.theme_color("--shell-header-surface").unwrap();
+    assert!(list.commands.iter().any(|command| matches!(command,
+        knave_ui::DisplayCommand::Shape { bounds: painted, paint, .. }
+            if *painted == bounds && paint.fill == Some(color)
+    )));
 }

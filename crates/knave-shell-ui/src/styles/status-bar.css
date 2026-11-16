@@ -1,4 +1,8 @@
 /* Keep the compact status text within the fixed-height bar. */
+.statusbar {
+    border-bottom: 1px solid var(--edge-panel);
+}
+
 .statusbar__workspace-label {
     font-size: 11px;
     line-height: 14px;

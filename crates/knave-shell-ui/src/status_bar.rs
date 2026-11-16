@@ -979,7 +979,7 @@ mod tests {
                 .background
                 .and_then(|paint| paint.fill)
         };
-        assert_eq!(variant_fill(1), Some(Color::ACCENT));
+        assert_eq!(variant_fill(1), Some(Color::rgba(96, 203, 237, 255)));
         assert!(variant_fill(2).is_some());
         assert_ne!(variant_fill(2), variant_fill(1));
         assert!(variant_fill(0).is_none_or(|color| color.alpha == 0));
@@ -990,7 +990,7 @@ mod tests {
                 .style
                 .text
                 .color,
-            Color::rgba(0x0A, 0x16, 0x20, 255),
+            Color::rgba(0x11, 0x13, 0x17, 255),
             "the active workspace number should use dark on-accent text"
         );
     }
@@ -1041,7 +1041,7 @@ mod tests {
             (
                 knave_ui::toolkit::Theme::Dark,
                 Color::rgba(255, 255, 255, 255),
-                Color::rgba(0, 0, 0, 255),
+                Color::rgba(17, 17, 17, 255),
                 Color::rgba(255, 255, 255, 255),
             ),
             (
@@ -1223,11 +1223,11 @@ mod tests {
                 knave_ui::DisplayCommand::Image { image, .. } if image == &applet_image)));
         };
 
-        check_color(&bar, [232, 235, 239]);
+        check_color(&bar, [227, 236, 239]);
         bar.set_theme(knave_ui::toolkit::Theme::Light).unwrap();
-        check_color(&bar, [23, 24, 28]);
+        check_color(&bar, [21, 43, 52]);
         bar.set_theme(knave_ui::toolkit::Theme::Dark).unwrap();
-        check_color(&bar, [232, 235, 239]);
+        check_color(&bar, [227, 236, 239]);
         bar.set_stylesheet(
             ".statusbar__notification-icon { color: #123456; } \
              .statusbar__network-icon { color: #234567; } \
@@ -1270,7 +1270,7 @@ mod tests {
                 .iter()
                 .find(|pixel| pixel[3] > 200)
                 .expect("symbol contains an opaque pixel");
-            assert_eq!(&visible_pixel[..3], &[23, 24, 28]);
+            assert_eq!(&visible_pixel[..3], &[21, 43, 52]);
         }
     }
 
