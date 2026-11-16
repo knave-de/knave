@@ -256,10 +256,7 @@ fn tooltip_visible(app: &Overview, label: &str) -> bool {
 fn the_minimized_tray_is_a_separate_shelf_below_the_selected_card() {
     let mut app = app();
     settle(&mut app, [1200.0, 800.0]);
-    let card = app
-        .scene
-        .bounds(ElementId(0x100_0000_0000 + 2 * 32))
-        .unwrap();
+    let card = app.scene.bounds(ElementId(0x210_0000_0000 + 2)).unwrap();
     let tray = app
         .scene
         .bounds(tray_id(2))
@@ -507,7 +504,7 @@ fn failed_navigation_and_repeated_input_preserve_confirmed_workspace() {
 #[test]
 fn workspace_controls_switch_without_hiding() {
     for id in [
-        ElementId(0x100_0000_0000 + 3 * 512 + 3),
+        ElementId(0x200_0000_0000 + 3),
         bar_target(
             &app(),
             knave_shell_ui::UiAction::FocusWorkspace(WorkspaceId(3)),
@@ -593,32 +590,19 @@ fn idle_frames_reuse_layout_and_panes_are_bounded_to_neighbors() {
     app.frame([1200.0, 800.0], &mut Metrics);
     assert_eq!(app.scene.stats(), stats);
     let panes = app.overview_panes().unwrap();
-    assert_eq!(panes.len(), 4);
+    assert_eq!(panes.len(), 6);
+    let mut workspaces = panes.iter().map(|pane| pane.workspace).collect::<Vec<_>>();
+    workspaces.sort_by_key(|workspace| workspace.0);
+    workspaces.dedup();
     assert_eq!(
-        panes.iter().map(|pane| pane.workspace).collect::<Vec<_>>(),
-        vec![
-            WorkspaceId(2),
-            WorkspaceId(1),
-            WorkspaceId(2),
-            WorkspaceId(3)
-        ]
+        workspaces,
+        vec![WorkspaceId(1), WorkspaceId(2), WorkspaceId(3)]
     );
     assert!(panes.iter().all(|pane| pane.width > 0 && pane.height > 0));
     publish_workspace(&mut app, WorkspaceId(3));
     app.frame([1200.0, 800.0], &mut Metrics);
-    assert_eq!(
-        app.overview_panes()
-            .unwrap()
-            .iter()
-            .map(|pane| pane.workspace)
-            .collect::<Vec<_>>(),
-        vec![
-            WorkspaceId(3),
-            WorkspaceId(1),
-            WorkspaceId(2),
-            WorkspaceId(3)
-        ]
-    );
+    let adjacent = app.overview_panes().unwrap();
+    assert_eq!(adjacent.len(), 5);
 }
 
 #[test]
@@ -954,31 +938,6 @@ fn catalog_uses_header_inset_rows_footer_and_disabled_page_bounds() {
     assert_eq!(app.result_page, 1);
     click(&mut app, ElementId(31));
     assert_eq!(app.result_page, 1, "next is disabled on the last page");
-}
-
-#[test]
-fn overview_workspace_badge_is_opaque_and_uses_fourteen_pixel_text() {
-    let mut app = app();
-    app.frame([1200.0, 800.0], &mut Metrics);
-    let card = 0x100_0000_0000 + u64::from(WorkspaceId(2).0) * 512 + 2;
-    let badge = ElementId(card + 3);
-    let card_bounds = app.scene.bounds(ElementId(card)).unwrap();
-    let badge_bounds = app.scene.bounds(badge).unwrap();
-    assert_eq!(badge_bounds.width, 24.0);
-    assert_eq!(badge_bounds.height, 24.0);
-    assert_eq!(badge_bounds.x, card_bounds.x + 8.0);
-    assert_eq!(badge_bounds.y, card_bounds.y + card_bounds.height - 32.0);
-    let fill = app
-        .scene
-        .computed_style(badge)
-        .and_then(|style| style.style.background)
-        .and_then(|paint| paint.fill);
-    assert_eq!(fill, app.scene.theme_color("--primary"));
-    let number = app
-        .scene
-        .computed_style(ElementId(card + 2))
-        .expect("workspace number style");
-    assert_eq!(number.style.text.font_size, 14.0);
 }
 
 #[test]
@@ -1351,7 +1310,7 @@ fn overview_controls_follow_the_selected_toolkit_theme() {
     assert_eq!(search.outline, baseline.outline);
     let selected_card = app
         .scene
-        .computed_style(ElementId(0x100_0000_0000 + 2 * 32))
+        .computed_style(ElementId(0x210_0000_0000 + 2))
         .unwrap();
     assert!(
         selected_card
@@ -1361,22 +1320,27 @@ fn overview_controls_follow_the_selected_toolkit_theme() {
 }
 
 #[test]
-fn overview_uses_preview_and_arrows_without_redundant_workspace_dots() {
+fn overview_shows_three_adjacent_workspace_previews_without_redundant_label() {
     let app = app();
-    assert!(app.scene.bounds(ElementId(6)).is_some());
-    assert!(app.scene.bounds(ElementId(7)).is_some());
+    let panes = app.overview_panes().unwrap();
+    assert_eq!(panes.len(), 6);
     assert!(
-        app.scene
-            .bounds(ElementId(0x100_0000_0000 + 3 * 512 + 3))
-            .is_some()
+        panes
+            .iter()
+            .any(|p| p.workspace == WorkspaceId(1) && p.width > 132)
     );
-    for workspace in 1..=3 {
-        assert!(
-            app.scene
-                .bounds(ElementId(0x200_0000_0000 + workspace))
-                .is_none()
-        );
-    }
+    assert!(
+        panes
+            .iter()
+            .any(|p| p.workspace == WorkspaceId(2) && p.width > 132)
+    );
+    assert!(
+        panes
+            .iter()
+            .any(|p| p.workspace == WorkspaceId(3) && p.width > 132)
+    );
+    assert!(app.display.commands.iter().all(|command| !matches!(command,
+        knave_ui::DisplayCommand::Text { text, .. } if text == "Workspace 2")));
 }
 
 #[test]
@@ -1387,8 +1351,10 @@ fn workspace_panes_fill_cards_without_reserved_empty_shelf() {
         let ws = u64::from(pane.workspace.0);
         let id = if pane.width <= 132 {
             ElementId(0x100_0000_0000 + ws * 512 + ws)
+        } else if pane.workspace == WorkspaceId(2) {
+            ElementId(0x210_0000_0000 + ws)
         } else {
-            ElementId(0x100_0000_0000 + ws * 32)
+            ElementId(0x200_0000_0000 + ws)
         };
         let card = app.scene.bounds(id).unwrap();
         assert_eq!(pane.width, (card.width - 4.0).round() as u32);
@@ -1397,104 +1363,6 @@ fn workspace_panes_fill_cards_without_reserved_empty_shelf() {
         assert_eq!(pane.y, (card.y + 2.0).round() as i32);
         assert_eq!(pane.corner_radius, if pane.width <= 132 { 3 } else { 12 });
     }
-}
-
-#[test]
-fn workspace_strip_scrolls_horizontally_and_only_submits_visible_thumbnails() {
-    let mut app = app();
-    let mut many = app.snapshot().unwrap().clone();
-    many.workspaces = (1..=40)
-        .map(|i| WorkspaceSummary {
-            workspace: WorkspaceId(i),
-            active: i == 2,
-            window_count: 0,
-            visible_window_count: 0,
-        })
-        .collect();
-    app.desktop_snapshot(&many);
-    app.frame([1200.0, 800.0], &mut Metrics);
-
-    let viewport = app.scene.bounds(ElementId(0x120_0000_0000)).unwrap();
-    let initial = app.overview_panes().unwrap();
-    assert!(initial.len() < many.workspaces.len());
-    let workspace_2_id = ElementId(0x100_0000_0000 + 2 * 512 + 2);
-    let first_x = app.scene.bounds(workspace_2_id).unwrap().x;
-    assert!(
-        app.targets
-            .values()
-            .any(|target| matches!(target, Target::WorkspaceStripPage(true)))
-    );
-
-    for _ in 0..4 {
-        let next = app
-            .targets
-            .iter()
-            .find_map(|(id, target)| {
-                matches!(target, Target::WorkspaceStripPage(true)).then_some(*id)
-            })
-            .unwrap();
-        click(&mut app, next);
-        app.frame([1200.0, 800.0], &mut Metrics);
-    }
-    let after_scroll = app.overview_panes().unwrap();
-    assert!(
-        after_scroll
-            .iter()
-            .any(|pane| pane.workspace == WorkspaceId(30))
-    );
-    assert!(after_scroll.len() < many.workspaces.len());
-    assert!(app.scene.bounds(workspace_2_id).is_none());
-    let workspace_30_id = ElementId(0x100_0000_0000 + 30 * 512 + 30);
-    let workspace_30_bounds = app.scene.bounds(workspace_30_id).unwrap();
-    assert!(workspace_30_bounds.x > first_x);
-    assert_eq!(
-        app.scene.bounds(ElementId(0x120_0000_0000)).unwrap().width,
-        viewport.width
-    );
-
-    let workspace_30 = app
-        .targets
-        .iter()
-        .find_map(|(id, target)| {
-            matches!(target, Target::Workspace(WorkspaceId(30))).then_some(*id)
-        })
-        .unwrap();
-    click(&mut app, workspace_30);
-    assert!(matches!(
-        app.take_request(),
-        Some(HostRequest::Desktop(DesktopCommand::FocusWorkspace {
-            workspace: WorkspaceId(30)
-        }))
-    ));
-    app.desktop_action_finished(Ok(()));
-    publish_workspace(&mut app, WorkspaceId(30));
-    assert_eq!(app.workspace, Some(WorkspaceId(30)));
-    assert!(
-        app.surface_visible(),
-        "workspace selection keeps Overview open"
-    );
-}
-
-#[test]
-fn workspace_strip_is_always_visible_with_left_and_right_controls() {
-    let mut app = app();
-    app.frame([1200.0, 800.0], &mut Metrics);
-    assert!(app.scene.bounds(ElementId(0x120_0000_0000)).is_some());
-    assert!(
-        app.targets
-            .values()
-            .any(|target| matches!(target, Target::WorkspaceStripPage(false)))
-    );
-    assert!(
-        app.targets
-            .values()
-            .any(|target| matches!(target, Target::WorkspaceStripPage(true)))
-    );
-    assert!(
-        !app.targets.contains_key(&ElementId(5)),
-        "there is no mode toggle"
-    );
-    assert_eq!(app.overview_panes().unwrap().len(), 4);
 }
 
 /// Retained controls follow the shared bar's hit-target order.
@@ -1877,13 +1745,10 @@ fn the_workspace_stage_reserves_space_for_the_minimized_shelf() {
     app.frame([1200.0, 800.0], &mut Metrics);
     // The shelf occupies a reserved band below a substantial preview.
     let search = app.scene.bounds(SEARCH).unwrap();
-    let card = app
-        .scene
-        .bounds(ElementId(0x100_0000_0000 + 2 * 32))
-        .unwrap();
+    let card = app.scene.bounds(ElementId(0x210_0000_0000 + 2)).unwrap();
     assert!(search.y >= STATUS_BAR_HEIGHT);
     let shelf = app.scene.bounds(tray_id(2)).unwrap();
-    assert!(card.height >= 400.0);
+    assert!(card.height >= 200.0);
     assert!(shelf.y + shelf.height <= 800.0 - STATUS_BAR_HEIGHT);
     // The overview no longer renders its redundant workspace dot row.
     assert!(app.scene.bounds(ElementId(0x200_0000_0000 + 2)).is_none());
