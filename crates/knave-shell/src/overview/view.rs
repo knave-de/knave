@@ -144,7 +144,7 @@ impl Overview {
         root.children.push(all_apps);
         if self.query.text().is_empty()
             && !self.all_apps
-            && let (Some(snapshot), Some(ws)) = (&self.snapshot, self.workspace)
+            && let (Some(snapshot), Some(ws)) = (self.snapshot.clone(), self.workspace)
         {
             let strip_y = search_rect.y + search_rect.height + 22.0;
             let item_gap = 10.0;
@@ -218,30 +218,60 @@ impl Overview {
                 root.children.push(arrow);
             }
 
+            let index = snapshot
+                .workspaces
+                .iter()
+                .position(|w| w.workspace == ws)
+                .unwrap_or(0);
             let top = strip_y + strip_h + 28.0;
             let shelf_room = if self.minimized(ws).is_empty() {
                 0.0
             } else {
                 54.0
             };
-            let bottom_room = (88.0f32 + shelf_room).min(height * 0.24);
+            let bottom_room = (140.0f32 + shelf_room).min(height * 0.24);
             let available_h = (height - top - bottom_room).max(40.0);
             let preview_width = (width * 0.80).min(available_h * 16.0 / 9.0).max(1.0);
             let preview_height = (preview_width * 9.0 / 16.0).min(available_h);
-            let rect = Rect::new(
-                (width - preview_width) / 2.0,
-                top + (available_h - preview_height) / 2.0,
-                preview_width,
-                preview_height,
-            );
-            root.children.push(text(
-                0x130_0000_1000,
-                format!("Workspace {}", ws.0),
-                Rect::new(rect.x, rect.y - 26.0, 124.0f32.min(rect.width), 22.0),
-                16.0,
-                "overview-workspace-label",
+            let x = (width - preview_width) / 2.0;
+            let y = top + (available_h - preview_height) / 2.0;
+            let rect = Rect::new(x, y, preview_width, preview_height);
+            let spaces: Vec<_> = snapshot
+                .workspaces
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| i.abs_diff(index) <= 1)
+                .map(|(i, w)| (i, w.clone()))
+                .collect();
+            for (i, w) in spaces.iter().filter(|(i, _)| *i != index) {
+                let scale = 0.86;
+                let small_w = preview_width * scale;
+                let small_h = preview_height * scale;
+                let side_x = if *i < index {
+                    x - small_w - 24.0
+                } else {
+                    x + preview_width + 24.0
+                };
+                root.children.push(self.workspace_card_with_preview(
+                    w.workspace,
+                    Rect::new(
+                        side_x,
+                        y + (preview_height - small_h) / 2.0,
+                        small_w,
+                        small_h,
+                    ),
+                    false,
+                    0x200_0000_0000 + u64::from(w.workspace.0),
+                    None,
+                ));
+            }
+            root.children.push(self.workspace_card_with_preview(
+                ws,
+                rect,
+                true,
+                0x210_0000_0000 + u64::from(ws.0),
+                None,
             ));
-            root.children.push(self.workspace_card(ws, rect, true));
             if let Some(shelf) = self.minimized_shelf(ws, rect) {
                 root.children.push(shelf);
             }
