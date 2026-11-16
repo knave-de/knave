@@ -37,8 +37,8 @@ knave-shell = { path = "crates/knave-shell" }
 villain = { path = "crates/villain" }
 
 # Standalone UI toolkit and renderer, released independently.
-knave-ui = { git = "https://github.com/knave-de/knave-ui.git", rev = "28c53b40883955464e0ec5831c708a5fb7150ae0" }
-knave-renderer = { git = "https://github.com/knave-de/knave-ui.git", rev = "28c53b40883955464e0ec5831c708a5fb7150ae0" }
+knave-ui = { git = "https://github.com/knave-de/knave-ui.git", rev = "ad22b663ab8a5d95d5436c3115f667243b1872b6" }
+knave-renderer = { git = "https://github.com/knave-de/knave-ui.git", rev = "ad22b663ab8a5d95d5436c3115f667243b1872b6" }
 
 base64 = "0.22"
 libc = "0.2"
@@ -54,7 +54,3 @@ toml_edit = { version = "0.23", features = ["serde"] }
 wayland-client = { version = "0.31.15", features = ["system"] }
 wgpu = "30.0.1"
 xkbcommon = "0.8"
-
-[patch."https://github.com/knave-de/knave-ui.git"]
-knave-ui = { path = "../knave-ui/crates/knave-ui" }
-knave-renderer = { path = "../knave-ui/crates/knave-renderer" }
