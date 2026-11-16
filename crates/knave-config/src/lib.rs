@@ -16,7 +16,9 @@ use toml_edit::{Array, ArrayOfTables, DocumentMut, Item, Table, value};
 pub mod appearance;
 pub mod gesture;
 pub mod notifications;
+pub mod wallpaper;
 pub use appearance::WindowAppearance;
+pub use wallpaper::{DataDirectories, EffectiveWallpaper, WallpaperSource};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]

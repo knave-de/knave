@@ -6,8 +6,9 @@ usage() {
 Usage: scripts/install.sh [--user|--system|--prefix PATH]
 
 Builds and installs the single Knave executable (CLI, session, compositor, and
-shell process modes). --user installs to ~/.local, --system installs to /usr/local using
-sudo when needed, and --prefix selects an explicit staging prefix.
+shell process modes) and desktop data, including the default theme wallpapers.
+--user installs to ~/.local, --system installs to /usr/local using sudo when
+needed, and --prefix selects an explicit staging prefix.
 EOF
 }
 
@@ -52,4 +53,7 @@ fi
 "${install_cmd[@]}" -Dm755 "$root/target/release/knave" "$prefix/bin/knave"
 "${install_cmd[@]}" -Dm644 "$root/crates/villain/share/xdg-desktop-portal/villain-portals.conf" "$prefix/share/xdg-desktop-portal/villain-portals.conf"
 "${install_cmd[@]}" -Dm644 "$root/README.md" "$prefix/share/doc/knave/README.md"
+for wallpaper in "$root"/share/knave/themes/knave/wallpapers/*.png; do
+    "${install_cmd[@]}" -Dm644 "$wallpaper" "$prefix/share/knave/themes/knave/wallpapers/$(basename -- "$wallpaper")"
+done
 printf 'installed knave to %s/bin\n' "$prefix"

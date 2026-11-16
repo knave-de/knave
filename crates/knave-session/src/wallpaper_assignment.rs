@@ -1,6 +1,7 @@
 //! Reload-driven wallpaper assignment. The session keeps at most one
-//! wallpaper child and reconciles it with `[shell.wallpaper]` after each
-//! successful desktop reload: a new assignment spawns the process, a
+//! wallpaper child and reconciles it with the effective wallpaper (the
+//! configured image or the active theme's default) after each successful
+//! desktop reload: a new assignment spawns the process, a
 //! cleared one stops it, and image or fit changes on a running process
 //! stay entirely the shell's own reload handling.
 
@@ -17,7 +18,7 @@ use std::{
     time::Duration,
 };
 
-use knave_config::{Config, ConfigDocument, WallpaperFit};
+use knave_config::{Config, ConfigDocument, DataDirectories, WallpaperFit};
 use knave_desktop_api::{
     DesktopEvent, DesktopSubscription, SOCKET_ENVIRONMENT_VARIABLE, SubscriptionCancel,
     socket_path_for_display,
@@ -78,9 +79,11 @@ impl AssignmentSlot {
             return Ok(());
         }
         self.stop_child();
-        if config.shell.wallpaper.image.is_some() {
+        if let Some(effective) = config.effective_wallpaper(&DataDirectories::from_environment()) {
+            let mut spawn_config = config.clone();
+            spawn_config.shell.wallpaper.image = Some(effective.image);
             let child = crate::spawn_shell(
-                config,
+                &spawn_config,
                 "wallpaper",
                 display,
                 &self.executable,
@@ -276,11 +279,13 @@ fn serve(config: Config, runtime: PathBuf, slot: Arc<AssignmentSlot>) {
 fn read_assignment() -> Result<Option<Assignment>, String> {
     let path = ConfigDocument::default_path().map_err(|error| error.to_string())?;
     let document = ConfigDocument::load(path).map_err(|error| error.to_string())?;
-    let wallpaper = &document.config().shell.wallpaper;
-    Ok(wallpaper.image.as_ref().map(|image| Assignment {
-        image: image.clone(),
-        fit: wallpaper.fit,
-    }))
+    Ok(document
+        .config()
+        .effective_wallpaper(&DataDirectories::from_environment())
+        .map(|effective| Assignment {
+            image: effective.image,
+            fit: effective.fit,
+        }))
 }
 
 #[cfg(test)]
