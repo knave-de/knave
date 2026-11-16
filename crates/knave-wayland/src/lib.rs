@@ -682,6 +682,10 @@ fn run_internal(
         },
     ))
     .map_err(|error| WaylandError::Adapter(error.to_string()))?;
+    let supports_surface_view_formats = adapter
+        .get_downlevel_capabilities()
+        .flags
+        .contains(wgpu::DownlevelFlags::SURFACE_VIEW_FORMATS);
     let (device, queue) = pollster::block_on(adapter.request_device(&Default::default()))
         .map_err(|error| WaylandError::Device(error.to_string()))?;
 
@@ -797,6 +801,7 @@ fn run_internal(
         layer,
         surface,
         adapter,
+        supports_surface_view_formats,
         device,
         queue,
         width: 1,
@@ -893,6 +898,7 @@ struct Runtime {
     layer: LayerSurface,
     surface: wgpu::Surface<'static>,
     adapter: wgpu::Adapter,
+    supports_surface_view_formats: bool,
     device: wgpu::Device,
     queue: wgpu::Queue,
     painter: Option<WgpuPainter>,
@@ -1004,6 +1010,13 @@ impl Runtime {
             return None;
         };
         config.format = format;
+        if self.supports_surface_view_formats {
+            let Some(text_view_format) = WgpuPainter::paired_text_format(config.format) else {
+                eprintln!("knave-shell: sRGB output format has no compatible Unorm text view");
+                return None;
+            };
+            config.view_formats = vec![text_view_format];
+        }
         if self
             .surface
             .get_capabilities(&self.adapter)
@@ -1361,6 +1374,19 @@ impl Runtime {
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+        let opaque_root = render_list.clear_color.alpha == u8::MAX;
+        let text_view = if opaque_root && self.supports_surface_view_formats {
+            self.painter_format
+                .and_then(WgpuPainter::paired_text_format)
+                .map(|format| {
+                    frame.texture.create_view(&wgpu::TextureViewDescriptor {
+                        format: Some(format),
+                        ..Default::default()
+                    })
+                })
+        } else {
+            None
+        };
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -1384,20 +1410,34 @@ impl Runtime {
                 multiview_mask: None,
             });
         }
-        if let Some(painter) = &mut self.painter
-            && let Err(error) = painter.encode(
-                &self.device,
-                &self.queue,
-                &mut encoder,
-                &view,
-                (
-                    scaled_buffer_dimension(self.width, scale),
-                    scaled_buffer_dimension(self.height, scale),
-                ),
-                render_list,
-            )
-        {
-            eprintln!("knave-shell: renderer failed to prepare frame: {error}");
+        if let Some(painter) = &mut self.painter {
+            let viewport = (
+                scaled_buffer_dimension(self.width, scale),
+                scaled_buffer_dimension(self.height, scale),
+            );
+            let result = if let Some(text_view) = &text_view {
+                painter.encode_targets(
+                    &self.device,
+                    &self.queue,
+                    &mut encoder,
+                    &view,
+                    text_view,
+                    viewport,
+                    render_list,
+                )
+            } else {
+                painter.encode(
+                    &self.device,
+                    &self.queue,
+                    &mut encoder,
+                    &view,
+                    viewport,
+                    render_list,
+                )
+            };
+            if let Err(error) = result {
+                eprintln!("knave-shell: renderer failed to prepare frame: {error}");
+            }
         }
         self.frame_pending = true;
         self.layer
