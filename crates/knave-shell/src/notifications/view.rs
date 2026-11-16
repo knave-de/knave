@@ -137,7 +137,7 @@ impl Notifications {
             panel.layout.clip = ClipMode::Bounds;
             panel.component = Some(ComponentKind::Card);
             panel.style.background = None;
-            let mut heading = p.panel(10).layout(Layout {
+            let mut heading = p.surface_panel(10).layout(Layout {
                 flow: Flow::Row,
                 align: Align::Center,
                 height: Length::Auto,
@@ -301,7 +301,7 @@ impl Notifications {
             scroll.children.push(entries);
             panel.children.push(scroll);
             let mut footer = p
-                .panel(18)
+                .surface_panel(18)
                 .layout(Layout {
                     flow: Flow::Row,
                     align: Align::Center,

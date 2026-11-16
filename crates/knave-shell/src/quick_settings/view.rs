@@ -595,6 +595,8 @@ impl QuickSettings {
         panel.style.background = None;
         let mut header = self.row(&p);
         header = header.class("quick-settings-header");
+        header.paint_surface = true;
+        header.style.background = None;
         header.layout.padding = 12.0;
         if self.page != Page::Main {
             header.children.push(p.header_button(BACK, "‹", 30.0));

@@ -182,6 +182,7 @@ impl Overview {
                     id,
                     Some(viewport_id),
                 );
+                card.classes.push("overview-workspace-thumbnail".into());
                 let badge = placed(
                     Element::new(id + 3, Widget::Panel).class("overview-workspace-badge"),
                     Rect::new(7.0, (strip_h - 33.0).max(0.0), 24.0, 24.0),
@@ -236,7 +237,7 @@ impl Overview {
             root.children.push(text(
                 0x130_0000_1000,
                 format!("Workspace {}", ws.0),
-                Rect::new(rect.x, rect.y - 26.0, rect.width, 22.0),
+                Rect::new(rect.x, rect.y - 26.0, 124.0f32.min(rect.width), 22.0),
                 16.0,
                 "overview-workspace-label",
             ));

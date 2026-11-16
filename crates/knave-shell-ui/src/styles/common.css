@@ -50,3 +50,10 @@
     background-color: var(--shell-card-surface);
     border-radius: 3px;
 }
+
+.notifications-title,
+.quick-settings-title {
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+}

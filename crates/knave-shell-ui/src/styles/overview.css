@@ -156,3 +156,14 @@ button.ghost.overview-workspace-dot-empty {
     border-bottom-left-radius: 7px;
     border-bottom-right-radius: 7px;
 }
+
+/* Labels remain readable over the user's unchanged wallpaper. */
+.overview-workspace-label {
+    background-color: var(--shell-header-surface);
+    border-radius: 3px;
+    padding: 0px 6px;
+}
+.overview-workspace-thumbnail {
+    border-radius: 3px;
+    box-shadow: none;
+}

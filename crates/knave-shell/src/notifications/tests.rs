@@ -554,3 +554,20 @@ fn full_named_themes_cannot_paint_the_fullscreen_positioning_host() {
         );
     }
 }
+
+#[test]
+fn panel_header_and_footer_paint_the_shared_raised_surface() {
+    let mut app = app(2);
+    let list = app.frame([1600.0, 900.0], &mut Metrics).clone();
+    let color = app.scene.theme_color("--shell-header-surface").unwrap();
+    for id in [ElementId(10), ElementId(18)] {
+        let bounds = app.scene.bounds(id).unwrap();
+        assert!(
+            list.commands.iter().any(|command| matches!(command,
+                DisplayCommand::Shape { bounds: painted, paint, .. }
+                    if *painted == bounds && paint.fill == Some(color)
+            )),
+            "{id:?} must paint its raised surface"
+        );
+    }
+}
