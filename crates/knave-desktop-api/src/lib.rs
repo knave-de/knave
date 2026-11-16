@@ -71,6 +71,9 @@ pub struct DeviceSummary {
     pub matched_rule: Option<usize>,
 }
 
+/// Maximum accepted CSS-derived logical-pixel corner radius for a pane.
+pub const MAX_OVERVIEW_PANE_RADIUS: u16 = 64;
+
 /// A logical-output rectangle where the compositor displays one workspace.
 /// Window surfaces are visual only; the shell keeps all pointer and keyboard input.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -80,6 +83,8 @@ pub struct OverviewPane {
     pub y: i32,
     pub width: u32,
     pub height: u32,
+    /// CSS-derived logical-pixel corner radius for the Shell workspace card.
+    pub corner_radius: u16,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

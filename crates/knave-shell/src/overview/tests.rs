@@ -1395,6 +1395,7 @@ fn workspace_panes_fill_cards_without_reserved_empty_shelf() {
         assert_eq!(pane.height, (card.height - 4.0).round() as u32);
         assert_eq!(pane.x, (card.x + 2.0).round() as i32);
         assert_eq!(pane.y, (card.y + 2.0).round() as i32);
+        assert_eq!(pane.corner_radius, if pane.width <= 132 { 3 } else { 12 });
     }
 }
 

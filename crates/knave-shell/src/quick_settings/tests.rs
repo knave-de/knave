@@ -697,6 +697,10 @@ fn panel_header_paints_its_shared_raised_surface() {
     let header = root.children[0].children[0].id;
     let list = app.frame([1600.0, 900.0], &mut Metrics).clone();
     let bounds = app.scene.bounds(header).unwrap();
+    let panel = app.scene.bounds(PANEL).unwrap();
+    assert_eq!(bounds.x, panel.x + 1.0);
+    assert_eq!(bounds.y, panel.y + 1.0);
+    assert_eq!(bounds.width, panel.width - 2.0);
     let color = app.scene.theme_color("--shell-header-surface").unwrap();
     assert!(list.commands.iter().any(|command| matches!(command,
         knave_ui::DisplayCommand::Shape { bounds: painted, paint, .. }

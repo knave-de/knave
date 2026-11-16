@@ -668,12 +668,13 @@ impl Overview {
             && rect.x + rect.width > 0.0
             && rect.x < self.size[0]
         {
-            self.panes.push(OverviewPane {
+            self.panes.push(PaneGeometry {
                 workspace: ws,
                 x: (rect.x + 2.0).round() as i32,
                 y: (rect.y + 2.0).round() as i32,
                 width: (rect.width - 4.0).round() as u32,
                 height: (rect.height - 4.0).round() as u32,
+                card: ElementId(id),
             });
         }
 

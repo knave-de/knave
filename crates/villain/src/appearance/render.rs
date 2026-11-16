@@ -116,6 +116,7 @@ impl SceneLayers {
 struct CachedPane {
     workspace: usize,
     geometry: Geometry,
+    corner_radius: u16,
     sources: Vec<SourceKey>,
     texture: TextureBuffer<GlesTexture>,
 }
@@ -883,6 +884,7 @@ impl EffectsRenderer {
         renderer: &mut GlesRenderer,
         workspace: usize,
         geometry: Geometry,
+        corner_radius: u16,
     ) -> Result<EffectElement, EffectError> {
         use smithay::backend::renderer::element::utils::{
             ConstrainAlign, ConstrainScaleBehavior, constrain_render_elements,
@@ -890,7 +892,10 @@ impl EffectsRenderer {
         let scene = self.scene(state, renderer, workspace, SceneLayers::Preview, 1.0)?;
         let sources: Vec<_> = scene.iter().map(source_key).collect();
         if let Some(index) = self.panes.iter().position(|p| {
-            p.workspace == workspace && p.geometry.size == geometry.size && p.sources == sources
+            p.workspace == workspace
+                && p.geometry.size == geometry.size
+                && p.corner_radius == corner_radius
+                && p.sources == sources
         }) {
             let cached = self.panes.remove(index).expect("pane cache index");
             let location = geometry
@@ -905,10 +910,11 @@ impl EffectsRenderer {
             return Ok(element);
         }
         if self.pane_refresh_budget == 0
-            && let Some(index) = self
-                .panes
-                .iter()
-                .position(|p| p.workspace == workspace && p.geometry.size == geometry.size)
+            && let Some(index) = self.panes.iter().position(|p| {
+                p.workspace == workspace
+                    && p.geometry.size == geometry.size
+                    && p.corner_radius == corner_radius
+            })
         {
             let cached = self.panes.remove(index).expect("pane cache index");
             let location = geometry
@@ -942,8 +948,11 @@ impl EffectsRenderer {
         if pixels <= 0 || pixels > MAX_PIXELS {
             return Err(EffectError::TargetTooLarge);
         }
-        self.panes
-            .retain(|p| p.workspace != workspace || p.geometry.size != geometry.size);
+        self.panes.retain(|p| {
+            p.workspace != workspace
+                || p.geometry.size != geometry.size
+                || p.corner_radius != corner_radius
+        });
         while self.panes.len() >= 128
             || self
                 .panes
@@ -968,7 +977,7 @@ impl EffectsRenderer {
         let texture = render_texture(renderer, geometry.size, &elements, [0.0, 0.0, 0.0, 1.0])?;
         self.ensure_programs(renderer)
             .map_err(EffectError::Renderer)?;
-        let radius = 22.0_f32
+        let radius = f32::from(corner_radius)
             .min(geometry.size.w as f32 / 2.0)
             .min(geometry.size.h as f32 / 2.0);
         let element = filtered(
@@ -991,6 +1000,7 @@ impl EffectsRenderer {
         self.panes.push_back(CachedPane {
             workspace,
             geometry,
+            corner_radius,
             sources,
             texture,
         });

@@ -6,9 +6,10 @@ The default Super binding toggles the session-local `overview_visible` state;
 Escape and acknowledged shell actions set it false. The shell maps or unmaps
 its layer surface from the subscribed snapshot. Destroying the Overview surface
 resets visibility, so a supervised restart begins hidden. Visibility is not
-persistent. The shell sends up to three workspace IDs and rectangles in logical
-output coordinates. Villain
-rejects duplicate IDs, invalid workspaces, zero or oversized rectangles, and
+persistent. The shell sends workspace IDs, rectangles, and CSS-derived corner
+radii in logical output coordinates, for at most 256 panes. Villain rejects
+duplicate IDs, invalid workspaces, zero or oversized rectangles, corner radii
+above 64 logical pixels, and
 requests without a registered overview layer surface with a retryable unavailable
 response. The validated list is staged and applied on the next Overview surface commit. Unmapping or destroying
 `knave-shell-overview` clears the list; output resize invalidates its geometry. There is no persistent state.
@@ -43,13 +44,15 @@ dimmer behind the cards so wallpaper remains visible around them, including whil
 Deploy the matching Shell and Villain builds together; rollback restores both.
 
 Workspace panes fill their card interior with centered cover scaling and a
-22-pixel rounded mask. The shell draws its border and controls above the pane;
+mask using the Shell card's computed corner radius (3 px for thumbnails and
+12 px for the full workspace card). The shell draws its border and controls above the pane;
 empty workspaces have no empty minimized shelf or placeholder covering wallpaper.
 Overview's dimmer is compositor-owned and sits below the panes. Its full-output
 backdrop excludes the bar, so wallpaper reaches all four screen edges.
 
 Rounded pane textures use an LRU capped at six entries and 36 Mi pixels,
-separate from the scene-effects cache. The key includes workspace, dimensions and
+separate from the scene-effects cache. The key includes workspace, dimensions,
+corner radius and
 source IDs, commits, crop, transform and alpha. Static repaint reuses textures;
 window commits and layout changes replace the affected entry. Eviction, reload
 and compositor shutdown release textures. Two transient pane targets are bounded

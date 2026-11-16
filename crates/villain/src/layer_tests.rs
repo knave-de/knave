@@ -522,10 +522,20 @@ fn layer_lifecycle_focus_and_workspace_independence() {
                     y: 10,
                     width: 100,
                     height: 60,
+                    corner_radius: 12,
                 }];
                 assert!(matches!(
                     s.set_overview_panes(panes.clone()),
                     knave_desktop_api::DesktopResponse::Ok
+                ));
+                assert_eq!(s.overview_panes, panes);
+                let mut invalid = panes.clone();
+                invalid[0].corner_radius =
+                    knave_desktop_api::MAX_OVERVIEW_PANE_RADIUS.saturating_add(1);
+                assert!(matches!(
+                    s.set_overview_panes(invalid),
+                    knave_desktop_api::DesktopResponse::Error(error)
+                        if error.code == knave_desktop_api::DesktopErrorCode::InvalidRequest
                 ));
                 assert_eq!(s.overview_panes, panes);
                 assert!(s.repaint_needed);

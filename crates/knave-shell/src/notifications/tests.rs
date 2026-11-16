@@ -562,6 +562,9 @@ fn panel_header_and_footer_paint_the_shared_raised_surface() {
     let color = app.scene.theme_color("--shell-header-surface").unwrap();
     for id in [ElementId(10), ElementId(18)] {
         let bounds = app.scene.bounds(id).unwrap();
+        let panel = app.scene.bounds(PANEL).unwrap();
+        assert_eq!(bounds.x, panel.x + 1.0);
+        assert_eq!(bounds.width, panel.width - 2.0);
         assert!(
             list.commands.iter().any(|command| matches!(command,
                 DisplayCommand::Shape { bounds: painted, paint, .. }

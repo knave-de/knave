@@ -22,6 +22,16 @@ const PAGE_SIZE: usize = 5;
 const MAX_RESULTS: usize = 64;
 
 #[derive(Clone, Copy)]
+struct PaneGeometry {
+    workspace: WorkspaceId,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    card: ElementId,
+}
+
+#[derive(Clone, Copy)]
 enum Target {
     Workspace(WorkspaceId),
     EnterWorkspace(WorkspaceId),
@@ -58,7 +68,7 @@ pub struct Overview {
     notifications_enabled: bool,
     notifications_after_hide: bool,
     quick_settings_after_hide: bool,
-    panes: Vec<OverviewPane>,
+    panes: Vec<PaneGeometry>,
     pane_cards: Vec<(ElementId, WorkspaceId, ElementId)>,
     workspace: Option<WorkspaceId>,
     scene: Scene,
@@ -424,6 +434,18 @@ impl Overview {
         !in_catalog && self.scene.hit_test(point).is_none()
     }
 
+    fn pane_corner_radius(&self, element: ElementId) -> Option<u16> {
+        let radius = self.scene.computed_style(element)?.style.radius;
+        if !radius.is_finite() || radius < 0.0 {
+            return None;
+        }
+        Some(
+            radius
+                .round()
+                .clamp(0.0, f32::from(knave_desktop_api::MAX_OVERVIEW_PANE_RADIUS))
+                as u16,
+        )
+    }
     fn search_page_size(&self) -> usize {
         (((self.size[1]
             - STATUS_BAR_HEIGHT
@@ -756,7 +778,20 @@ impl Application for Overview {
         self.host_error("Desktop connection unavailable — retrying");
     }
     fn overview_panes(&self) -> Option<Vec<OverviewPane>> {
-        let mut panes = self.panes.clone();
+        let mut panes = Vec::with_capacity(self.panes.len() + self.pane_cards.len());
+        for pane in &self.panes {
+            let Some(corner_radius) = self.pane_corner_radius(pane.card) else {
+                continue;
+            };
+            panes.push(OverviewPane {
+                workspace: pane.workspace,
+                x: pane.x,
+                y: pane.y,
+                width: pane.width,
+                height: pane.height,
+                corner_radius,
+            });
+        }
         for (element, workspace, viewport) in &self.pane_cards {
             let (Some(card), Some(viewport)) =
                 (self.scene.bounds(*element), self.scene.bounds(*viewport))
@@ -769,12 +804,16 @@ impl Application for Overview {
             if visible.width <= 4.0 || visible.height <= 4.0 {
                 continue;
             }
+            let Some(corner_radius) = self.pane_corner_radius(*element) else {
+                continue;
+            };
             panes.push(OverviewPane {
                 workspace: *workspace,
                 x: (visible.x + 2.0).round() as i32,
                 y: (visible.y + 2.0).round() as i32,
                 width: (visible.width - 4.0).round() as u32,
                 height: (visible.height - 4.0).round() as u32,
+                corner_radius,
             });
         }
         Some(panes)
