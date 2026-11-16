@@ -189,6 +189,12 @@ start_overview_service = true
 # Example: pinned_apps = ["org.gnome.Nautilus.desktop", "firefox.desktop"]
 pinned_apps = []
 
+# Without an image, the wallpaper is the theme default for the current
+# [appearance.theme] mode, contrast and chroma.
+# [shell.wallpaper]
+# image = "/absolute/path/to/wallpaper.png"
+# fit = "cover"
+
 # Per-edge gap contributions are 6 px, yielding 12 px tiled gaps and perimeter.
 # Borders default to 1 px; corners default to 3 px.
 # Focus colors/effects follow [appearance.theme] unless explicitly configured.

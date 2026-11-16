@@ -222,10 +222,12 @@ fit = "cover"
 
 `cover` fills the screen with a centered crop; `contain` shows the full image
 with black bars; `stretch` fills the screen and may distort it. PNG is supported;
-convert other formats first. Omit `image` to return to black. Wallpaper
-changes — a new assignment, a cleared one, and image or fit changes — apply
+convert other formats first. Omit `image` to use the active theme's default
+wallpaper, chosen from the appearance mode, contrast and chroma; with no
+installed default the desktop stays black. Wallpaper changes — a new assignment, a cleared one, and image or fit changes — apply
 on `knave reload` without a session restart; the session spawns or stops
-the wallpaper process as part of the assignment. See
+the wallpaper process as part of the assignment. Appearance changes swap the
+theme default the same way. See
 [ownership and limits](decisions/0008-static-wallpaper.md).
 
 ## Overview dock

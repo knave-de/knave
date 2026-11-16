@@ -1,10 +1,10 @@
 //! Reload-driven wallpaper updates. One background thread subscribes to the
-//! desktop socket, re-validates `[shell.wallpaper]` on
-//! `ConfigurationReloaded`, decodes replacements off the render loop and
+//! desktop socket, re-resolves the effective wallpaper (`[shell.wallpaper]`
+//! or the active theme's default) on `ConfigurationReloaded`, decodes replacements off the render loop and
 //! keeps at most one pending update: reloads are levels, so an unread event
 //! is superseded by the next one instead of being queued.
 
-use knave_config::{ConfigDocument, WallpaperFit};
+use knave_config::{ConfigDocument, DataDirectories, WallpaperFit};
 use knave_desktop_api::{DesktopEvent, DesktopSubscription, SubscriptionCancel};
 use knave_ui::{ImageFit, UiImage};
 use knave_wayland::Waker;
@@ -100,7 +100,13 @@ impl ReloadWorker {
                                 match default_config_path() {
                                     Ok(path) => {
                                         let notify = || waker.wake();
-                                        evaluate(&path, thread_shared.as_ref(), load, &notify);
+                                        evaluate(
+                                            &path,
+                                            &DataDirectories::from_environment(),
+                                            thread_shared.as_ref(),
+                                            load,
+                                            &notify,
+                                        );
                                     }
                                     Err(error) => eprintln!(
                                         "knave-shell: wallpaper reload: {error}; keeping previous image"
@@ -180,14 +186,13 @@ fn image_fit(value: WallpaperFit) -> Option<ImageFit> {
     }
 }
 
-/// Reads the wallpaper projection from an already validated configuration.
-fn desired_at(path: &Path) -> Result<Desired, String> {
+/// Reads the effective wallpaper from an already validated configuration.
+fn desired_at(path: &Path, data: &DataDirectories) -> Result<Desired, String> {
     let document = ConfigDocument::load(path).map_err(|error| error.to_string())?;
-    let config = document.config();
-    match &config.shell.wallpaper.image {
-        Some(image) => Ok(Desired::Image {
-            path: image.clone(),
-            fit: image_fit(config.shell.wallpaper.fit)
+    match document.config().effective_wallpaper(data) {
+        Some(effective) => Ok(Desired::Image {
+            path: effective.image,
+            fit: image_fit(effective.fit)
                 .ok_or_else(|| "wallpaper fit must be cover, contain, or stretch".to_string())?,
         }),
         None => Ok(Desired::Cleared),
@@ -196,8 +201,14 @@ fn desired_at(path: &Path) -> Result<Desired, String> {
 
 /// Compares the configured wallpaper with what is rendered and stages one
 /// update. Decode failures keep the previous image; the next reload retries.
-fn evaluate(config: &Path, shared: &(Mutex<Shared>, Condvar), load: LoadImage, notify: &dyn Fn()) {
-    let desired = match desired_at(config) {
+fn evaluate(
+    config: &Path,
+    data: &DataDirectories,
+    shared: &(Mutex<Shared>, Condvar),
+    load: LoadImage,
+    notify: &dyn Fn(),
+) {
+    let desired = match desired_at(config, data) {
         Ok(desired) => desired,
         Err(error) => {
             eprintln!("knave-shell: wallpaper reload: {error}; keeping previous image");
@@ -353,6 +364,7 @@ mod tests {
         };
         evaluate(
             Path::new("/definitely/missing/config.toml"),
+            &DataDirectories::default(),
             &shared,
             must_not_load,
             &wake,
@@ -381,7 +393,13 @@ mod tests {
         let wake = || {
             let _ = notify.try_send(());
         };
-        evaluate(&config, &shared, must_not_load, &wake);
+        evaluate(
+            &config,
+            &DataDirectories::default(),
+            &shared,
+            must_not_load,
+            &wake,
+        );
         let state = shared.0.lock().unwrap();
         assert_eq!(state.applied, applied);
         assert!(state.pending.is_none());
@@ -404,7 +422,13 @@ mod tests {
         let wake = || {
             let _ = notify.try_send(());
         };
-        evaluate(&config, &shared, wallpaper::load, &wake);
+        evaluate(
+            &config,
+            &DataDirectories::default(),
+            &shared,
+            wallpaper::load,
+            &wake,
+        );
         let mut state = shared.0.lock().unwrap();
         assert_eq!(state.applied.path.as_deref(), Some(image.to_str().unwrap()));
         assert!(matches!(state.applied.fit, ImageFit::Contain));
@@ -418,11 +442,45 @@ mod tests {
         drop(state);
         assert!(receiver.try_recv().is_ok());
         // Evaluating the unchanged configuration again stages nothing.
-        evaluate(&config, &shared, wallpaper::load, &wake);
+        evaluate(
+            &config,
+            &DataDirectories::default(),
+            &shared,
+            wallpaper::load,
+            &wake,
+        );
         let state = shared.0.lock().unwrap();
         assert!(state.pending.is_none());
         drop(state);
         assert!(matches!(receiver.try_recv(), Err(TryRecvError::Empty)));
+    }
+
+    #[test]
+    fn an_unset_image_follows_the_theme_default_wallpaper() {
+        let directory = tempfile::tempdir().unwrap();
+        let wallpapers = directory.path().join("knave/themes/knave/wallpapers");
+        std::fs::create_dir_all(&wallpapers).unwrap();
+        for variant in ["dark-standard", "light-standard"] {
+            std::fs::write(wallpapers.join(format!("{variant}.png")), encode_png()).unwrap();
+        }
+        let data = DataDirectories(vec![directory.path().into()]);
+        let config = directory.path().join("config.toml");
+        let shared = shared_with(AppliedWallpaper {
+            path: None,
+            fit: ImageFit::Cover,
+        });
+        let wake = || {};
+        for (mode, variant) in [("dark", "dark-standard"), ("light", "light-standard")] {
+            std::fs::write(&config, format!("[appearance.theme]\nmode = \"{mode}\"\n")).unwrap();
+            evaluate(&config, &data, &shared, wallpaper::load, &wake);
+            let mut state = shared.0.lock().unwrap();
+            let expected = wallpapers.join(format!("{variant}.png"));
+            assert_eq!(state.applied.path.as_deref(), expected.to_str());
+            assert!(matches!(
+                state.pending.take(),
+                Some(ReloadUpdate::Image { image: Some(_), .. })
+            ));
+        }
     }
 
     #[test]
@@ -439,7 +497,13 @@ mod tests {
             path: Some(image.to_string_lossy().into_owned()),
             fit: ImageFit::Cover,
         });
-        evaluate(&config, &shared, must_not_load, &wake);
+        evaluate(
+            &config,
+            &DataDirectories::default(),
+            &shared,
+            must_not_load,
+            &wake,
+        );
         let state = shared.0.lock().unwrap();
         assert!(matches!(
             state.pending,
@@ -465,9 +529,21 @@ mod tests {
             let _ = notify.try_send(());
         };
 
-        evaluate(&config, &shared, wallpaper::load, &wake);
+        evaluate(
+            &config,
+            &DataDirectories::default(),
+            &shared,
+            wallpaper::load,
+            &wake,
+        );
         config_document(&directory, Some(&image), "stretch");
-        evaluate(&config, &shared, must_not_load, &wake);
+        evaluate(
+            &config,
+            &DataDirectories::default(),
+            &shared,
+            must_not_load,
+            &wake,
+        );
 
         let mut state = shared.0.lock().unwrap();
         assert_eq!(state.applied.fit, ImageFit::Stretch);
@@ -497,7 +573,13 @@ mod tests {
             let _ = notify.try_send(());
         };
         let shared = shared_with(applied.clone());
-        evaluate(&config, &shared, failing_load, &wake);
+        evaluate(
+            &config,
+            &DataDirectories::default(),
+            &shared,
+            failing_load,
+            &wake,
+        );
         let state = shared.0.lock().unwrap();
         assert_eq!(state.applied, applied);
         assert!(state.pending.is_none());
@@ -517,7 +599,13 @@ mod tests {
             path: Some("current.png".into()),
             fit: ImageFit::Cover,
         });
-        evaluate(&config, &shared, must_not_load, &wake);
+        evaluate(
+            &config,
+            &DataDirectories::default(),
+            &shared,
+            must_not_load,
+            &wake,
+        );
         let mut state = shared.0.lock().unwrap();
         assert!(state.applied.path.is_none());
         match state.pending.take() {
@@ -527,7 +615,13 @@ mod tests {
         drop(state);
         assert!(receiver.try_recv().is_ok());
         // Clearing again is a no-op.
-        evaluate(&config, &shared, must_not_load, &wake);
+        evaluate(
+            &config,
+            &DataDirectories::default(),
+            &shared,
+            must_not_load,
+            &wake,
+        );
         assert!(shared.0.lock().unwrap().pending.is_none());
         assert!(matches!(receiver.try_recv(), Err(TryRecvError::Empty)));
     }

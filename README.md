@@ -131,8 +131,10 @@ data. Choose a user, system, or explicit prefix:
     scripts/install.sh --system
     scripts/install.sh --prefix /chosen/prefix
 
-User installation places only `knave` in `~/.local/bin`.
-System installation uses /usr/local/bin and requests sudo when necessary.
+User installation places `knave` in `~/.local/bin` and the default theme
+wallpapers in `~/.local/share/knave/themes/knave/wallpapers`.
+System installation uses /usr/local (`bin` and `share`) and requests sudo when
+necessary.
 Installation is explicit and never writes to /usr/local without --system.
 
 ## Architecture and change policy

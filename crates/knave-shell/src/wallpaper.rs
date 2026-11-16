@@ -165,4 +165,12 @@ mod tests {
         assert!(load(&path).is_err());
         std::fs::remove_file(path).unwrap();
     }
+
+    #[test]
+    fn shipped_theme_wallpaper_decodes_within_limits() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../share/knave/themes/knave/wallpapers/dark-standard.png");
+        let image = load(&path.canonicalize().unwrap()).unwrap();
+        assert_eq!((image.width(), image.height()), (3840, 2160));
+    }
 }

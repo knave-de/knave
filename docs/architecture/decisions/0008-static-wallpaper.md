@@ -67,6 +67,37 @@ process for the lifetime of the desktop, with reconnection backoff while the
 desktop socket is down. Direct-TTY and hardware-GPU behavior require
 separate verification.
 
+## Theme default wallpapers (2026-11-16)
+
+Knave ships the Knave Flow family as the `knave` theme's default wallpapers:
+`share/knave/themes/knave/wallpapers/{dark,light}-{standard,high-contrast,monochrome}.png`,
+3840x2160 PNGs. `scripts/install.sh` installs them under
+`<prefix>/share/knave/themes/<theme>/wallpapers/` (`--user` to `~/.local`,
+`--system` to `/usr/local`). They are not embedded: about 36 MiB of art would
+otherwise be mapped into every `knave` process mode.
+
+When `[shell.wallpaper].image` is unset, `Config::effective_wallpaper` selects
+the variant for `[appearance.theme]` (`system` uses the dark fallback;
+monochrome wins over high contrast, matching the logo). It searches
+`XDG_DATA_HOME`, the executable's `<prefix>/share`, `XDG_DATA_DIRS`, and for
+uninstalled `target/{debug,release}` binaries the checked-in `share/`, first in
+the selected theme and then in `knave`. Session and Shell use the same
+projection, so mode, contrast or chroma changes swap the image on reload
+through the existing assignment and reload paths. An explicit image always
+wins; nothing found keeps the previous black, wallpaper-less desktop.
+There is no setting to disable the default without choosing an image.
+
+Rollback is the previous package set plus removing the installed wallpaper
+directory; configuration is unchanged.
+
+Software-rendered debug samples: one 4K default starts the wallpaper process
+at 324 MiB RSS, 22 threads, 25 FDs and no idle CPU ticks (baseline about
+230 MiB with a 1470x981 image). All six variants matched their cover-scaled
+sources after reload (RMSE at most 0.0098 against at least 0.085 for any
+other variant). Repeated theme swaps grow RSS to a stable 1.5 GiB plateau:
+knave-renderer's 512 MiB LRU keeps superseded textures, and llvmpipe holds
+them in host memory. Evicting replaced images belongs to knave-ui.
+
 ## Software-rendered verification (2026-10-16)
 
 The selected 1470x981 image was converted from AVIF to PNG outside the runtime.

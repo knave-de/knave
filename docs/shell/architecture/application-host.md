@@ -97,7 +97,8 @@ host baseline; this does not establish long-run resource behavior.
 ## Static wallpaper consumer
 
 `knave-shell wallpaper ABSOLUTE_PNG_PATH cover|contain|stretch` is supervised by
-Knave Session when `[shell.wallpaper].image` is set. It uses the background layer
+Knave Session with `[shell.wallpaper].image`, or the active theme's default
+wallpaper when it is unset and installed. It uses the background layer
 and no keyboard interactivity, loads one bounded PNG and keeps black behind it.
 Decode errors are logged and fall back to black. A desktop subscription applies
 configuration reloads without a file watcher or polling timer. One worker owns
