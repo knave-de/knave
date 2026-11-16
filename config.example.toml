@@ -203,10 +203,10 @@ right = 6
 bottom = 6
 left = 6
 [compositor.appearance.border.width]
-top = 1
-right = 1
-bottom = 1
-left = 1
+top = 2
+right = 2
+bottom = 2
+left = 2
 [compositor.appearance.border.radius]
 top_left = 3
 top_right = 3

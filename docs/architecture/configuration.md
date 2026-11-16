@@ -206,7 +206,7 @@ The `[compositor.appearance]` settings configure window gaps, borders, corner
 radii, focus appearance, side shadows and background blur. Gap contributions
 default to 6 px per side; the two inner contributions form a 12 px intertile
 gap, and inner plus outer contributions form a 12 px tiled perimeter. Borders
-default to 1 px and corners to 3 px. Omitted focus colors and focused shadows
+default to 2 px and corners to 3 px. Omitted focus colors and focused shadows
 follow the selected desktop theme. See the
 [complete contract and example](window-appearance.md). Maximization disables
 effects by default, and fullscreen always bypasses them. The private desktop

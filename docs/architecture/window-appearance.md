@@ -13,7 +13,7 @@ leave the entire running configuration unchanged.
 | --- | --- | --- | --- |
 | `gaps.outer` | `top`, `right`, `bottom`, `left` | 6 | 0–4096 |
 | `gaps.inner` | `top`, `right`, `bottom`, `left` | 6 | 0–4096 |
-| `border.width` | `top`, `right`, `bottom`, `left` | 1 | 0–128 |
+| `border.width` | `top`, `right`, `bottom`, `left` | 2 | 0–128 |
 | `border.radius` | `top_left`, `top_right`, `bottom_right`, `bottom_left` | 3 | 0–4096 |
 
 Gap values are per-edge contributions. Outer gaps inset the usable area after

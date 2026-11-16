@@ -51,10 +51,10 @@ impl Default for Border {
     fn default() -> Self {
         Self {
             width: Edges {
-                top: 1,
-                right: 1,
-                bottom: 1,
-                left: 1,
+                top: 2,
+                right: 2,
+                bottom: 2,
+                left: 2,
             },
             radius: Corners {
                 top_left: 3,
