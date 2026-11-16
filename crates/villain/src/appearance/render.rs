@@ -190,6 +190,15 @@ fn focus_outline_geometry(body: Geometry, radii: [f32; 4]) -> (Geometry, [f32; 4
     (outline, outline_radii, widths)
 }
 
+fn append_outline_before_lower<E>(
+    window_elements: &mut Vec<E>,
+    outline: Option<E>,
+    lower_elements: impl IntoIterator<Item = E>,
+) {
+    window_elements.extend(outline);
+    window_elements.extend(lower_elements);
+}
+
 fn physical_window_crop(rect: Geometry, scale: f64) -> Rectangle<i32, Physical> {
     rect.to_physical_precise_round(scale)
 }
@@ -836,19 +845,21 @@ impl EffectsRenderer {
                     }
                 }
             }
-            window_elements.extend(elements);
-            if view.borders
+            let outline = if view.borders
                 && !fullscreen
                 && is_focused
                 && let Some(color) = &state.config.theme_focused_outline
             {
-                window_elements.push(EffectElement::Shape(focus_outline(
+                Some(EffectElement::Shape(focus_outline(
                     shape_program,
                     outer,
                     radii,
                     color,
-                )));
-            }
+                )))
+            } else {
+                None
+            };
+            append_outline_before_lower(&mut window_elements, outline, elements);
             elements = window_elements;
         }
         unmanaged.extend(elements);

@@ -49,6 +49,16 @@ fn focused_outline_adds_one_pixel_offset_and_two_pixel_edge() {
 }
 
 #[test]
+fn focused_outline_precedes_lower_stacking_elements() {
+    let mut window_elements = vec!["window chrome"];
+    append_outline_before_lower(&mut window_elements, Some("focus outline"), ["wallpaper"]);
+    assert_eq!(
+        window_elements,
+        ["window chrome", "focus outline", "wallpaper"]
+    );
+}
+
+#[test]
 #[ignore = "requires EGL_MESA_platform_surfaceless and a GLES renderer"]
 fn gpu_pixels_prove_borders_rounding_opacity_directional_shadows_and_blur() {
     // Surfaceless EGL owns this display and context for the duration of the test.

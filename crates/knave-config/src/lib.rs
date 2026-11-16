@@ -906,7 +906,7 @@ impl ConfigDocument {
 
     pub fn write(&mut self, config: Config) -> Result<(), ConfigError> {
         config.validate()?;
-        apply_config(&mut self.document, &config);
+        apply_config(&mut self.document, &config, &self.config);
         let source = self.document.to_string();
         atomic_write(&self.path, source.as_bytes())?;
         self.config = config;
@@ -928,7 +928,7 @@ impl ConfigDocument {
 }
 
 /// Apply typed settings to the TOML document while retaining unrecognized keys.
-fn apply_config(document: &mut DocumentMut, config: &Config) {
+fn apply_config(document: &mut DocumentMut, config: &Config, previous: &Config) {
     if let Some(table) = document
         .get("quick_settings")
         .and_then(Item::as_inline_table)
@@ -1150,25 +1150,32 @@ fn apply_config(document: &mut DocumentMut, config: &Config) {
     // Theme-derived window colors and focused shadows stay implicit during
     // unrelated settings writes. Existing source tables remain untouched by
     // the leaf merge, while nondefault values are still serialized.
-    for (profile, current, default) in [
+    for (profile, current, default, previous) in [
         (
             "focused",
             &config.compositor.appearance.focused,
             &defaults.focused,
+            &previous.compositor.appearance.focused,
         ),
         (
             "unfocused",
             &config.compositor.appearance.unfocused,
             &defaults.unfocused,
+            &previous.compositor.appearance.unfocused,
         ),
     ] {
         let table = appearance[profile]
             .as_table_mut()
             .expect("serialized focus profile is a table");
-        if current.border_color == default.border_color {
+        if current.border_color == default.border_color
+            && previous.border_color == default.border_color
+        {
             table.remove("border_color");
         }
-        if profile == "focused" && current.shadows == default.shadows {
+        if profile == "focused"
+            && current.shadows == default.shadows
+            && previous.shadows == default.shadows
+        {
             table.remove("shadows");
         }
     }
