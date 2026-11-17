@@ -449,10 +449,7 @@ impl EffectsRenderer {
         let windows_started = profile.then(Instant::now);
         for (window, rect, fullscreen, maximized, tiled, _) in &windows {
             let is_focused = KeyboardFocus::for_window(window) == focused;
-            let shared_controls =
-                crate::shared_header::controls_rect(window, *rect, *fullscreen, &state.config);
-            let titlebar =
-                crate::workspaces::titlebar_rect(window, *rect, *fullscreen).or(shared_controls);
+            let titlebar = crate::workspaces::titlebar_rect(window, *rect, *fullscreen);
             key.windows
                 .push((*rect, *fullscreen, *maximized, *tiled, is_focused));
             let elements = window_elements(
@@ -485,7 +482,6 @@ impl EffectsRenderer {
                         titlebar::TitlebarState {
                             focused: is_focused,
                             palette: state.config.decoration_palette,
-                            controls_only: shared_controls.is_some(),
                             hovered,
                             maximized: *maximized,
                             tiled: *tiled,

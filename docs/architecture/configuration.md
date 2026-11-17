@@ -122,11 +122,7 @@ empty matchers, and out-of-range or unretained workspace targets reject the full
 config and leave the active configuration unchanged. The compositor compiles
 regexes on config load.
 
-The optional presentation action `shared_header = "gtk" | "off"` enables
-compositor controls inside a standard GTK header reservation. It uses the same
-matching/override order, but takes effect for existing windows on reload. It
-requires the matching GTK 3/4 reservation styles; it does not detect toolkits or
-make arbitrary CSD headers safe to overlay. See [shared GTK headers](decisions/0018-shared-header-experiment.md).
+Window rules control placement and workspace only. Villain supplies a separate server-side titlebar to every managed window; see [the titlebar decision](decisions/0018-server-side-titlebars.md).
 
 The configuration is typed by `knave-config` and consumed directly by Villain;
 Settings can read and write these same fields without a second persistence

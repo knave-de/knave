@@ -185,8 +185,6 @@ impl Villain {
             if !visible {
                 continue;
             }
-            let shared =
-                crate::shared_header::controls_rect(&window, rect, fullscreen, &self.config);
             if window
                 .surface_under(
                     self.pointer_location - (rect.loc - window.geometry().loc).to_f64(),
@@ -196,8 +194,7 @@ impl Villain {
             {
                 return false;
             }
-            if let Some(bar) =
-                crate::workspaces::titlebar_rect(&window, rect, fullscreen).or(shared)
+            if let Some(bar) = crate::workspaces::titlebar_rect(&window, rect, fullscreen)
                 && bar.to_f64().contains(self.pointer_location)
                 && {
                     let (_, _, frame, inner_radii) = self.input_shape(&window, rect);

@@ -30,31 +30,19 @@ There is no configurable override. Saved maximization and floating placement
 survive view transitions. Knave's `docs/architecture/window-appearance.md`
 contains the complete validated contract, defaults, bounds and TOML example.
 
-## Shared GTK headers
-
-An opt-in `shared_header = "gtk"` window rule places the four compositor controls
-inside a standard GTK header reservation, using matching GTK 3/4 CSS adapters.
-It adds no titlebar row. The default is off; arbitrary client decorations are
-not detected or rearranged. See [the shared-header decision](../../architecture/decisions/0018-shared-header-experiment.md).
 Decoration palettes resolve Knave’s theme policy and named CSS on load/reload.
 
 ## Server titlebars
 
-Villain provides a 34 logical-pixel titlebar when an xdg-toplevel uses the
-`xdg-decoration` protocol in server-side mode. Villain initially offers server
-side decoration and follows the client's negotiated mode; a client that
-requests client-side decoration keeps its own chrome and receives no Villain
-titlebar. Destroying the decoration object returns the toplevel to client-side
-mode at its next surface commit. The titlebar is outside the client's
+Villain provides a 34 logical-pixel titlebar for every managed xdg-toplevel regardless of xdg-decoration support or requested mode. Villain answers client-side mode requests with server-side mode. Destroying the decoration object switches to client-side mode at the next commit, as required by the protocol; a toplevel without a decoration object still gets a frame. The titlebar is outside the client's
 configured content rectangle and is not shown for fullscreen windows. When
 borders or rounded corners are enabled, the compositor titlebar shares the
 client's outer frame and rounded hit contour.
 
-XWayland clients do not negotiate `xdg-decoration`. A managed X11 window gets
-the same titlebar when it relies on the window manager for decorations, as
-indicated by `_MOTIF_WM_HINTS`. Client-decorated windows keep their own chrome
-and move or resize through `_NET_WM_MOVERESIZE`. Changes to Motif hints update
-the titlebar and client geometry; unmanaged X11 surfaces are unaffected.
+XWayland clients do not negotiate `xdg-decoration`. Every managed X11 window gets
+the same titlebar, including windows with Motif client-decoration hints. The
+compositor handles move and resize through `_NET_WM_MOVERESIZE`; Motif hints do
+not disable the managed frame. Unmanaged X11 surfaces are unaffected.
 
 The titlebar controls from right to left are close, maximize/restore, toggle
 floating, and minimize. Double-clicking an empty titlebar toggles maximize;
@@ -126,6 +114,6 @@ GPU/driver texture storage. Resource growth, hardware presentation, physical
 input, direct-TTY/KMS, reboot and multi-monitor behavior remain unverified.
 
 X11 floating move/resize paths use outer-frame coordinates. Motif decoration
-changes adjust stored floating frames even while maximized, fullscreen, or
-minimized, preserving client dimensions when restored. The isolated XWayland
-regression covers those transitions as well as directional movement and resizing.
+changes do not remove the managed frame or alter saved outer geometry, including
+while maximized, fullscreen, or minimized. The isolated XWayland regression
+covers those transitions as well as directional movement and resizing.

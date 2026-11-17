@@ -204,3 +204,20 @@ and icon cleanup on accepted/rejected drops and source disconnect. The runner
 records MP4s, screenshots, assertions and compositor resource samples around ten
 rejected drags, then stops its applications and harness. It does not establish
 XWayland interoperability or direct-TTY/GPU behavior.
+
+## Server titlebars
+
+After a debug workspace build, run the GTK4/libadwaita and GTK3 checks separately:
+
+```sh
+python3 scripts/desktop-titlebar-smoke.py --run /tmp/titlebar-foliate --app foliate
+python3 scripts/desktop-titlebar-smoke.py --run /tmp/titlebar-evince --app evince
+```
+
+The runner requires ImageMagick and the selected app; Evince also requires
+`/usr/share/doc/speex/manual.pdf`. It verifies all four server controls, restore,
+fullscreen transitions, repeated float/tile actions, and bounded compositor
+process/thread/descriptor counts. Each run saves screenshots, an MP4, assertions,
+and timestamped resource samples, then stops its session. Inspect the initial
+screenshots to verify native GTK controls are hidden. These short software-rendered
+samples do not establish a pre-change performance comparison or hardware behavior.

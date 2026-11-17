@@ -1528,7 +1528,7 @@ mod tests {
             });
             assert_eq!(
                 state.floating_geometry(&window).unwrap().size,
-                (340, 226).into(),
+                (340, 260).into(),
                 "{mode}"
             );
             conn.change_property32(PropMode::REPLACE, id, motif, motif, &[2, 0, 1, 0, 0])

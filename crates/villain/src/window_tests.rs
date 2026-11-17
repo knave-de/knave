@@ -32,6 +32,7 @@ struct Client {
     configure_counts: HashMap<usize, usize>,
     decoration_configure_counts: HashMap<usize, usize>,
     pointer_buttons: usize,
+    pointer_positions: Vec<(f64, f64)>,
     swipes: Vec<String>,
     pinches: Vec<String>,
     holds: Vec<String>,
@@ -127,8 +128,21 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Client {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if matches!(event, wl_pointer::Event::Button { .. }) {
-            state.pointer_buttons += 1;
+        match event {
+            wl_pointer::Event::Button { .. } => state.pointer_buttons += 1,
+            wl_pointer::Event::Enter {
+                surface_x,
+                surface_y,
+                ..
+            }
+            | wl_pointer::Event::Motion {
+                surface_x,
+                surface_y,
+                ..
+            } => {
+                state.pointer_positions.push((surface_x, surface_y));
+            }
+            _ => {}
         }
     }
 }
@@ -1725,9 +1739,48 @@ fn xdg_decoration_negotiation_and_geometry() {
         // A decoration object with no requested mode defaults to server-side.
         let decoration = manager.get_toplevel_decoration(&top, &qh, 1);
         top.set_app_id("arbitrary.application".into());
+        xdg.set_window_geometry(10, 20, 620, 440);
         surface.commit();
         queue.roundtrip(&mut client).unwrap();
         queue.roundtrip(&mut client).unwrap();
+        // A real buffer keeps the nonzero geometry from being clamped to an
+        // empty bounding box, and lets the client verify actual input delivery.
+        let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).unwrap();
+        let seat: wl_seat::WlSeat = globals.bind(&qh, 1..=7, ()).unwrap();
+        let _pointer = seat.get_pointer(&qh, ());
+        let path =
+            std::env::temp_dir().join(format!("villain-decoration-buffer-{}", std::process::id()));
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .unwrap();
+        std::fs::remove_file(path).unwrap();
+        file.set_len(640 * 480 * 4).unwrap();
+        let pool = shm.create_pool(file.as_fd(), 640 * 480 * 4, &qh, ());
+        let buffer = pool.create_buffer(0, 640, 480, 640 * 4, wl_shm::Format::Argb8888, &qh, ());
+        surface.attach(Some(&buffer), 0, 0);
+        surface.commit();
+        queue.roundtrip(&mut client).unwrap();
+        queue.roundtrip(&mut client).unwrap();
+        inspect(&sender, |state| {
+            let (window, rect, ..) = state.workspace_layout(0).remove(0);
+            assert_eq!(window.geometry().loc, (10, 20).into());
+            state.host_focused = true;
+            state.pointer_location = smithay::utils::Point::<i32, smithay::utils::Logical>::from((
+                rect.loc.x + 3,
+                rect.loc.y + 4,
+            ))
+            .to_f64();
+            state.refresh_pointer_surface(1);
+        });
+        queue.roundtrip(&mut client).unwrap();
+        assert_eq!(
+            client.pointer_positions.last(),
+            Some(&(13.0, 24.0)),
+            "client input must use the rendered surface origin, including geometry offsets"
+        );
         let sibling_surface = compositor.create_surface(&qh, ());
         let sibling_xdg = wm.get_xdg_surface(&sibling_surface, &qh, ());
         let sibling_top = sibling_xdg.get_toplevel(&qh, 2);
@@ -1746,7 +1799,8 @@ fn xdg_decoration_negotiation_and_geometry() {
         queue.roundtrip(&mut client).unwrap();
         assert_eq!(
             client.decoration_modes[&1],
-            zxdg_toplevel_decoration_v1::Mode::ClientSide as u32
+            zxdg_toplevel_decoration_v1::Mode::ServerSide as u32,
+            "the compositor enforces server-side decorations"
         );
         assert_eq!(
             client.configure_counts[&2], sibling_configures,
@@ -1769,7 +1823,7 @@ fn xdg_decoration_negotiation_and_geometry() {
         );
         inspect(&sender, |state| {
             let (window, rect, fullscreen, _, _, _) = &state.workspace_layout(0)[0];
-            assert!(crate::workspaces::titlebar_rect(window, *rect, *fullscreen).is_none());
+            assert!(crate::workspaces::titlebar_rect(window, *rect, *fullscreen).is_some());
         });
         decoration.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
         surface.commit();
@@ -1865,12 +1919,29 @@ fn xdg_decoration_negotiation_and_geometry() {
         queue.roundtrip(&mut client).unwrap();
         queue.roundtrip(&mut client).unwrap();
         inspect(&sender, |state| {
-            let layout = state.workspace_layout(0);
-            let (window, rect, fullscreen, _, _, _) = &layout[0];
+            let target = state
+                .workspace_layout(0)
+                .into_iter()
+                .find(|(window, ..)| {
+                    window.toplevel().is_some_and(|top| {
+                        smithay::wayland::compositor::with_states(top.wl_surface(), |states| {
+                            states
+                                .data_map
+                                .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                                .and_then(|data| {
+                                    data.lock().ok().and_then(|attrs| attrs.app_id.clone())
+                                })
+                                .as_deref()
+                                == Some("arbitrary.application")
+                        })
+                    })
+                })
+                .expect("decorated target remains mapped");
+            let (window, rect, fullscreen, _, _, _) = &target;
             assert!(crate::workspaces::titlebar_rect(window, *rect, *fullscreen).is_none());
         });
 
-        // Toplevels without the protocol object do not gain a compositor frame.
+        // Toplevels without a decoration object still receive the compositor frame.
         let bare_surface = compositor.create_surface(&qh, ());
         let bare_xdg = wm.get_xdg_surface(&bare_surface, &qh, ());
         let bare_top = bare_xdg.get_toplevel(&qh, 2);
@@ -1896,7 +1967,7 @@ fn xdg_decoration_negotiation_and_geometry() {
                 })
             });
             let (window, rect, fullscreen, _, _, _) = bare.expect("bare toplevel mapped");
-            assert!(crate::workspaces::titlebar_rect(&window, rect, fullscreen).is_none());
+            assert!(crate::workspaces::titlebar_rect(&window, rect, fullscreen).is_some());
         });
     });
     let deadline = Instant::now() + Duration::from_secs(20);

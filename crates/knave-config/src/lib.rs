@@ -283,18 +283,8 @@ pub enum WindowPlacement {
     Floating,
 }
 
-/// Shared controls require the matching GTK header reservation stylesheet.
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum SharedHeader {
-    Off,
-    Gtk,
-}
-
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WindowRuleActions {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub shared_header: Option<SharedHeader>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub placement: Option<WindowPlacement>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1943,7 +1933,6 @@ predefined = 3
 [[compositor.window_rules.application]]
 app_id = "firefox"
 workspace = 3
-shared_header = "gtk"
 vendor_option = 7 # Vendor metadata is not part of the typed schema and must survive writes.
 [[compositor.window_rules.rule]]
 name = "Firefox picture-in-picture"
@@ -1975,12 +1964,6 @@ stay_on_top = true
                 .title_regex
                 .as_deref(),
             Some(r"(?i)picture[\s-]*in[\s-]*picture")
-        );
-        assert_eq!(
-            document.config().compositor.window_rules.application[0]
-                .set
-                .shared_header,
-            Some(SharedHeader::Gtk)
         );
         document.write(document.config().clone()).unwrap();
         let reloaded = ConfigDocument::load(&path).unwrap();

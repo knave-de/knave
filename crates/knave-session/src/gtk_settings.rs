@@ -21,6 +21,8 @@ pub(super) struct Policy {
     base: String,
     fallback_profile: PathBuf,
     original_backend: String,
+    original_config_dirs: std::ffi::OsString,
+    gtk_config_dirs: std::ffi::OsString,
 }
 
 impl Policy {
@@ -52,6 +54,12 @@ impl Policy {
             .prefix("knave-gtk-settings-")
             .tempdir_in(runtime)
             .map_err(|source| error("create runtime", source))?;
+        let original_config_dirs = env::var_os("XDG_CONFIG_DIRS")
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "/etc/xdg".into());
+        let gtk_config = directory.path().join("gtk-config");
+        let gtk_config_dirs = append_config_dir(&original_config_dirs, &gtk_config)
+            .map_err(|source| error("prepare GTK config path", source))?;
         let source = directory.path().join("source");
         fs::create_dir(&source).map_err(|source| error("create source", source))?;
         fs::create_dir(source.join("locks")).map_err(|source| error("create locks", source))?;
@@ -65,6 +73,18 @@ impl Policy {
             format!("{LAYOUT_KEY}\n"),
         )
         .map_err(|source| error("write lock", source))?;
+        // GTK reads settings.ini when no Wayland settings portal is available.
+        // Keep this session default after inherited system config directories;
+        // XDG_CONFIG_HOME remains untouched and retains user precedence.
+        for version in ["gtk-3.0", "gtk-4.0"] {
+            let gtk_dir = gtk_config.join(version);
+            fs::create_dir_all(&gtk_dir).map_err(|source| error("create GTK config", source))?;
+            fs::write(
+                gtk_dir.join("settings.ini"),
+                "[Settings]\ngtk-decoration-layout=:\n",
+            )
+            .map_err(|source| error("write GTK settings", source))?;
+        }
         let database = directory.path().join("policy.db");
         compile(compiler, &database, &source)?;
         let database_name = database
@@ -93,20 +113,33 @@ impl Policy {
             base: base.to_owned(),
             fallback_profile: runtime.join("knave-dconf-base-profile"),
             original_backend: env::var("GSETTINGS_BACKEND").unwrap_or_else(|_| "dconf".into()),
+            original_config_dirs,
+            gtk_config_dirs,
         })
     }
 
     pub(super) fn profile(&self) -> &Path {
         &self.profile
     }
+
+    pub(super) fn gtk_config_dirs(&self) -> &std::ffi::OsStr {
+        &self.gtk_config_dirs
+    }
 }
 
-pub(super) fn configure(command: &mut Command, profile: Option<&Path>) {
+pub(super) fn configure(
+    command: &mut Command,
+    profile: Option<&Path>,
+    gtk_config_dirs: Option<&std::ffi::OsStr>,
+) {
     if let Some(profile) = profile {
         command
             .env("DCONF_PROFILE", profile)
             .env("GSETTINGS_BACKEND", "dconf")
             .env("KNAVE_GTK_SETTINGS_PROFILE", profile);
+        if let Some(config_dirs) = gtk_config_dirs {
+            command.env("XDG_CONFIG_DIRS", config_dirs);
+        }
     }
 }
 
@@ -259,9 +292,20 @@ impl Policy {
         command
             .arg("--systemd")
             .arg(format!("DCONF_PROFILE={}", self.fallback_profile.display()))
-            .arg(format!("GSETTINGS_BACKEND={}", self.original_backend));
+            .arg(format!("GSETTINGS_BACKEND={}", self.original_backend))
+            .arg({
+                let mut assignment = std::ffi::OsString::from("XDG_CONFIG_DIRS=");
+                assignment.push(&self.original_config_dirs);
+                assignment
+            });
         run_command(command, false)
     }
+}
+
+fn append_config_dir(original: &std::ffi::OsStr, policy: &Path) -> io::Result<std::ffi::OsString> {
+    let mut dirs: Vec<PathBuf> = env::split_paths(original).collect();
+    dirs.push(policy.to_owned());
+    env::join_paths(dirs).map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))
 }
 
 fn error(step: &'static str, source: io::Error) -> SessionError {
@@ -276,6 +320,19 @@ mod tests {
         let runtime = tempfile::tempdir().unwrap();
         let policy = Policy::create(runtime.path(), "user-db:user\n", Path::new("dconf")).unwrap();
         let path = policy.profile().to_owned();
+        for version in ["gtk-3.0", "gtk-4.0"] {
+            assert_eq!(
+                fs::read_to_string(
+                    path.parent()
+                        .unwrap()
+                        .join("gtk-config")
+                        .join(version)
+                        .join("settings.ini")
+                )
+                .unwrap(),
+                "[Settings]\ngtk-decoration-layout=:\n"
+            );
+        }
         let config = tempfile::tempdir().unwrap();
         let user_source = config.path().join("source");
         fs::create_dir(&user_source).unwrap();
@@ -293,7 +350,7 @@ mod tests {
                 .args(args)
                 .env("XDG_CONFIG_HOME", config.path())
                 .env_remove("DCONF_PROFILE");
-            configure(&mut command, profile);
+            configure(&mut command, profile, Some(policy.gtk_config_dirs()));
             command.output().unwrap()
         };
         let args = ["get", "org.gnome.desktop.wm.preferences", "button-layout"];
@@ -345,6 +402,26 @@ mod tests {
         drop(policy);
         assert!(!path.exists());
     }
+    #[cfg(unix)]
+    #[test]
+    fn invalid_runtime_config_path_is_a_typed_error_and_cleans_up() {
+        let runtime = tempfile::tempdir().unwrap();
+        let bad_runtime = runtime.path().join("bad:runtime");
+        fs::create_dir(&bad_runtime).unwrap();
+        let error = match Policy::create(&bad_runtime, "user-db:user\n", Path::new("dconf")) {
+            Ok(_) => panic!("a colon in XDG_CONFIG_DIRS must be rejected"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            error,
+            SessionError::SettingsPolicy {
+                step: "prepare GTK config path",
+                ..
+            }
+        ));
+        assert_eq!(fs::read_dir(bad_runtime).unwrap().count(), 0);
+    }
+
     #[test]
     fn activation_fallback_retains_only_the_original_profile() {
         let runtime = tempfile::tempdir().unwrap();
