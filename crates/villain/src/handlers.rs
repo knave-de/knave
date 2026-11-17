@@ -994,8 +994,9 @@ impl smithay::wayland::shell::xdg::decoration::XdgDecorationHandler for Villain 
         self.set_decoration_mode(toplevel, DecorationMode::ServerSide);
     }
 
-    fn request_mode(&mut self, toplevel: ToplevelSurface, mode: DecorationMode) {
-        self.set_decoration_mode(toplevel, mode);
+    fn request_mode(&mut self, toplevel: ToplevelSurface, _mode: DecorationMode) {
+        // The protocol allows the compositor to choose its decoration policy.
+        self.set_decoration_mode(toplevel, DecorationMode::ServerSide);
     }
 
     fn unset_mode(&mut self, toplevel: ToplevelSurface) {
@@ -1099,5 +1100,6 @@ impl smithay::reexports::wayland_server::Dispatch<
         <smithay::wayland::shell::xdg::decoration::XdgDecorationState as smithay::reexports::wayland_server::Dispatch<_, _, Self>>::destroyed(
             state, client_id, resource, data,
         );
+        crate::workspaces::mark_decoration_destroyed(data.wl_surface());
     }
 }

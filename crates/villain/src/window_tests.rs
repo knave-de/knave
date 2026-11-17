@@ -1746,7 +1746,8 @@ fn xdg_decoration_negotiation_and_geometry() {
         queue.roundtrip(&mut client).unwrap();
         assert_eq!(
             client.decoration_modes[&1],
-            zxdg_toplevel_decoration_v1::Mode::ClientSide as u32
+            zxdg_toplevel_decoration_v1::Mode::ServerSide as u32,
+            "the compositor enforces server-side decorations"
         );
         assert_eq!(
             client.configure_counts[&2], sibling_configures,
@@ -1769,7 +1770,7 @@ fn xdg_decoration_negotiation_and_geometry() {
         );
         inspect(&sender, |state| {
             let (window, rect, fullscreen, _, _, _) = &state.workspace_layout(0)[0];
-            assert!(crate::workspaces::titlebar_rect(window, *rect, *fullscreen).is_none());
+            assert!(crate::workspaces::titlebar_rect(window, *rect, *fullscreen).is_some());
         });
         decoration.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
         surface.commit();
@@ -1865,12 +1866,29 @@ fn xdg_decoration_negotiation_and_geometry() {
         queue.roundtrip(&mut client).unwrap();
         queue.roundtrip(&mut client).unwrap();
         inspect(&sender, |state| {
-            let layout = state.workspace_layout(0);
-            let (window, rect, fullscreen, _, _, _) = &layout[0];
+            let target = state
+                .workspace_layout(0)
+                .into_iter()
+                .find(|(window, ..)| {
+                    window.toplevel().is_some_and(|top| {
+                        smithay::wayland::compositor::with_states(top.wl_surface(), |states| {
+                            states
+                                .data_map
+                                .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                                .and_then(|data| {
+                                    data.lock().ok().and_then(|attrs| attrs.app_id.clone())
+                                })
+                                .as_deref()
+                                == Some("arbitrary.application")
+                        })
+                    })
+                })
+                .expect("decorated target remains mapped");
+            let (window, rect, fullscreen, _, _, _) = &target;
             assert!(crate::workspaces::titlebar_rect(window, *rect, *fullscreen).is_none());
         });
 
-        // Toplevels without the protocol object do not gain a compositor frame.
+        // Toplevels without a decoration object still receive the compositor frame.
         let bare_surface = compositor.create_surface(&qh, ());
         let bare_xdg = wm.get_xdg_surface(&bare_surface, &qh, ());
         let bare_top = bare_xdg.get_toplevel(&qh, 2);
@@ -1896,7 +1914,7 @@ fn xdg_decoration_negotiation_and_geometry() {
                 })
             });
             let (window, rect, fullscreen, _, _, _) = bare.expect("bare toplevel mapped");
-            assert!(crate::workspaces::titlebar_rect(&window, rect, fullscreen).is_none());
+            assert!(crate::workspaces::titlebar_rect(&window, rect, fullscreen).is_some());
         });
     });
     let deadline = Instant::now() + Duration::from_secs(20);

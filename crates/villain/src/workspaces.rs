@@ -205,25 +205,21 @@ pub(crate) fn apply_decoration_destroy_on_commit(
     })
 }
 
-pub(crate) fn has_server_side_decoration(surface: &ToplevelSurface) -> bool {
-    use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
-    smithay::wayland::compositor::with_states(surface.wl_surface(), |states| {
-        states
-            .data_map
-            .get::<XdgDecorationModeState>()
-            .and_then(|state| state.0.lock().ok().map(|mode| *mode))
-            == Some(Mode::ServerSide)
-    })
-}
-
-/// Whether a managed window uses compositor supplied titlebar decoration.
+/// Every managed window gets a separate frame, including clients without
+/// xdg-decoration support. Client content is never used as a controls surface.
 pub(crate) fn has_compositor_titlebar(window: &Window) -> bool {
     if let Some(toplevel) = window.toplevel() {
-        return has_server_side_decoration(toplevel);
+        return smithay::wayland::compositor::with_states(toplevel.wl_surface(), |states| {
+            states
+                .data_map
+                .get::<XdgDecorationModeState>()
+                .and_then(|state| state.0.lock().ok().map(|mode| *mode))
+                != Some(smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode::ClientSide)
+        });
     }
     window
         .x11_surface()
-        .is_some_and(|surface| !surface.is_override_redirect() && !surface.is_decorated())
+        .is_some_and(|surface| !surface.is_override_redirect())
 }
 
 fn outer_frame_constraints(
@@ -367,18 +363,12 @@ impl Workspace {
 }
 
 impl Villain {
-    /// A server titlebar is compositor-owned, while the mapped element
-    /// location already marks the client surface origin. Other windows may
-    /// have geometry extents that must be removed to find that origin.
+    /// Hit testing uses the same root-surface origin as window rendering.
     fn pointer_origin(
         window: &Window,
         location: Point<i32, smithay::utils::Logical>,
     ) -> Point<i32, smithay::utils::Logical> {
-        if has_compositor_titlebar(window) {
-            location
-        } else {
-            location - window.geometry().loc
-        }
+        location - window.geometry().loc
     }
 
     pub(crate) fn capture_window(&self, id: WindowId) -> Option<Window> {
@@ -2584,17 +2574,11 @@ impl Villain {
 
     pub fn refresh_pointer_surface(&mut self, time: u32) {
         let hit = self.input_window_at_pointer();
-        let controls_own_pointer = hit
-            .as_ref()
-            .is_some_and(|(window, _)| crate::shared_header::owns_pointer(self, window));
         let focus = if self.host_focused {
             self.layer_under_pointer(true)
                 .map(|(surface, origin, _)| (surface, origin))
                 .or_else(|| {
                     hit.and_then(|(window, origin)| {
-                        if controls_own_pointer {
-                            return None;
-                        }
                         window
                             .surface_under(
                                 self.pointer_location - origin.to_f64(),
@@ -2606,12 +2590,8 @@ impl Villain {
                     })
                 })
                 .or_else(|| {
-                    if controls_own_pointer {
-                        None
-                    } else {
-                        self.layer_under_pointer(false)
-                            .map(|(surface, origin, _)| (surface, origin))
-                    }
+                    self.layer_under_pointer(false)
+                        .map(|(surface, origin, _)| (surface, origin))
                 })
         } else {
             None

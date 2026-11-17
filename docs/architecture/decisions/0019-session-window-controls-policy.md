@@ -15,8 +15,7 @@ sessions, D-Bus/systemd activation. Nested sessions do not alter the host's
 activation environment. Already-running apps and programs deliberately launched
 outside that environment do not acquire the policy retroactively. This locks
 the GSettings key, not application-specific header implementations or GTK
-property overrides. Shared-header reservation CSS and matching rules remain
-required; GTK 4 settings delivery through the portal remains a separate path.
+property overrides. This policy affects standard GTK controls only; custom application controls and GTK 4 settings delivered through the portal require separate validation.
 
 The new runtime dependency is the `dconf` compiler. A missing compiler, unreadable/oversized
 inherited profile, compiler failure, cancellation, or five-second timeout aborts
