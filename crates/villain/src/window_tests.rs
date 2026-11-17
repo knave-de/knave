@@ -32,6 +32,7 @@ struct Client {
     configure_counts: HashMap<usize, usize>,
     decoration_configure_counts: HashMap<usize, usize>,
     pointer_buttons: usize,
+    pointer_positions: Vec<(f64, f64)>,
     swipes: Vec<String>,
     pinches: Vec<String>,
     holds: Vec<String>,
@@ -127,8 +128,21 @@ impl Dispatch<wl_pointer::WlPointer, ()> for Client {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if matches!(event, wl_pointer::Event::Button { .. }) {
-            state.pointer_buttons += 1;
+        match event {
+            wl_pointer::Event::Button { .. } => state.pointer_buttons += 1,
+            wl_pointer::Event::Enter {
+                surface_x,
+                surface_y,
+                ..
+            }
+            | wl_pointer::Event::Motion {
+                surface_x,
+                surface_y,
+                ..
+            } => {
+                state.pointer_positions.push((surface_x, surface_y));
+            }
+            _ => {}
         }
     }
 }
@@ -1729,6 +1743,44 @@ fn xdg_decoration_negotiation_and_geometry() {
         surface.commit();
         queue.roundtrip(&mut client).unwrap();
         queue.roundtrip(&mut client).unwrap();
+        // A real buffer keeps the nonzero geometry from being clamped to an
+        // empty bounding box, and lets the client verify actual input delivery.
+        let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).unwrap();
+        let seat: wl_seat::WlSeat = globals.bind(&qh, 1..=7, ()).unwrap();
+        let _pointer = seat.get_pointer(&qh, ());
+        let path =
+            std::env::temp_dir().join(format!("villain-decoration-buffer-{}", std::process::id()));
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .unwrap();
+        std::fs::remove_file(path).unwrap();
+        file.set_len(640 * 480 * 4).unwrap();
+        let pool = shm.create_pool(file.as_fd(), 640 * 480 * 4, &qh, ());
+        let buffer = pool.create_buffer(0, 640, 480, 640 * 4, wl_shm::Format::Argb8888, &qh, ());
+        surface.attach(Some(&buffer), 0, 0);
+        surface.commit();
+        queue.roundtrip(&mut client).unwrap();
+        queue.roundtrip(&mut client).unwrap();
+        inspect(&sender, |state| {
+            let (window, rect, ..) = state.workspace_layout(0).remove(0);
+            assert_eq!(window.geometry().loc, (10, 20).into());
+            state.host_focused = true;
+            state.pointer_location = smithay::utils::Point::<i32, smithay::utils::Logical>::from((
+                rect.loc.x + 3,
+                rect.loc.y + 4,
+            ))
+            .to_f64();
+            state.refresh_pointer_surface(1);
+        });
+        queue.roundtrip(&mut client).unwrap();
+        assert_eq!(
+            client.pointer_positions.last(),
+            Some(&(13.0, 24.0)),
+            "client input must use the rendered surface origin, including geometry offsets"
+        );
         let sibling_surface = compositor.create_surface(&qh, ());
         let sibling_xdg = wm.get_xdg_surface(&sibling_surface, &qh, ());
         let sibling_top = sibling_xdg.get_toplevel(&qh, 2);
