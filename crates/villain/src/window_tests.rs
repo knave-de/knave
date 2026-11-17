@@ -1725,6 +1725,7 @@ fn xdg_decoration_negotiation_and_geometry() {
         // A decoration object with no requested mode defaults to server-side.
         let decoration = manager.get_toplevel_decoration(&top, &qh, 1);
         top.set_app_id("arbitrary.application".into());
+        xdg.set_window_geometry(10, 20, 620, 440);
         surface.commit();
         queue.roundtrip(&mut client).unwrap();
         queue.roundtrip(&mut client).unwrap();
