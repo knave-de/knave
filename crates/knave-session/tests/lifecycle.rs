@@ -37,6 +37,11 @@ impl Drop for Session {
 fn exercise(status: &str, restart: bool, launches: usize, success: bool) {
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path();
+    let user_gtk = root.join("gtk-4.0");
+    fs::create_dir(&user_gtk).unwrap();
+    let user_settings = "[Settings]\ngtk-font-name=Sans 13\n";
+    fs::write(user_gtk.join("settings.ini"), user_settings).unwrap();
+    let inherited_dirs = env::join_paths([root.join("system-a"), root.join("system-b")]).unwrap();
     let wrapper = root.join("component");
     // Shell quoting preserves paths containing spaces or apostrophes.
     let executable = env::current_exe().unwrap();
@@ -77,6 +82,7 @@ fn exercise(status: &str, restart: bool, launches: usize, success: bool) {
             .env("DBUS_SESSION_BUS_ADDRESS", address.trim())
             .env("XDG_RUNTIME_DIR", root)
             .env("XDG_CONFIG_HOME", root)
+            .env("XDG_CONFIG_DIRS", inherited_dirs)
             .env("KNAVE_LIFECYCLE_TEST_ROOT", root)
             .env("KNAVE_LIFECYCLE_TEST_EXIT", status)
             .env_remove("WAYLAND_DISPLAY")
@@ -93,6 +99,18 @@ fn exercise(status: &str, restart: bool, launches: usize, success: bool) {
     assert!(
         !Path::new(&policy).exists(),
         "session settings policy survived shutdown"
+    );
+    assert!(
+        !Path::new(&policy)
+            .parent()
+            .unwrap()
+            .join("gtk-config")
+            .exists(),
+        "session GTK fallback survived shutdown"
+    );
+    assert_eq!(
+        fs::read_to_string(user_gtk.join("settings.ini")).unwrap(),
+        user_settings
     );
     let compositors = fs::read_to_string(root.join("compositors")).unwrap();
     assert_eq!(compositors.lines().count(), launches);
@@ -144,6 +162,21 @@ fn component() {
         Some(policy.as_os_str())
     );
     assert_eq!(env::var("GSETTINGS_BACKEND").as_deref(), Ok("dconf"));
+    let gtk_config = policy.parent().unwrap().join("gtk-config");
+    assert_eq!(
+        env::split_paths(&env::var_os("XDG_CONFIG_DIRS").expect("session GTK config path"))
+            .collect::<Vec<_>>(),
+        vec![
+            root.join("system-a"),
+            root.join("system-b"),
+            gtk_config.clone()
+        ],
+        "every desktop child must preserve inherited defaults and receive the session fallback"
+    );
+    assert_eq!(
+        fs::read_to_string(gtk_config.join("gtk-4.0/settings.ini")).unwrap(),
+        "[Settings]\ngtk-decoration-layout=:\n"
+    );
     let shell = env::var_os("WAYLAND_DISPLAY");
     let log = if shell.is_some() {
         "shells"

@@ -24,6 +24,7 @@ const ACTIVATION_KEYS: &[&str] = &[
     "XDG_SESSION_DESKTOP",
     "XDG_SESSION_TYPE",
     "XDG_DATA_DIRS",
+    "XDG_CONFIG_DIRS",
     "PATH",
     "XDP_KNAVE_SHELL_BINARY",
     "XDP_KNAVE_ENABLED",
@@ -78,6 +79,7 @@ pub fn prepare_environment(state: &mut Villain) {
             "XDP_KNAVE_ENABLED",
             "DCONF_PROFILE",
             "GSETTINGS_BACKEND",
+            "XDG_CONFIG_DIRS",
         ] {
             if let Ok(value) = std::env::var(key) {
                 state.config.environment.insert(key.into(), value);
@@ -244,6 +246,7 @@ pub fn activate(state: &mut Villain, restart_portal: bool) {
             tracing::warn!(%error, "could not register GTK policy activation cleanup");
             environment.remove("DCONF_PROFILE");
             environment.remove("GSETTINGS_BACKEND");
+            environment.remove("XDG_CONFIG_DIRS");
         }
     }
     state.activation.submit(environment, restart_portal);
