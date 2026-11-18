@@ -577,6 +577,7 @@ mod tests {
         let snapshot = DesktopSnapshot {
             generation: 0,
             overview_visible: false,
+            overview_layout: None,
             workspaces: vec![],
             windows: vec![],
         };
@@ -620,6 +621,7 @@ mod tests {
         let snapshot = DesktopSnapshot {
             generation: 4,
             overview_visible: true,
+            overview_layout: None,
             workspaces: vec![knave_desktop_api::WorkspaceSummary {
                 workspace: knave_desktop_api::WorkspaceId(2),
                 active: true,
@@ -684,6 +686,7 @@ mod tests {
         let snapshot = DesktopSnapshot {
             generation: 1,
             overview_visible: true,
+            overview_layout: None,
             workspaces: vec![knave_desktop_api::WorkspaceSummary {
                 workspace: WorkspaceId(1),
                 active: true,
@@ -722,6 +725,7 @@ mod tests {
         let snapshot = DesktopSnapshot {
             generation: 1,
             overview_visible: true,
+            overview_layout: None,
             workspaces: vec![knave_desktop_api::WorkspaceSummary {
                 workspace: WorkspaceId(1),
                 active: true,

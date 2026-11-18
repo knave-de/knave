@@ -205,8 +205,7 @@ pub(crate) fn apply_decoration_destroy_on_commit(
     })
 }
 
-/// Every managed window gets a separate frame, including clients without
-/// xdg-decoration support. Client content is never used as a controls surface.
+/// Whether the window uses a compositor-supplied titlebar.
 pub(crate) fn has_compositor_titlebar(window: &Window) -> bool {
     if let Some(toplevel) = window.toplevel() {
         return smithay::wayland::compositor::with_states(toplevel.wl_surface(), |states| {
@@ -214,12 +213,12 @@ pub(crate) fn has_compositor_titlebar(window: &Window) -> bool {
                 .data_map
                 .get::<XdgDecorationModeState>()
                 .and_then(|state| state.0.lock().ok().map(|mode| *mode))
-                != Some(smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode::ClientSide)
+                == Some(smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode::ServerSide)
         });
     }
     window
         .x11_surface()
-        .is_some_and(|surface| !surface.is_override_redirect())
+        .is_some_and(|surface| !surface.is_override_redirect() && !surface.is_decorated())
 }
 
 fn outer_frame_constraints(
@@ -831,6 +830,38 @@ impl Villain {
         })
     }
 
+    pub(crate) fn overview_layout(&self) -> knave_desktop_api::OverviewLayout {
+        let index = self.active_workspace;
+        let windows = self
+            .workspace_layout(index)
+            .into_iter()
+            .rev()
+            .filter(|entry| entry.5)
+            .filter_map(|(window, rect, fullscreen, ..)| {
+                let id = self.workspaces[index]
+                    .windows
+                    .iter()
+                    .find(|entry| entry.window == window)?
+                    .id;
+                let frame =
+                    crate::appearance::frame_rect(rect, titlebar_rect(&window, rect, fullscreen));
+                Some(knave_desktop_api::OverviewWindow {
+                    id,
+                    x: frame.loc.x,
+                    y: frame.loc.y,
+                    width: frame.size.w,
+                    height: frame.size.h,
+                })
+            })
+            .collect();
+        knave_desktop_api::OverviewLayout {
+            workspace: WorkspaceId((index + 1) as u32),
+            width: self.output_size.w,
+            height: self.output_size.h,
+            windows,
+        }
+    }
+
     fn configure_workspace(&self, index: usize) {
         for (window, rect, fullscreen, maximized, tiled, _) in self.workspace_layout(index) {
             Self::configure_window(&window, rect.loc, rect.size, fullscreen, maximized, tiled);
@@ -850,6 +881,7 @@ impl Villain {
         else {
             return false;
         };
+        self.desktop_state_dirty = true;
         Self::configure_window(window, rect.loc, rect.size, fullscreen, maximized, tiled);
         if index == self.active_workspace {
             if visible {
@@ -2193,6 +2225,7 @@ impl Villain {
                 .unwrap();
             entry.stacking_order = rank as u64;
         }
+        self.desktop_state_dirty = true;
         // Reuse layout order for rendering, hit testing, previews and XWayland.
         for (window, _, _, _, tiled, visible) in self.workspace_layout(self.active_workspace) {
             if !tiled && visible {

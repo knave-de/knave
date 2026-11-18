@@ -114,3 +114,11 @@ buffer; normal opening no longer triggers the unavailable-response backoff.
 The one-slot request and acknowledgement channels coalesce work and wake the host;
 no polling or additional thread is introduced. Matching Shell and Villain builds
 are required; the request payload is unchanged. Rollback restores both binaries.
+
+
+Hovering a window in the main workspace preview reveals float/tile, minimize,
+maximize/restore, and close. The desktop snapshot supplies visible frame
+rectangles in front-to-back order. Shell projects the rectangles using the
+pane's centered zoom and sends the selected action with the window ID. Villain
+checks workspace visibility before applying the command. Actions keep Overview
+open and use the existing bounded desktop action worker.

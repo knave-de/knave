@@ -167,3 +167,24 @@ button.ghost.overview-workspace-dot-empty {
     border-radius: 3px;
     box-shadow: none;
 }
+
+.overview-window-controls {
+    background-color: var(--surface-raised);
+    border: 1px solid var(--edge-control);
+    border-radius: 9px;
+}
+button.overview-window-control {
+    color: var(--text);
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 0;
+}
+button.overview-window-control:hover,
+button.overview-window-control:focus {
+    background-color: var(--surface-selected);
+    border-color: var(--border-strong);
+}
+button.overview-window-control:disabled {
+    color: var(--text-secondary);
+}

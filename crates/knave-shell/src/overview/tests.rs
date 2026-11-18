@@ -23,6 +23,7 @@ fn snapshot() -> DesktopSnapshot {
     DesktopSnapshot {
         generation: 7,
         overview_visible: true,
+        overview_layout: None,
         workspaces: (1..=3)
             .map(|i| WorkspaceSummary {
                 workspace: WorkspaceId(i),

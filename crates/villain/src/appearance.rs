@@ -12,7 +12,6 @@ type Geometry = Rectangle<i32, Logical>;
 pub(crate) enum TitlebarControl {
     Close,
     Maximize,
-    Float,
     Minimize,
 }
 
@@ -21,21 +20,18 @@ impl TitlebarControl {
         match self {
             Self::Close => 0,
             Self::Maximize => 1,
-            Self::Float => 2,
-            Self::Minimize => 3,
+            Self::Minimize => 2,
         }
     }
 
     pub(crate) fn from_right_distance(distance: f64) -> Option<Self> {
-        if !(distance > 0.0 && distance <= 96.0) {
+        if !(distance > 0.0 && distance <= 72.0) {
             return None;
         }
         Some(if distance <= 24.0 {
             Self::Close
         } else if distance <= 48.0 {
             Self::Maximize
-        } else if distance <= 72.0 {
-            Self::Float
         } else {
             Self::Minimize
         })

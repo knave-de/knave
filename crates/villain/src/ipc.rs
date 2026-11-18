@@ -394,6 +394,7 @@ impl Villain {
         let snapshot = DesktopSnapshot {
             generation: 0,
             overview_visible: self.overview_visible,
+            overview_layout: self.overview_visible.then(|| self.overview_layout()),
             workspaces: self.workspace_info(),
             windows: self.window_info(),
         };

@@ -222,9 +222,6 @@ impl Villain {
                     self.apply_window_action(&window, crate::workspaces::WindowAction::Close)
                 }
                 TitlebarControl::Maximize => self.set_window_maximized(&window, !maximized),
-                TitlebarControl::Float => {
-                    let _ = self.toggle_floating_focused();
-                }
                 TitlebarControl::Minimize => {
                     self.apply_window_action(&window, crate::workspaces::WindowAction::Minimize)
                 }

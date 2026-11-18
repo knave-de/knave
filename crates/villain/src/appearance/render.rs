@@ -484,7 +484,6 @@ impl EffectsRenderer {
                             palette: state.config.decoration_palette,
                             hovered,
                             maximized: *maximized,
-                            tiled: *tiled,
                         },
                     )
                 {

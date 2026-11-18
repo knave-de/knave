@@ -38,10 +38,20 @@ impl Villain {
         let window = self
             .focused_window()
             .ok_or(DispatchError::NoFocusedWindow)?;
+        self.toggle_window_floating(&window)?;
+        self.focus_managed_window(&window);
+        Ok(())
+    }
+
+    pub(crate) fn toggle_window_floating(
+        &mut self,
+        window: &Window,
+    ) -> Result<(), crate::dispatch::DispatchError> {
+        use crate::dispatch::DispatchError;
         let placement = self
             .workspace_layout(self.active_workspace)
             .into_iter()
-            .find(|entry| entry.0 == window && entry.5)
+            .find(|entry| entry.0 == *window && entry.5)
             .ok_or(DispatchError::Interaction("window is not visible"))?;
         if placement.2 || placement.3 {
             return Err(DispatchError::Interaction(
@@ -50,11 +60,11 @@ impl Villain {
         }
         self.release_pointer_buttons();
         let area = self.usable_area();
-        let (min, max) = Self::window_constraints(&window);
+        let (min, max) = Self::window_constraints(window);
         let entry = self.workspaces[self.active_workspace]
             .windows
             .iter_mut()
-            .find(|entry| entry.window == window)
+            .find(|entry| entry.window == *window)
             .unwrap();
         if let Some(rect) = entry.floating.take() {
             entry.saved_floating = Some(rect);
@@ -74,7 +84,6 @@ impl Villain {
             entry.floating_override = Some(true);
         }
         self.relayout_active_workspace();
-        self.focus_managed_window(&window);
         Ok(())
     }
 

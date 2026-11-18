@@ -205,19 +205,17 @@ records MP4s, screenshots, assertions and compositor resource samples around ten
 rejected drags, then stops its applications and harness. It does not establish
 XWayland interoperability or direct-TTY/GPU behavior.
 
-## Server titlebars
+## Overview window controls
 
-After a debug workspace build, run the GTK4/libadwaita and GTK3 checks separately:
+After a debug workspace build, run the GTK4/libadwaita and GTK3 checks:
 
 ```sh
-python3 scripts/desktop-titlebar-smoke.py --run /tmp/titlebar-foliate --app foliate
-python3 scripts/desktop-titlebar-smoke.py --run /tmp/titlebar-evince --app evince
+python3 scripts/desktop-overview-controls-smoke.py --run /tmp/overview-foliate --app foliate
+python3 scripts/desktop-overview-controls-smoke.py --run /tmp/overview-evince --app evince
 ```
 
-The runner requires ImageMagick and the selected app; Evince also requires
-`/usr/share/doc/speex/manual.pdf`. It verifies all four server controls, restore,
-fullscreen transitions, repeated float/tile actions, and bounded compositor
-process/thread/descriptor counts. Each run saves screenshots, an MP4, assertions,
-and timestamped resource samples, then stops its session. Inspect the initial
-screenshots to verify native GTK controls are hidden. These short software-rendered
-samples do not establish a pre-change performance comparison or hardware behavior.
+Evince requires `/usr/share/doc/speex/manual.pdf`. The runner verifies the
+four hover controls, repeated float/tile actions, and compositor resource
+counts. Inspect the client-header and hover screenshots, and use the saved MP4
+and assertions to review the interaction. Wayland protocol tests separately
+cover CSD/SSD negotiation and the XWayland tests cover Motif hints.

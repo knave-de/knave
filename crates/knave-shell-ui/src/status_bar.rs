@@ -801,6 +801,7 @@ mod tests {
         DesktopSnapshot {
             generation: 1,
             overview_visible: false,
+            overview_layout: None,
             workspaces: vec![
                 WorkspaceSummary {
                     workspace: WorkspaceId(0),

@@ -1,7 +1,7 @@
 # Session window-control policy
 
 Knave Session supplies a mandatory `org.gnome.desktop.wm.preferences/button-layout`
-value of `':'` for its desktop. An ordinary startup write could be changed again
+value of `:minimize,maximize,close` for its desktop. An ordinary startup write could be changed again
 and would modify the user's preferences in other desktops. Instead, Session
 compiles one locked dconf database into its private runtime directory and
 appends it to a copy of the inherited dconf profile. Other keys and inherited

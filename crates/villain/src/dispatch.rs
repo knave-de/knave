@@ -2,7 +2,7 @@
 
 use std::{fmt, io};
 
-use knave_desktop_api::{DesktopCommand, ResizeEdge, WindowId, WindowTarget};
+use knave_desktop_api::{DesktopCommand, OverviewWindowAction, ResizeEdge, WindowId, WindowTarget};
 
 use crate::{state::Villain, workspace_navigation::Direction};
 
@@ -26,6 +26,7 @@ pub enum FocusDirection {
 pub enum Dispatch {
     SetNightLight(Option<u16>),
     ToggleFloatingFocused,
+    ControlOverviewWindow(WindowId, OverviewWindowAction),
     MoveWindow(WindowTarget),
     ResizeWindow(WindowTarget, Option<ResizeEdge>),
     ReloadConfig,
@@ -72,6 +73,9 @@ impl From<DesktopCommand> for Dispatch {
         match request {
             DesktopCommand::SetNightLight { temperature } => Self::SetNightLight(temperature),
             DesktopCommand::ToggleFloatingFocused => Self::ToggleFloatingFocused,
+            DesktopCommand::ControlOverviewWindow { window, control } => {
+                Self::ControlOverviewWindow(window, control)
+            }
             DesktopCommand::MoveWindow { target } => Self::MoveWindow(target),
             DesktopCommand::ResizeWindow { target, edge } => Self::ResizeWindow(target, edge),
             DesktopCommand::ReloadConfiguration => Self::ReloadConfig,
@@ -145,6 +149,38 @@ impl Villain {
                 Ok(())
             }
             Dispatch::ToggleFloatingFocused => self.toggle_floating_focused(),
+            Dispatch::ControlOverviewWindow(id, control) => {
+                if !self.overview_visible {
+                    return Err(DispatchError::Interaction("overview is closed"));
+                }
+                let window = self
+                    .capture_window(id)
+                    .ok_or(DispatchError::UnknownWindow(id))?;
+                let placement = self
+                    .workspace_layout(self.active_workspace)
+                    .into_iter()
+                    .find(|entry| entry.0 == window && entry.5)
+                    .ok_or(DispatchError::Interaction("window is not visible"))?;
+                use crate::workspaces::WindowAction;
+                match control {
+                    OverviewWindowAction::ToggleFloating => self.toggle_window_floating(&window)?,
+                    OverviewWindowAction::Minimize => {
+                        self.apply_window_action(&window, WindowAction::Minimize)
+                    }
+                    OverviewWindowAction::ToggleMaximize if !placement.2 => {
+                        self.set_window_maximized(&window, !placement.3)
+                    }
+                    OverviewWindowAction::ToggleMaximize => {
+                        return Err(DispatchError::Interaction(
+                            "exit fullscreen before maximizing",
+                        ));
+                    }
+                    OverviewWindowAction::Close => {
+                        self.apply_window_action(&window, WindowAction::Close)
+                    }
+                }
+                Ok(())
+            }
             Dispatch::MoveWindow(target) => self.begin_window_interaction(target, false, None),
             Dispatch::ResizeWindow(target, edge) => {
                 self.begin_window_interaction(target, true, edge)
