@@ -20,7 +20,7 @@ rendering, or shell composition.
 8. Supervise session components until shutdown or a bounded failure policy is reached.
 
 Session startup requires `dconf` and forces the GSettings window-button layout
-to `':'` inside the Knave process/activation environment without rewriting the
+to `:minimize,maximize,close` inside the Knave process/activation environment without rewriting the
 user's saved preference. The policy survives component restarts and is removed
 on normal session shutdown. See [the window-control policy](decisions/0019-session-window-controls-policy.md)
 for dependency failures, activation cleanup, nested isolation, and rollback.

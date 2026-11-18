@@ -175,7 +175,7 @@ fn component() {
     );
     assert_eq!(
         fs::read_to_string(gtk_config.join("gtk-4.0/settings.ini")).unwrap(),
-        "[Settings]\ngtk-decoration-layout=:\n"
+        "[Settings]\ngtk-decoration-layout=:minimize,maximize,close\n"
     );
     let shell = env::var_os("WAYLAND_DISPLAY");
     let log = if shell.is_some() {

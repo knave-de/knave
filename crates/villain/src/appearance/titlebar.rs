@@ -112,7 +112,6 @@ struct Entry {
     focused: bool,
     hovered: Option<u8>,
     maximized: bool,
-    tiled: bool,
     buffer: MemoryRenderBuffer,
 }
 #[derive(Clone, Copy)]
@@ -121,7 +120,6 @@ pub(super) struct TitlebarState {
     pub(super) palette: DecorationPalette,
     pub(super) hovered: Option<u8>,
     pub(super) maximized: bool,
-    pub(super) tiled: bool,
 }
 pub(super) struct Titlebars {
     fonts: FontSystem,
@@ -186,7 +184,6 @@ impl Titlebars {
                 && entry.focused == state.focused
                 && entry.hovered == state.hovered
                 && entry.maximized == state.maximized
-                && entry.tiled == state.tiled
         }) {
             let entry = self.entries.remove(index)?;
             self.entries.push_front(entry);
@@ -218,7 +215,7 @@ impl Titlebars {
             );
         }
         let mut text = Buffer::new(&mut self.fonts, Metrics::new(13.0, 18.0));
-        text.set_size(Some((width - 130).max(1) as f32), Some(20.0));
+        text.set_size(Some((width - 106).max(1) as f32), Some(20.0));
         text.set_text(&title, &Attrs::new(), Shaping::Advanced, None);
         let color = TextColor::rgba(
             self.palette.foreground[0],
@@ -231,7 +228,7 @@ impl Titlebars {
             for yy in y..y + h as i32 {
                 for xx in x..x + w as i32 {
                     let (xx, yy) = (xx + 12, yy + 7);
-                    if xx < 0 || xx >= width - 112 || !(0..34).contains(&yy) {
+                    if xx < 0 || xx >= width - 88 || !(0..34).contains(&yy) {
                         continue;
                     }
                     let i = (yy as usize * width as usize + xx as usize) * 4;
@@ -239,8 +236,7 @@ impl Titlebars {
                 }
             }
         });
-        // Hit testing counts slots from the right: close, maximize, float,
-        // minimize. Rendering places their matching glyphs in those slots.
+        // Hit testing counts slots from the right: close, maximize, minimize. Rendering places their matching glyphs in those slots.
         let glyph = self.palette.foreground;
         let center = |control: crate::appearance::TitlebarControl| {
             control_origin(width, control.right_slot())
@@ -252,63 +248,6 @@ impl Titlebars {
             center(crate::appearance::TitlebarControl::Minimize),
             &[(5.0, 12.0), (19.0, 12.0)],
         );
-        if state.tiled {
-            stroke_path(
-                &mut pixels,
-                width,
-                glyph,
-                center(crate::appearance::TitlebarControl::Float),
-                &[
-                    (3.0, 3.0),
-                    (15.0, 3.0),
-                    (15.0, 15.0),
-                    (3.0, 15.0),
-                    (3.0, 3.0),
-                ],
-            );
-            stroke_path(
-                &mut pixels,
-                width,
-                glyph,
-                center(crate::appearance::TitlebarControl::Float),
-                &[
-                    (9.0, 9.0),
-                    (21.0, 9.0),
-                    (21.0, 21.0),
-                    (9.0, 21.0),
-                    (9.0, 9.0),
-                ],
-            );
-        } else {
-            // A four-pane outline reads as the action to tile this floating window.
-            stroke_path(
-                &mut pixels,
-                width,
-                glyph,
-                center(crate::appearance::TitlebarControl::Float),
-                &[
-                    (4.0, 4.0),
-                    (20.0, 4.0),
-                    (20.0, 20.0),
-                    (4.0, 20.0),
-                    (4.0, 4.0),
-                ],
-            );
-            stroke_path(
-                &mut pixels,
-                width,
-                glyph,
-                center(crate::appearance::TitlebarControl::Float),
-                &[(12.0, 4.0), (12.0, 20.0)],
-            );
-            stroke_path(
-                &mut pixels,
-                width,
-                glyph,
-                center(crate::appearance::TitlebarControl::Float),
-                &[(4.0, 12.0), (20.0, 12.0)],
-            );
-        }
         if state.maximized {
             // Restore: two offset windows, with the rear window's top edge visible.
             stroke_path(
@@ -383,7 +322,6 @@ impl Titlebars {
             focused: state.focused,
             hovered: state.hovered,
             maximized: state.maximized,
-            tiled: state.tiled,
             buffer,
         });
         if let Some(started) = raster_started {
@@ -399,7 +337,6 @@ impl Titlebars {
                 focused = state.focused,
                 hovered = state.hovered.is_some(),
                 maximized = state.maximized,
-                tiled = state.tiled,
                 "titlebar cache miss rasterized"
             );
         }
@@ -467,15 +404,14 @@ mod tests {
         for (control, distance) in [
             (Control::Close, 12.0),
             (Control::Maximize, 36.0),
-            (Control::Float, 60.0),
-            (Control::Minimize, 84.0),
+            (Control::Minimize, 60.0),
         ] {
             assert_eq!(Control::from_right_distance(distance), Some(control));
         }
         assert_eq!(Control::from_right_distance(24.0), Some(Control::Close));
         assert_eq!(Control::from_right_distance(48.0), Some(Control::Maximize));
-        assert_eq!(Control::from_right_distance(72.0), Some(Control::Float));
-        assert_eq!(Control::from_right_distance(96.0), Some(Control::Minimize));
+        assert_eq!(Control::from_right_distance(72.0), Some(Control::Minimize));
+        assert_eq!(Control::from_right_distance(96.0), None);
     }
 
     #[test]

@@ -278,6 +278,7 @@ mod tests {
         let snapshot = DesktopSnapshot {
             generation: 1,
             overview_visible: false,
+            overview_layout: None,
             workspaces: Vec::new(),
             windows: Vec::new(),
         };
@@ -312,6 +313,7 @@ mod tests {
         let mut snapshot = DesktopSnapshot {
             generation: 0,
             overview_visible: false,
+            overview_layout: None,
             workspaces: Vec::new(),
             windows: Vec::new(),
         };

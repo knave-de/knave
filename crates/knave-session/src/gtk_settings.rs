@@ -13,6 +13,7 @@ use std::{
 
 const PROFILE_LIMIT: u64 = 64 * 1024;
 const COMPILE_TIMEOUT: Duration = Duration::from_secs(5);
+const BUTTON_LAYOUT: &str = ":minimize,maximize,close";
 const LAYOUT_KEY: &str = "/org/gnome/desktop/wm/preferences/button-layout";
 
 pub(super) struct Policy {
@@ -65,7 +66,7 @@ impl Policy {
         fs::create_dir(source.join("locks")).map_err(|source| error("create locks", source))?;
         fs::write(
             source.join("window-controls"),
-            "[org/gnome/desktop/wm/preferences]\nbutton-layout=':'\n",
+            format!("[org/gnome/desktop/wm/preferences]\nbutton-layout='{BUTTON_LAYOUT}'\n"),
         )
         .map_err(|source| error("write settings", source))?;
         fs::write(
@@ -81,7 +82,7 @@ impl Policy {
             fs::create_dir_all(&gtk_dir).map_err(|source| error("create GTK config", source))?;
             fs::write(
                 gtk_dir.join("settings.ini"),
-                "[Settings]\ngtk-decoration-layout=:\n",
+                format!("[Settings]\ngtk-decoration-layout={BUTTON_LAYOUT}\n"),
             )
             .map_err(|source| error("write GTK settings", source))?;
         }
@@ -330,7 +331,7 @@ mod tests {
                         .join("settings.ini")
                 )
                 .unwrap(),
-                "[Settings]\ngtk-decoration-layout=:\n"
+                "[Settings]\ngtk-decoration-layout=:minimize,maximize,close\n"
             );
         }
         let config = tempfile::tempdir().unwrap();
@@ -364,7 +365,10 @@ mod tests {
             .stdout,
             b"'Knave Test 12'\n"
         );
-        assert_eq!(query(&args, Some(&path)).stdout, b"':'\n");
+        assert_eq!(
+            query(&args, Some(&path)).stdout,
+            b"':minimize,maximize,close'\n"
+        );
         assert_eq!(
             query(
                 &[

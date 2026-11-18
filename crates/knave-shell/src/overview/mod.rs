@@ -6,7 +6,8 @@ mod view;
 mod watch;
 use knave_apps::{Catalog, Environment};
 use knave_desktop_api::{
-    DesktopCommand, DesktopSnapshot, OverviewPane, WindowId, WindowSummary, WorkspaceId,
+    DesktopCommand, DesktopSnapshot, OverviewPane, OverviewWindowAction, WindowId, WindowSummary,
+    WorkspaceId,
 };
 use knave_icons::IconLookup;
 use knave_ui::{DisplayList, toolkit::*};
@@ -37,6 +38,7 @@ enum Target {
     EnterWorkspace(WorkspaceId),
     StatusBar(knave_shell_ui::UiAction),
     Window(WindowId),
+    WindowControl(WindowId, OverviewWindowAction),
     App(usize),
     AllApps,
     Page(bool),
@@ -69,6 +71,8 @@ pub struct Overview {
     notifications_after_hide: bool,
     quick_settings_after_hide: bool,
     panes: Vec<PaneGeometry>,
+    main_pane: Option<knave_ui::Rect>,
+    hovered_window: Option<WindowId>,
     pane_cards: Vec<(ElementId, WorkspaceId, ElementId)>,
     workspace: Option<WorkspaceId>,
     scene: Scene,
@@ -147,6 +151,8 @@ impl Overview {
             notifications_after_hide: false,
             quick_settings_after_hide: false,
             panes: Vec::new(),
+            main_pane: None,
+            hovered_window: None,
             pane_cards: Vec::new(),
             workspace: None,
             scene,
@@ -276,7 +282,11 @@ impl Overview {
             self.error = Some("Desktop connection unavailable".into());
             self.dirty = true;
         } else if !self.pending {
-            self.hide_after_action = !matches!(command, DesktopCommand::SetOverviewVisible { .. });
+            self.hide_after_action = !matches!(
+                command,
+                DesktopCommand::SetOverviewVisible { .. }
+                    | DesktopCommand::ControlOverviewWindow { .. }
+            );
             self.request = Some(HostRequest::Desktop(command));
             self.pending = true;
             self.error = None;
@@ -318,6 +328,12 @@ impl Overview {
                 self.request = Some(HostRequest::Applet(id));
             }
             Some(Target::StatusBar(_)) => {}
+            Some(Target::WindowControl(window, control))
+                if self.hovered_preview().is_some_and(|(id, _)| id == window) =>
+            {
+                self.dispatch(DesktopCommand::ControlOverviewWindow { window, control });
+            }
+            Some(Target::WindowControl(..)) => {}
             Some(Target::Window(id)) => {
                 if let Some(window) = self.window(id) {
                     self.dispatch(if window.minimized {
@@ -410,6 +426,8 @@ impl Overview {
         self.targets.clear();
         self.panes.clear();
         self.pane_cards.clear();
+        self.main_pane = None;
+        self.hovered_window = None;
         self.workspace = None;
         self.page = 0;
         self.dock_page = 0;
@@ -957,6 +975,11 @@ impl Application for Overview {
                 let _ = self.scene.set_focus(Some(SEARCH));
             }
             _ => {}
+        }
+        if matches!(event, Input::PointerMove(_) | Input::PointerLeave)
+            && self.hovered_preview().map(|(window, _)| window) != self.hovered_window
+        {
+            self.dirty = true;
         }
         let result = self.scene.event(event);
         self.sync_query();

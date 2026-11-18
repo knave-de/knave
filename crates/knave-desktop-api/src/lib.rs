@@ -87,11 +87,30 @@ pub struct OverviewPane {
     pub corner_radius: u16,
 }
 
+/// Logical output geometry for the active preview, in front-to-back order.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct OverviewLayout {
+    pub workspace: WorkspaceId,
+    pub width: i32,
+    pub height: i32,
+    pub windows: Vec<OverviewWindow>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct OverviewWindow {
+    pub id: WindowId,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DesktopSnapshot {
     pub generation: u64,
     /// Whether the session-owned Overview layer should currently be mapped.
     pub overview_visible: bool,
+    pub overview_layout: Option<OverviewLayout>,
     pub workspaces: Vec<WorkspaceSummary>,
     pub windows: Vec<WindowSummary>,
 }
@@ -135,6 +154,15 @@ impl std::str::FromStr for ResizeEdge {
     }
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum OverviewWindowAction {
+    ToggleFloating,
+    Minimize,
+    ToggleMaximize,
+    Close,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "action", rename_all = "kebab-case")]
 pub enum DesktopCommand {
@@ -142,6 +170,10 @@ pub enum DesktopCommand {
         temperature: Option<u16>,
     },
     ToggleFloatingFocused,
+    ControlOverviewWindow {
+        window: WindowId,
+        control: OverviewWindowAction,
+    },
     MoveWindow {
         #[serde(default)]
         target: WindowTarget,
@@ -592,6 +624,10 @@ mod tests {
                 edge: Some(ResizeEdge::BottomRight),
             },
             DesktopCommand::ToggleFloatingFocused,
+            DesktopCommand::ControlOverviewWindow {
+                window: WindowId(4),
+                control: OverviewWindowAction::ToggleFloating,
+            },
         ] {
             let wire = serde_json::to_value(&command).unwrap();
             assert_eq!(
@@ -700,6 +736,7 @@ mod tests {
         let snapshot = DesktopSnapshot {
             generation: 2,
             overview_visible: false,
+            overview_layout: None,
             workspaces: Vec::new(),
             windows: Vec::new(),
         };

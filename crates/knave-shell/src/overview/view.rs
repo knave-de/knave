@@ -79,6 +79,7 @@ impl Overview {
         self.targets.clear();
         self.panes.clear();
         self.pane_cards.clear();
+        self.main_pane = None;
         let [width, height] = self.size;
         let mut root = Element::new(0, Widget::Panel).layout(Layout {
             height: Length::Fill,
@@ -272,6 +273,21 @@ impl Overview {
                 0x210_0000_0000 + u64::from(ws.0),
                 None,
             ));
+            self.main_pane = self.panes.last().map(|pane| {
+                Rect::new(
+                    pane.x as f32,
+                    pane.y as f32,
+                    pane.width as f32,
+                    pane.height as f32,
+                )
+            });
+            let hovered = self.hovered_preview();
+            self.hovered_window = hovered.map(|(id, _)| id);
+            if let Some((id, toolbar)) = hovered
+                && let Some(controls) = self.window_controls(id, toolbar)
+            {
+                root.children.push(controls);
+            }
             if let Some(shelf) = self.minimized_shelf(ws, rect) {
                 root.children.push(shelf);
             }
@@ -301,7 +317,7 @@ impl Overview {
             root.children.push(self.search_results(results_rect));
         }
         root.children.push(self.dock(width, height));
-        let footer = if self.pending {
+        let footer = if self.pending && self.hide_after_action {
             Some("Opening…".to_owned())
         } else {
             self.error.as_deref().map(|error| short(error, 140))
@@ -652,6 +668,108 @@ impl Overview {
         }
         .unwrap_or_else(|| icons::FALLBACK.to_owned())
     }
+    pub(super) fn hovered_preview(&self) -> Option<(WindowId, Rect)> {
+        let point = self.pointer?;
+        let pane = self.main_pane?;
+        let layout = self.snapshot.as_ref()?.overview_layout.as_ref()?;
+        if Some(layout.workspace) != self.workspace || layout.width <= 0 || layout.height <= 0 {
+            return None;
+        }
+        let contains = |rect: Rect| {
+            point[0] >= rect.x
+                && point[0] < rect.x + rect.width
+                && point[1] >= rect.y
+                && point[1] < rect.y + rect.height
+        };
+        if !contains(pane) || pane.width < 132.0 || pane.height < 42.0 {
+            return None;
+        }
+        // Match Villain's centered Zoom transform for the live pane.
+        let scale = (pane.width / layout.width as f32).max(pane.height / layout.height as f32);
+        let origin_x = pane.x + (pane.width - scale * layout.width as f32) / 2.0;
+        let origin_y = pane.y + (pane.height - scale * layout.height as f32) / 2.0;
+        let projected = layout.windows.iter().filter_map(|window| {
+            let rect = Rect::new(
+                origin_x + window.x as f32 * scale,
+                origin_y + window.y as f32 * scale,
+                window.width as f32 * scale,
+                window.height as f32 * scale,
+            )
+            .intersection(pane)?;
+            let toolbar = Rect::new(
+                (rect.x + rect.width - 128.0).max(pane.x + 4.0),
+                (rect.y + 6.0).min(pane.y + pane.height - 36.0),
+                124.0,
+                32.0,
+            );
+            Some((window.id, rect, toolbar))
+        });
+        // Keep the group reachable even when it extends past a narrow preview.
+        projected
+            .clone()
+            .find(|(id, _, toolbar)| Some(*id) == self.hovered_window && contains(*toolbar))
+            .or_else(|| projected.into_iter().find(|(_, rect, _)| contains(*rect)))
+            .map(|(id, _, toolbar)| (id, toolbar))
+    }
+
+    fn window_controls(&mut self, id: WindowId, rect: Rect) -> Option<Element> {
+        use OverviewWindowAction as Control;
+        let window = self.window(id)?;
+        let floating = window.floating;
+        let maximized = window.maximized;
+        let fullscreen = window.fullscreen;
+        let base = 0x220_0000_0000;
+        let mut group = panel(base, rect).class("overview-window-controls");
+        for (index, (action, icon, label, enabled)) in [
+            (
+                Control::ToggleFloating,
+                if floating {
+                    "layout-board"
+                } else {
+                    "picture-in-picture"
+                },
+                if floating {
+                    "Tile window"
+                } else {
+                    "Float window"
+                },
+                !fullscreen && !maximized,
+            ),
+            (Control::Minimize, "minus", "Minimize window", true),
+            (
+                Control::ToggleMaximize,
+                if maximized { "squares" } else { "square" },
+                if maximized {
+                    "Restore window"
+                } else {
+                    "Maximize window"
+                },
+                !fullscreen,
+            ),
+            (Control::Close, "x", "Close window", true),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let button_id = base + 1 + index as u64 * 2;
+            let icon =
+                TablerIcon::named(icon, IconVariant::Outline).expect("bundled window control icon");
+            let mut button = placed(
+                Element::tabler_button(button_id, button_id + 1, icon, label),
+                Rect::new(2.0 + index as f32 * 30.0, 2.0, 30.0, 28.0),
+            )
+            .class("overview-window-control");
+            button.children[0].layout.width = Length::Px(19.0);
+            button.children[0].layout.height = Length::Px(19.0);
+            button.children[0].layout.offset = [5.5, 4.5];
+            button.enabled = enabled && !self.pending;
+            self.targets
+                .insert(ElementId(button_id), Target::WindowControl(id, action));
+            group.children.push(button);
+        }
+        Some(group)
+    }
+
     fn workspace_card_with_preview(
         &mut self,
         ws: WorkspaceId,

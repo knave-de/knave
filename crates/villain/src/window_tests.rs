@@ -1799,8 +1799,8 @@ fn xdg_decoration_negotiation_and_geometry() {
         queue.roundtrip(&mut client).unwrap();
         assert_eq!(
             client.decoration_modes[&1],
-            zxdg_toplevel_decoration_v1::Mode::ServerSide as u32,
-            "the compositor enforces server-side decorations"
+            zxdg_toplevel_decoration_v1::Mode::ClientSide as u32,
+            "the compositor honors client-side requests"
         );
         assert_eq!(
             client.configure_counts[&2], sibling_configures,
@@ -1823,7 +1823,7 @@ fn xdg_decoration_negotiation_and_geometry() {
         );
         inspect(&sender, |state| {
             let (window, rect, fullscreen, _, _, _) = &state.workspace_layout(0)[0];
-            assert!(crate::workspaces::titlebar_rect(window, *rect, *fullscreen).is_some());
+            assert!(crate::workspaces::titlebar_rect(window, *rect, *fullscreen).is_none());
         });
         decoration.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
         surface.commit();
@@ -1941,7 +1941,7 @@ fn xdg_decoration_negotiation_and_geometry() {
             assert!(crate::workspaces::titlebar_rect(window, *rect, *fullscreen).is_none());
         });
 
-        // Toplevels without a decoration object still receive the compositor frame.
+        // Toplevels without a decoration object keep their own chrome.
         let bare_surface = compositor.create_surface(&qh, ());
         let bare_xdg = wm.get_xdg_surface(&bare_surface, &qh, ());
         let bare_top = bare_xdg.get_toplevel(&qh, 2);
@@ -1967,7 +1967,7 @@ fn xdg_decoration_negotiation_and_geometry() {
                 })
             });
             let (window, rect, fullscreen, _, _, _) = bare.expect("bare toplevel mapped");
-            assert!(crate::workspaces::titlebar_rect(&window, rect, fullscreen).is_some());
+            assert!(crate::workspaces::titlebar_rect(&window, rect, fullscreen).is_none());
         });
     });
     let deadline = Instant::now() + Duration::from_secs(20);

@@ -34,21 +34,15 @@ Decoration palettes resolve Knave’s theme policy and named CSS on load/reload.
 
 ## Server titlebars
 
-Villain provides a 34 logical-pixel titlebar for every managed xdg-toplevel regardless of xdg-decoration support or requested mode. Villain answers client-side mode requests with server-side mode. Destroying the decoration object switches to client-side mode at the next commit, as required by the protocol; a toplevel without a decoration object still gets a frame. The titlebar is outside the client's
-configured content rectangle and is not shown for fullscreen windows. When
-borders or rounded corners are enabled, the compositor titlebar shares the
-client's outer frame and rounded hit contour.
+Villain draws a 34 logical-pixel titlebar for Wayland windows in negotiated
+server-side mode and for managed X11 windows that allow Motif decorations.
+The titlebar sits outside the client content and is hidden in fullscreen.
+With borders or rounded corners, titlebar and client share the outer frame and
+rounded hit contour. X11 move and resize requests use `_NET_WM_MOVERESIZE`.
 
-XWayland clients do not negotiate `xdg-decoration`. Every managed X11 window gets
-the same titlebar, including windows with Motif client-decoration hints. The
-compositor handles move and resize through `_NET_WM_MOVERESIZE`; Motif hints do
-not disable the managed frame. Unmanaged X11 surfaces are unaffected.
-
-The titlebar controls from right to left are close, maximize/restore, toggle
-floating, and minimize. Double-clicking an empty titlebar toggles maximize;
-dragging an empty titlebar moves the window. These controls are compositor
-behavior and are not currently configurable. They are included in normal scene
-rendering and workspace previews.
+The titlebar controls from right to left are close, maximize/restore, and
+minimize. Double-clicking empty titlebar space toggles maximize, and dragging
+that space moves the window.
 
 Reload validates before replacing config, cancels grabs, drops cached scenes and
 recomputes geometry. Keyboard focus requests repaint without requiring a client
@@ -114,6 +108,6 @@ GPU/driver texture storage. Resource growth, hardware presentation, physical
 input, direct-TTY/KMS, reboot and multi-monitor behavior remain unverified.
 
 X11 floating move/resize paths use outer-frame coordinates. Motif decoration
-changes do not remove the managed frame or alter saved outer geometry, including
-while maximized, fullscreen, or minimized. The isolated XWayland regression
+changes update the frame and preserve the saved client area, including while
+maximized, fullscreen, or minimized. The isolated XWayland regression
 covers those transitions as well as directional movement and resizing.

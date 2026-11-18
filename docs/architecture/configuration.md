@@ -122,7 +122,7 @@ empty matchers, and out-of-range or unretained workspace targets reject the full
 config and leave the active configuration unchanged. The compositor compiles
 regexes on config load.
 
-Window rules control placement and workspace only. Villain supplies a separate server-side titlebar to every managed window; see [the titlebar decision](decisions/0018-server-side-titlebars.md).
+Window rules control placement and workspace only. Villain supplies a separate titlebar when Wayland decoration negotiation or XWayland hints call for one; see [the titlebar decision](decisions/0018-server-side-titlebars.md).
 
 The configuration is typed by `knave-config` and consumed directly by Villain;
 Settings can read and write these same fields without a second persistence

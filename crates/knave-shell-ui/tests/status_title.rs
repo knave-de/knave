@@ -25,6 +25,7 @@ fn focused_status_title_shapes_one_line_and_clips_to_its_allocation() {
         let snapshot = DesktopSnapshot {
             generation: 1,
             overview_visible: false,
+            overview_layout: None,
             workspaces: vec![WorkspaceSummary {
                 workspace: WorkspaceId(1),
                 active: true,
