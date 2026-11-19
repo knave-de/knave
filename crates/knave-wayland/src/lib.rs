@@ -630,27 +630,7 @@ fn run_internal(
         ),
         None,
     );
-    if let Some(options) = &options {
-        layer.set_anchor(if options.size.is_none() {
-            Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT
-        } else {
-            options.position.anchors()
-        });
-        layer.set_keyboard_interactivity(match options.keyboard {
-            KeyboardMode::None => KeyboardInteractivity::None,
-            KeyboardMode::OnDemand => KeyboardInteractivity::OnDemand,
-            KeyboardMode::Exclusive => KeyboardInteractivity::Exclusive,
-        });
-        layer.set_exclusive_zone(-1);
-        let [w, h] = options.size.unwrap_or([0, 0]);
-        layer.set_size(w, h);
-    } else {
-        layer.set_anchor(role.anchors());
-        layer.set_keyboard_interactivity(role.keyboard_interactivity());
-        layer.set_exclusive_zone(role.exclusive_zone());
-        let (width, height) = role.requested_size();
-        layer.set_size(width, height);
-    }
+    apply_layer_settings(&layer, role, options.as_ref());
     if fractional_scale.is_some() && viewport.is_some() {
         layer.wl_surface().set_buffer_scale(1);
     }
@@ -934,6 +914,30 @@ struct Runtime {
     exit: bool,
 }
 
+fn apply_layer_settings(layer: &LayerSurface, role: ShellRole, options: Option<&SurfaceOptions>) {
+    if let Some(options) = options {
+        layer.set_anchor(if options.size.is_none() {
+            Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT
+        } else {
+            options.position.anchors()
+        });
+        layer.set_keyboard_interactivity(match options.keyboard {
+            KeyboardMode::None => KeyboardInteractivity::None,
+            KeyboardMode::OnDemand => KeyboardInteractivity::OnDemand,
+            KeyboardMode::Exclusive => KeyboardInteractivity::Exclusive,
+        });
+        layer.set_exclusive_zone(-1);
+        let [w, h] = options.size.unwrap_or([0, 0]);
+        layer.set_size(w, h);
+    } else {
+        layer.set_anchor(role.anchors());
+        layer.set_keyboard_interactivity(role.keyboard_interactivity());
+        layer.set_exclusive_zone(role.exclusive_zone());
+        let (width, height) = role.requested_size();
+        layer.set_size(width, height);
+    }
+}
+
 impl Runtime {
     fn fractional_scaling(&self) -> bool {
         self.fractional_scale.is_some() && self.viewport.is_some()
@@ -1172,6 +1176,12 @@ impl Runtime {
                 self.layer.wl_surface().commit();
                 self.surface_buffer_attached = false;
                 self.frame_pending = false;
+                self.configured = false;
+                self.app_keyboard_mode = None;
+                // Unmapping resets the layer role. Reapply its settings in a
+                // bufferless commit and wait for configure before presenting.
+                apply_layer_settings(&self.layer, self.role, self.options.as_ref());
+                self.layer.commit();
                 if let Some(app) = &mut self.app {
                     app.surface_unmapped();
                 }

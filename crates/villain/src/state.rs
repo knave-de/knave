@@ -110,6 +110,9 @@ pub struct Villain {
     pub virtual_keyboard_manager_state:
         smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState,
     pub(crate) virtual_keyboard_allowed: Arc<AtomicBool>,
+    pub virtual_pointer_manager_state:
+        smithay::wayland::virtual_pointer::VirtualPointerManagerState,
+    pub(crate) virtual_pointer_allowed: Arc<AtomicBool>,
     #[allow(dead_code)]
     pub cursor_shape_state: CursorShapeManagerState,
     #[allow(dead_code)]
@@ -191,6 +194,13 @@ impl Villain {
                 &display_handle,
                 move |_| virtual_keyboard_policy.load(Ordering::Relaxed),
             );
+        let virtual_pointer_allowed = Arc::new(AtomicBool::new(config.input.allow_virtual_pointer));
+        let virtual_pointer_policy = Arc::clone(&virtual_pointer_allowed);
+        let virtual_pointer_manager_state =
+            smithay::wayland::virtual_pointer::VirtualPointerManagerState::new::<Self, _>(
+                &display_handle,
+                move |_| virtual_pointer_policy.load(Ordering::Relaxed),
+            );
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&display_handle, "villain");
         let keyboard = seat
@@ -270,6 +280,8 @@ impl Villain {
             ),
             virtual_keyboard_manager_state,
             virtual_keyboard_allowed,
+            virtual_pointer_manager_state,
+            virtual_pointer_allowed,
             cursor_shape_state: CursorShapeManagerState::new::<Self>(&display_handle),
             output_manager_state: OutputManagerState::new_with_xdg_output::<Self>(&display_handle),
             fractional_scale_manager_state: FractionalScaleManagerState::new::<Self>(
@@ -446,7 +458,11 @@ impl SeatHandler for Villain {
     }
 }
 
-impl smithay::wayland::tablet_manager::TabletSeatHandler for Villain {}
+impl smithay::input::tablet::TabletSeatHandler for Villain {
+    type ToolFocus = smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+}
+
+impl smithay::wayland::pointer_constraints::PointerConstraintsHandler for Villain {}
 
 /// Data attached to each connected client.
 ///

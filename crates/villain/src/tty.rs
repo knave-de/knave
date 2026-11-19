@@ -161,6 +161,7 @@ pub fn init(
             subpixel: Subpixel::Unknown,
             make: "Villain".into(),
             model: "DRM/KMS".into(),
+            serial_number: String::new(),
         },
     );
     output.create_global::<Villain>(&state.display_handle);
@@ -242,7 +243,7 @@ pub fn init(
                         code,
                         KeyState::Released,
                         SERIAL_COUNTER.next_serial(),
-                        0,
+                        smithay::backend::input::InputTime::now(),
                         |_, _, _| smithay::input::keyboard::FilterResult::Forward,
                     );
                 }
@@ -407,7 +408,7 @@ fn process_input(event: InputEvent<LibinputInputBackend>, state: &mut Villain) {
             if crate::screenshot::pointer_motion(state) {
                 return;
             }
-            state.refresh_pointer_motion(event.time_msec());
+            state.refresh_pointer_motion(event.time().millis());
         }
         InputEvent::PointerMotionAbsolute { event } => {
             state.pointer_location = (
@@ -418,28 +419,31 @@ fn process_input(event: InputEvent<LibinputInputBackend>, state: &mut Villain) {
             if crate::screenshot::pointer_motion(state) {
                 return;
             }
-            state.refresh_pointer_motion(event.time_msec());
+            state.refresh_pointer_motion(event.time().millis());
         }
         InputEvent::PointerButton { event } => {
             if crate::screenshot::pointer_button(
                 state,
                 event.button_code(),
                 event.state() == ButtonState::Pressed,
-                event.time_msec(),
+                event.time().millis(),
             ) {
                 return;
             }
-            if state.handle_compositor_button(event.button_code(), event.state(), event.time_msec())
-            {
+            if state.handle_compositor_button(
+                event.button_code(),
+                event.state(),
+                event.time().millis(),
+            ) {
                 return;
             }
-            state.refresh_pointer_and_focus(event.time_msec());
+            state.refresh_pointer_and_focus(event.time().millis());
             let pointer = state.pointer.clone();
             pointer.button(
                 state,
                 &ButtonEvent {
                     serial: SERIAL_COUNTER.next_serial(),
-                    time: event.time_msec(),
+                    time: event.time(),
                     button: event.button_code(),
                     state: event.state(),
                 },
@@ -452,7 +456,7 @@ fn process_input(event: InputEvent<LibinputInputBackend>, state: &mut Villain) {
             if state.screenshot.intercepting_pointer() {
                 return;
             }
-            let mut frame = AxisFrame::new(event.time_msec()).source(event.source());
+            let mut frame = AxisFrame::new(event.time()).source(event.source());
             for axis in [Axis::Horizontal, Axis::Vertical] {
                 let amount = event
                     .amount(axis)
@@ -473,7 +477,7 @@ fn process_input(event: InputEvent<LibinputInputBackend>, state: &mut Villain) {
         }
         InputEvent::GestureSwipeBegin { event } => {
             use smithay::backend::input::{Device, GestureBeginEvent};
-            state.swipe_begin(event.device().id(), event.fingers(), event.time_msec());
+            state.swipe_begin(event.device().id(), event.fingers(), event.time().millis());
         }
         InputEvent::GestureSwipeUpdate { event } => {
             use smithay::backend::input::{Device, GestureSwipeUpdateEvent};
@@ -481,12 +485,16 @@ fn process_input(event: InputEvent<LibinputInputBackend>, state: &mut Villain) {
                 &event.device().id(),
                 event.delta_x() / state.config.output_scale,
                 event.delta_y() / state.config.output_scale,
-                event.time_msec(),
+                event.time().millis(),
             );
         }
         InputEvent::GestureSwipeEnd { event } => {
             use smithay::backend::input::{Device, GestureEndEvent};
-            state.swipe_end(&event.device().id(), event.cancelled(), event.time_msec());
+            state.swipe_end(
+                &event.device().id(),
+                event.cancelled(),
+                event.time().millis(),
+            );
         }
         InputEvent::GesturePinchBegin { event } => {
             if !state.screenshot.begin_pinch_gesture() {
@@ -497,7 +505,7 @@ fn process_input(event: InputEvent<LibinputInputBackend>, state: &mut Villain) {
                 state,
                 &smithay::input::pointer::GesturePinchBeginEvent {
                     serial: SERIAL_COUNTER.next_serial(),
-                    time: event.time_msec(),
+                    time: event.time(),
                     fingers: event.fingers(),
                 },
             );
@@ -510,7 +518,7 @@ fn process_input(event: InputEvent<LibinputInputBackend>, state: &mut Villain) {
             state.pointer.clone().gesture_pinch_update(
                 state,
                 &smithay::input::pointer::GesturePinchUpdateEvent {
-                    time: event.time_msec(),
+                    time: event.time(),
                     delta: (
                         event.delta_x() / state.config.output_scale,
                         event.delta_y() / state.config.output_scale,
@@ -530,7 +538,7 @@ fn process_input(event: InputEvent<LibinputInputBackend>, state: &mut Villain) {
                 state,
                 &smithay::input::pointer::GesturePinchEndEvent {
                     serial: SERIAL_COUNTER.next_serial(),
-                    time: event.time_msec(),
+                    time: event.time(),
                     cancelled: event.cancelled(),
                 },
             );
@@ -544,7 +552,7 @@ fn process_input(event: InputEvent<LibinputInputBackend>, state: &mut Villain) {
                 state,
                 &smithay::input::pointer::GestureHoldBeginEvent {
                     serial: SERIAL_COUNTER.next_serial(),
-                    time: event.time_msec(),
+                    time: event.time(),
                     fingers: event.fingers(),
                 },
             );
@@ -558,12 +566,122 @@ fn process_input(event: InputEvent<LibinputInputBackend>, state: &mut Villain) {
                 state,
                 &smithay::input::pointer::GestureHoldEndEvent {
                     serial: SERIAL_COUNTER.next_serial(),
-                    time: event.time_msec(),
+                    time: event.time(),
                     cancelled: event.cancelled(),
                 },
             );
         }
         _ => {}
+    }
+}
+
+impl smithay::wayland::virtual_pointer::VirtualPointerHandler for Villain {
+    fn process_virtual_pointer_event(
+        &mut self,
+        event: InputEvent<smithay::wayland::virtual_pointer::VirtualPointerBackend>,
+    ) {
+        if !self
+            .virtual_pointer_allowed
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            return;
+        }
+        use smithay::backend::input::{AbsolutePositionEvent, Event, PointerButtonEvent};
+        match event {
+            InputEvent::PointerMotion { event } => {
+                let delta = event.delta();
+                self.pointer_location.x = (self.pointer_location.x
+                    + delta.x / self.config.output_scale)
+                    .clamp(0.0, f64::from(self.output_size.w - 1));
+                self.pointer_location.y = (self.pointer_location.y
+                    + delta.y / self.config.output_scale)
+                    .clamp(0.0, f64::from(self.output_size.h - 1));
+                if !crate::screenshot::pointer_motion(self) {
+                    self.refresh_pointer_motion(event.time().millis());
+                }
+            }
+            InputEvent::PointerMotionAbsolute { event } => {
+                self.pointer_location = (
+                    event.x_transformed(self.output_size.w),
+                    event.y_transformed(self.output_size.h),
+                )
+                    .into();
+                if !crate::screenshot::pointer_motion(self) {
+                    self.refresh_pointer_motion(event.time().millis());
+                }
+            }
+            InputEvent::PointerButton { event } => {
+                let time = event.time().millis();
+                let button = event.button_code();
+                let button_state = event.state();
+                if crate::screenshot::pointer_button(
+                    self,
+                    button,
+                    button_state == ButtonState::Pressed,
+                    time,
+                ) || self.handle_compositor_button(button, button_state, time)
+                {
+                    return;
+                }
+                self.refresh_pointer_and_focus(time);
+                let pointer = self.pointer.clone();
+                pointer.button(
+                    self,
+                    &ButtonEvent {
+                        serial: SERIAL_COUNTER.next_serial(),
+                        time: smithay::backend::input::InputTime::from_millis(time),
+                        button,
+                        state: button_state,
+                    },
+                );
+                pointer.frame(self);
+                self.update_interaction_cursor();
+            }
+            InputEvent::PointerAxis { event } => {
+                use smithay::backend::input::{Axis, AxisSource, PointerAxisEvent};
+                self.finish_workspace_motion();
+                if self.screenshot.intercepting_pointer() {
+                    return;
+                }
+                let mut frame = AxisFrame::new(event.time()).source(event.source());
+                for axis in [Axis::Horizontal, Axis::Vertical] {
+                    let amount = event
+                        .amount(axis)
+                        .unwrap_or_else(|| event.amount_v120(axis).unwrap_or(0.0) * 15.0 / 120.0);
+                    frame = frame
+                        .value(axis, amount)
+                        .relative_direction(axis, event.relative_direction(axis));
+                    if let Some(steps) = event.amount_v120(axis) {
+                        frame = frame.v120(axis, steps as i32);
+                    }
+                    if event.source() == AxisSource::Finger && event.amount(axis) == Some(0.0) {
+                        frame = frame.stop(axis);
+                    }
+                }
+                let pointer = self.pointer.clone();
+                pointer.axis(self, frame);
+                pointer.frame(self);
+            }
+            InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. } => {}
+            _ => {}
+        }
+    }
+}
+
+impl smithay::wayland::virtual_keyboard::VirtualKeyboardHandler for Villain {
+    fn process_virtual_keyboard_event(
+        &mut self,
+        event: InputEvent<smithay::wayland::virtual_keyboard::VirtualKeyboardBackend>,
+    ) {
+        if !self
+            .virtual_keyboard_allowed
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            return;
+        }
+        if let InputEvent::Keyboard { event } = event {
+            crate::keybinds::handle_keyboard_event(self, event);
+        }
     }
 }
 
@@ -576,7 +694,7 @@ fn configure_input_device(
         && let Err(error) = device.config_tap_set_enabled(global.tap_to_click)
     {
         tracing::warn!(
-            device = device.name(),
+                    device = %device.name(),
             ?error,
             "could not configure tap-to-click"
         );
@@ -585,13 +703,13 @@ fn configure_input_device(
         && let Err(error) = device.config_scroll_set_natural_scroll_enabled(global.natural_scroll)
     {
         tracing::warn!(
-            device = device.name(),
+                    device = %device.name(),
             ?error,
             "could not configure natural scrolling"
         );
     }
     // Device rules layer over the global policy in file order; later matches win.
-    let name = device.name().to_owned();
+    let name = device.name().into_owned();
     crate::input_devices::set_enabled(device, crate::input_devices::resolved_enabled(rules, &name));
     for rule in rules {
         if crate::input_devices::matches(&rule.name, &name) {
@@ -624,6 +742,25 @@ impl Villain {
                     .disable_global::<Self>(self.virtual_keyboard_manager_state.global());
             }
         }
+        let was_pointer_allowed = self.virtual_pointer_allowed.swap(
+            global.allow_virtual_pointer,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        if was_pointer_allowed != global.allow_virtual_pointer {
+            if global.allow_virtual_pointer {
+                self.display_handle
+                    .remove_global::<Self>(self.virtual_pointer_manager_state.global());
+                let policy = std::sync::Arc::clone(&self.virtual_pointer_allowed);
+                self.virtual_pointer_manager_state =
+                    smithay::wayland::virtual_pointer::VirtualPointerManagerState::new::<Self, _>(
+                        &self.display_handle,
+                        move |_| policy.load(std::sync::atomic::Ordering::Relaxed),
+                    );
+            } else {
+                self.display_handle
+                    .disable_global::<Self>(self.virtual_pointer_manager_state.global());
+            }
+        }
         if let Some(tty) = self.tty.as_mut() {
             for device in &mut tty.input_devices {
                 configure_input_device(device, global, &rules);
@@ -652,7 +789,7 @@ impl Villain {
         tty.input_devices
             .iter()
             .map(|device| knave_desktop_api::DeviceSummary {
-                name: device.name().to_owned(),
+                name: device.name().into_owned(),
                 enabled: !device
                     .config_send_events_mode()
                     .contains(SendEventsMode::DISABLED),
@@ -661,11 +798,9 @@ impl Villain {
                     .filter(|(capability, _)| device.has_capability(*capability))
                     .map(|(_, label)| (*label).to_owned())
                     .collect(),
-                matched_rule: self
-                    .config
-                    .devices
-                    .iter()
-                    .rposition(|rule| crate::input_devices::matches(&rule.name, device.name())),
+                matched_rule: self.config.devices.iter().rposition(|rule| {
+                    crate::input_devices::matches(&rule.name, device.name().as_ref())
+                }),
             })
             .collect()
     }

@@ -30,29 +30,14 @@ use smithay::{
     utils::Serial,
     wayland::selection::{
         SelectionHandler,
-        data_device::{
-            ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler,
-        },
+        data_device::{DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler},
         ext_data_control,
         primary_selection::{PrimarySelectionHandler, PrimarySelectionState},
         wlr_data_control,
     },
     xwayland::XWaylandClientData,
 };
-use smithay::{
-    reexports::{
-        wayland_protocols_misc::zwp_virtual_keyboard_v1::server::{
-            zwp_virtual_keyboard_manager_v1::{self, ZwpVirtualKeyboardManagerV1},
-            zwp_virtual_keyboard_v1::{self, ZwpVirtualKeyboardV1},
-        },
-        wayland_server::{DataInit, Dispatch, DisplayHandle, backend::ClientId},
-    },
-    wayland::virtual_keyboard::{
-        VirtualKeyboardManagerGlobalData, VirtualKeyboardManagerState, VirtualKeyboardUserData,
-    },
-};
 use std::os::fd::OwnedFd;
-use std::sync::atomic::Ordering;
 
 type PopupRect = smithay::utils::Rectangle<i32, smithay::utils::Logical>;
 
@@ -355,8 +340,6 @@ impl CompositorHandler for Villain {
         })
         .last()
         .unwrap();
-        let decoration_destroyed =
-            &root == surface && crate::workspaces::apply_decoration_destroy_on_commit(&root);
         let visible_window = self
             .window_for_surface(&root)
             .is_some_and(|window| self.space.element_location(&window).is_some());
@@ -390,9 +373,6 @@ impl CompositorHandler for Villain {
             // surface. Space uses this geometry to decide what gets rendered
             // on each output.
             window.on_commit();
-            if decoration_destroyed {
-                self.update_window_decoration(&window);
-            }
             self.refresh_window_hints(&window);
             self.finish_new_window_focus(&window);
 
@@ -480,9 +460,7 @@ impl SelectionHandler for Villain {
                 let Some(xwm) = self.xwm.as_mut() else {
                     return;
                 };
-                if let Err(error) =
-                    xwm.send_selection(selection, mime_type, fd, self.loop_handle.clone())
-                {
+                if let Err(error) = xwm.send_selection(selection, mime_type, fd) {
                     tracing::warn!(%error, ?selection, "could not transfer XWayland selection");
                 }
             }
@@ -491,49 +469,77 @@ impl SelectionHandler for Villain {
 }
 
 impl DataDeviceHandler for Villain {
-    fn data_device_state(&self) -> &DataDeviceState {
-        &self.data_device_state
+    fn data_device_state(&mut self) -> &mut DataDeviceState {
+        &mut self.data_device_state
     }
 }
 
 impl PrimarySelectionHandler for Villain {
-    fn primary_selection_state(&self) -> &PrimarySelectionState {
-        &self.primary_selection_state
+    fn primary_selection_state(&mut self) -> &mut PrimarySelectionState {
+        &mut self.primary_selection_state
     }
 }
 
 impl wlr_data_control::DataControlHandler for Villain {
-    fn data_control_state(&self) -> &wlr_data_control::DataControlState {
-        &self.wlr_data_control_state
+    fn data_control_state(&mut self) -> &mut wlr_data_control::DataControlState {
+        &mut self.wlr_data_control_state
     }
 }
 
 impl ext_data_control::DataControlHandler for Villain {
-    fn data_control_state(&self) -> &ext_data_control::DataControlState {
-        &self.ext_data_control_state
+    fn data_control_state(&mut self) -> &mut ext_data_control::DataControlState {
+        &mut self.ext_data_control_state
     }
 }
 
-impl ClientDndGrabHandler for Villain {
-    fn started(
+impl WaylandDndGrabHandler for Villain {
+    fn dnd_requested<S: smithay::input::dnd::Source>(
         &mut self,
-        _source: Option<smithay::reexports::wayland_server::protocol::wl_data_source::WlDataSource>,
+        source: S,
         icon: Option<WlSurface>,
-        _seat: Seat<Self>,
+        seat: Seat<Self>,
+        serial: Serial,
+        type_: smithay::input::dnd::GrabType,
     ) {
+        use smithay::input::dnd::{DnDGrab, GrabType};
+        if type_ != GrabType::Pointer {
+            source.cancel();
+            return;
+        }
+        let Some(pointer) = seat.get_pointer() else {
+            source.cancel();
+            return;
+        };
+        let Some(start_data) = pointer.grab_start_data() else {
+            source.cancel();
+            return;
+        };
         self.cursor.set_drag_icon(icon);
         self.request_repaint();
+        let grab = DnDGrab::new_pointer(&self.display_handle, start_data, source, seat);
+        pointer.set_grab(self, grab, serial, smithay::input::pointer::Focus::Keep);
     }
+}
 
-    fn dropped(&mut self, _target: Option<WlSurface>, _validated: bool, _seat: Seat<Self>) {
-        // Smithay calls this when the grab is unset, including cancellation.
+impl smithay::input::dnd::DndGrabHandler for Villain {
+    fn dropped(
+        &mut self,
+        _target: Option<smithay::input::dnd::DndTarget<'_, Self>>,
+        _validated: bool,
+        _seat: Seat<Self>,
+        _location: smithay::utils::Point<f64, smithay::utils::Logical>,
+    ) {
         self.cursor.set_drag_icon(None);
         self.request_repaint();
     }
-}
-
-impl ServerDndGrabHandler for Villain {
-    fn send(&mut self, _mime_type: String, _fd: OwnedFd, _seat: Seat<Self>) {}
+    fn cancelled(
+        &mut self,
+        _seat: Seat<Self>,
+        _location: smithay::utils::Point<f64, smithay::utils::Logical>,
+    ) {
+        self.cursor.set_drag_icon(None);
+        self.request_repaint();
+    }
 }
 
 impl smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitHandler for Villain {
@@ -563,7 +569,6 @@ impl smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitHandl
         }
     }
 }
-smithay::delegate_keyboard_shortcuts_inhibit!(Villain);
 
 impl OutputHandler for Villain {}
 
@@ -590,7 +595,10 @@ impl Villain {
             }
             let Some((loc, next_parent)) = with_states(&parent_surface, |states| {
                 let attributes = states.data_map.get::<XdgPopupSurfaceData>()?.lock().ok()?;
-                Some((attributes.current.geometry.loc, attributes.parent.clone()?))
+                Some((
+                    attributes.last_acked.as_ref()?.state.geometry.loc,
+                    attributes.parent.clone()?,
+                ))
             }) else {
                 return fallback();
             };
@@ -826,89 +834,6 @@ impl XdgShellHandler for Villain {
 // Smithay's delegation macro connects the protocol objects to the handlers
 // above. It is intentionally at the bottom: the implementations are easier to
 // find before the generated dispatch glue.
-smithay::delegate_compositor!(Villain);
-smithay::delegate_cursor_shape!(Villain);
-smithay::delegate_data_device!(Villain);
-smithay::delegate_data_control!(Villain);
-smithay::delegate_ext_data_control!(Villain);
-smithay::delegate_output!(Villain);
-smithay::delegate_fractional_scale!(Villain);
-smithay::delegate_viewporter!(Villain);
-smithay::delegate_primary_selection!(Villain);
-smithay::delegate_seat!(Villain);
-smithay::reexports::wayland_server::delegate_global_dispatch!(Villain: [
-    ZwpVirtualKeyboardManagerV1: VirtualKeyboardManagerGlobalData
-] => VirtualKeyboardManagerState);
-impl Dispatch<ZwpVirtualKeyboardManagerV1, ()> for Villain {
-    /// Reject manager requests while virtual-keyboard clients are disallowed.
-    fn request(
-        state: &mut Self,
-        client: &Client,
-        resource: &ZwpVirtualKeyboardManagerV1,
-        request: zwp_virtual_keyboard_manager_v1::Request,
-        data: &(),
-        display: &DisplayHandle,
-        data_init: &mut DataInit<'_, Self>,
-    ) {
-        if !state.virtual_keyboard_allowed.load(Ordering::Relaxed) {
-            let id = match request {
-                zwp_virtual_keyboard_manager_v1::Request::CreateVirtualKeyboard { id, .. } => id,
-                _ => return,
-            };
-            data_init.post_error(
-                id,
-                zwp_virtual_keyboard_manager_v1::Error::Unauthorized,
-                "virtual keyboards are disabled by compositor policy",
-            );
-            return;
-        }
-
-        <VirtualKeyboardManagerState as Dispatch<ZwpVirtualKeyboardManagerV1, (), Self>>::request(
-            state, client, resource, request, data, display, data_init,
-        );
-    }
-}
-
-impl Dispatch<ZwpVirtualKeyboardV1, VirtualKeyboardUserData<Villain>> for Villain {
-    /// Ignore input from previously created keyboards while the policy is disabled.
-    fn request(
-        state: &mut Self,
-        client: &Client,
-        resource: &ZwpVirtualKeyboardV1,
-        request: zwp_virtual_keyboard_v1::Request,
-        data: &VirtualKeyboardUserData<Self>,
-        display: &DisplayHandle,
-        data_init: &mut DataInit<'_, Self>,
-    ) {
-        if state.virtual_keyboard_allowed.load(Ordering::Relaxed)
-            || matches!(&request, zwp_virtual_keyboard_v1::Request::Destroy)
-        {
-            <VirtualKeyboardManagerState as Dispatch<
-                ZwpVirtualKeyboardV1,
-                VirtualKeyboardUserData<Self>,
-                Self,
-            >>::request(state, client, resource, request, data, display, data_init);
-        }
-    }
-
-    /// Forward keyboard object cleanup to Smithay.
-    fn destroyed(
-        state: &mut Self,
-        client_id: ClientId,
-        resource: &ZwpVirtualKeyboardV1,
-        data: &VirtualKeyboardUserData<Self>,
-    ) {
-        <VirtualKeyboardManagerState as Dispatch<
-            ZwpVirtualKeyboardV1,
-            VirtualKeyboardUserData<Self>,
-            Self,
-        >>::destroyed(state, client_id, resource, data);
-    }
-}
-smithay::delegate_pointer_gestures!(Villain);
-smithay::delegate_shm!(Villain);
-smithay::delegate_xdg_shell!(Villain);
-
 impl smithay::wayland::dmabuf::DmabufHandler for Villain {
     fn dmabuf_state(&mut self) -> &mut smithay::wayland::dmabuf::DmabufState {
         &mut self.dmabuf_state
@@ -932,7 +857,6 @@ impl smithay::wayland::dmabuf::DmabufHandler for Villain {
         }
     }
 }
-smithay::delegate_dmabuf!(Villain);
 
 #[cfg(test)]
 mod popup_geometry_tests {
@@ -999,7 +923,11 @@ impl smithay::wayland::shell::xdg::decoration::XdgDecorationHandler for Villain 
     }
 
     fn unset_mode(&mut self, toplevel: ToplevelSurface) {
-        self.set_decoration_mode(toplevel, DecorationMode::ServerSide);
+        self.set_decoration_mode(toplevel.clone(), DecorationMode::ServerSide);
+    }
+
+    fn decoration_destroyed(&mut self, toplevel: ToplevelSurface) {
+        self.set_decoration_mode(toplevel, DecorationMode::ClientSide);
     }
 }
 
@@ -1013,20 +941,14 @@ impl Villain {
                 .get::<crate::workspaces::XdgDecorationModeState>()
                 .is_some();
             states.data_map.insert_if_missing_threadsafe(|| {
-                crate::workspaces::XdgDecorationModeState(
-                    std::sync::Mutex::new(mode),
-                    std::sync::atomic::AtomicBool::new(false),
-                )
+                crate::workspaces::XdgDecorationModeState(std::sync::Mutex::new(mode))
             });
             if let Some(decoration) = states
                 .data_map
                 .get::<crate::workspaces::XdgDecorationModeState>()
                 && let Ok(mut effective_mode) = decoration.0.lock()
             {
-                let replaces_destroyed_object = decoration
-                    .1
-                    .swap(false, std::sync::atomic::Ordering::AcqRel);
-                let changed = !had_mode || *effective_mode != mode || replaces_destroyed_object;
+                let changed = !had_mode || *effective_mode != mode;
                 *effective_mode = mode;
                 return changed;
             }
@@ -1053,52 +975,4 @@ impl Villain {
     }
 }
 
-// Smithay 0.7 does not notify XdgDecorationHandler when a decoration resource
-// is destroyed, so retain its request handling and add the missing lifecycle
-// marker. The effective mode changes only at the next toplevel surface commit.
-smithay::reexports::wayland_server::delegate_global_dispatch!(Villain: [
-    smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_decoration_manager_v1::ZxdgDecorationManagerV1:
-        smithay::wayland::shell::xdg::decoration::XdgDecorationManagerGlobalData
-] => smithay::wayland::shell::xdg::decoration::XdgDecorationState);
-smithay::reexports::wayland_server::delegate_dispatch!(Villain: [
-    smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_decoration_manager_v1::ZxdgDecorationManagerV1:
-        ()
-] => smithay::wayland::shell::xdg::decoration::XdgDecorationState);
-
-impl smithay::reexports::wayland_server::Dispatch<
-    smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
-    ToplevelSurface,
-> for Villain
-{
-    fn request(
-        state: &mut Self,
-        client: &smithay::reexports::wayland_server::Client,
-        resource: &smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
-        request: smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Request,
-        data: &ToplevelSurface,
-        dhandle: &smithay::reexports::wayland_server::DisplayHandle,
-        data_init: &mut smithay::reexports::wayland_server::DataInit<'_, Self>,
-    ) {
-        use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Request;
-
-        let destroyed = matches!(&request, Request::Destroy);
-        <smithay::wayland::shell::xdg::decoration::XdgDecorationState as smithay::reexports::wayland_server::Dispatch<_, _, Self>>::request(
-            state, client, resource, request, data, dhandle, data_init,
-        );
-        if destroyed {
-            crate::workspaces::mark_decoration_destroyed(data.wl_surface());
-        }
-    }
-
-    fn destroyed(
-        state: &mut Self,
-        client_id: smithay::reexports::wayland_server::backend::ClientId,
-        resource: &smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::ZxdgToplevelDecorationV1,
-        data: &ToplevelSurface,
-    ) {
-        <smithay::wayland::shell::xdg::decoration::XdgDecorationState as smithay::reexports::wayland_server::Dispatch<_, _, Self>>::destroyed(
-            state, client_id, resource, data,
-        );
-        crate::workspaces::mark_decoration_destroyed(data.wl_surface());
-    }
-}
+smithay::delegate_dispatch2!(Villain);

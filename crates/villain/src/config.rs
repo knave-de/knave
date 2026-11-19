@@ -16,6 +16,7 @@ pub struct InputConfig {
     pub natural_scroll: bool,
     pub focus_follows_mouse: bool,
     pub allow_virtual_keyboard: bool,
+    pub allow_virtual_pointer: bool,
 }
 
 impl Default for InputConfig {
@@ -25,6 +26,7 @@ impl Default for InputConfig {
             natural_scroll: true,
             focus_follows_mouse: true,
             allow_virtual_keyboard: true,
+            allow_virtual_pointer: true,
         }
     }
 }
@@ -239,6 +241,7 @@ impl RuntimeConfig {
                 natural_scroll: compositor.input.natural_scroll,
                 focus_follows_mouse: compositor.input.focus_follows_mouse,
                 allow_virtual_keyboard: compositor.input.allow_virtual_keyboard,
+                allow_virtual_pointer: compositor.input.allow_virtual_pointer,
             },
             devices: compositor.device.clone(),
             window_rules: WindowRulesRuntime::compile(&compositor.window_rules),

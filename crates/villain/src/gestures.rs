@@ -136,7 +136,7 @@ impl Villain {
                 self,
                 &GestureSwipeEndEvent {
                     serial: SERIAL_COUNTER.next_serial(),
-                    time,
+                    time: smithay::backend::input::InputTime::from_millis(time),
                     cancelled: true,
                 },
             );
@@ -198,7 +198,7 @@ impl Villain {
                 self,
                 &GestureSwipeBeginEvent {
                     serial: SERIAL_COUNTER.next_serial(),
-                    time,
+                    time: smithay::backend::input::InputTime::from_millis(time),
                     fingers,
                 },
             );
@@ -230,7 +230,7 @@ impl Villain {
             Owner::Client => self.pointer.clone().gesture_swipe_update(
                 self,
                 &GestureSwipeUpdateEvent {
-                    time,
+                    time: smithay::backend::input::InputTime::from_millis(time),
                     delta: (x, y).into(),
                 },
             ),
@@ -299,7 +299,7 @@ impl Villain {
                 self,
                 &GestureSwipeEndEvent {
                     serial: SERIAL_COUNTER.next_serial(),
-                    time,
+                    time: smithay::backend::input::InputTime::from_millis(time),
                     cancelled,
                 },
             ),

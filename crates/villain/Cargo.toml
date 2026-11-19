@@ -14,7 +14,7 @@ knave-capture-protocol = { workspace = true, features = ["server"] }
 libc = "0.2"
 regex = "1"
 toml = "0.9"
-smithay = { version = "0.7.0", default-features = false, features = [
+smithay = { git = "https://github.com/Smithay/smithay", rev = "7ff0ede4df2af1ce3500da9ef1ee190d48b49103", default-features = false, features = [
     "backend_winit",
     "backend_drm",
     "backend_gbm",

@@ -15,7 +15,7 @@ pub(super) fn button(s: &mut Villain, code: u32, state: ButtonState) {
             s,
             &smithay::input::pointer::ButtonEvent {
                 serial: SERIAL_COUNTER.next_serial(),
-                time: 1,
+                time: smithay::backend::input::InputTime::from_millis(1),
                 button: code,
                 state,
             },
