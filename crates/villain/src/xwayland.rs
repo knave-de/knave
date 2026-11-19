@@ -74,6 +74,7 @@ pub fn init(event_loop: &mut EventLoop<'static, Villain>, state: &mut Villain) {
         &state.display_handle,
         None,
         environment,
+        std::iter::empty::<String>(),
         true,
         Stdio::null(),
         Stdio::null(),
@@ -90,7 +91,7 @@ pub fn init(event_loop: &mut EventLoop<'static, Villain>, state: &mut Villain) {
         XWaylandEvent::Ready {
             x11_socket,
             display_number,
-        } => match X11Wm::start_wm(xwm_handle.clone(), x11_socket, client.clone()) {
+        } => match X11Wm::start_wm(xwm_handle.clone(), &state.display_handle, x11_socket, client.clone()) {
             Ok(xwm) => {
                 state.xwm = Some(xwm);
                 state.xwayland_display = Some(display_number);
@@ -439,8 +440,6 @@ impl XwmHandler for Villain {
     }
 }
 
-smithay::delegate_xwayland_shell!(Villain);
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -489,6 +488,7 @@ mod tests {
                 subpixel: smithay::output::Subpixel::Unknown,
                 make: "test".into(),
                 model: "test".into(),
+                serial_number: String::new(),
             },
         );
         output.create_global::<Villain>(&state.display_handle);
@@ -561,6 +561,7 @@ mod tests {
                 subpixel: smithay::output::Subpixel::Unknown,
                 make: "test".into(),
                 model: "test".into(),
+                serial_number: String::new(),
             },
         );
         output.create_global::<Villain>(&state.display_handle);
@@ -787,7 +788,7 @@ mod tests {
                     &mut state,
                     &smithay::input::pointer::ButtonEvent {
                         serial: smithay::utils::SERIAL_COUNTER.next_serial(),
-                        time: 1,
+                        time: smithay::backend::input::InputTime::from_millis(1),
                         button: 0x110,
                         state: button_state,
                     },
@@ -819,7 +820,7 @@ mod tests {
                     38u32.into(),
                     key_state,
                     smithay::utils::SERIAL_COUNTER.next_serial(),
-                    2,
+                    smithay::backend::input::InputTime::from_millis(2),
                     |_, _, _| smithay::input::keyboard::FilterResult::Forward,
                 );
             }
@@ -880,7 +881,7 @@ mod tests {
             &mut state,
             &smithay::input::pointer::ButtonEvent {
                 serial: smithay::utils::SERIAL_COUNTER.next_serial(),
-                time: 3,
+                time: smithay::backend::input::InputTime::from_millis(3),
                 button: 0x110,
                 state: smithay::backend::input::ButtonState::Pressed,
             },
@@ -1205,7 +1206,7 @@ mod tests {
             &mut state,
             &smithay::input::pointer::ButtonEvent {
                 serial,
-                time: 10,
+                time: smithay::backend::input::InputTime::from_millis(10),
                 button: 0x110,
                 state: smithay::backend::input::ButtonState::Pressed,
             },
@@ -1231,7 +1232,7 @@ mod tests {
             &mut state,
             &smithay::input::pointer::ButtonEvent {
                 serial,
-                time: 12,
+                time: smithay::backend::input::InputTime::from_millis(12),
                 button: 0x110,
                 state: smithay::backend::input::ButtonState::Pressed,
             },
@@ -1291,6 +1292,7 @@ mod tests {
                 subpixel: smithay::output::Subpixel::Unknown,
                 make: "test".into(),
                 model: "test".into(),
+                serial_number: String::new(),
             },
         );
         output.create_global::<Villain>(&state.display_handle);

@@ -42,7 +42,7 @@ pub fn resolved_enabled(rules: &[CompositorDeviceConfig], name: &str) -> bool {
 
 /// Set whether libinput delivers events from the device, without detaching it.
 pub fn set_enabled(device: &mut Device, enabled: bool) {
-    let name = device.name().to_owned();
+    let name = device.name().into_owned();
     let mode = if enabled {
         SendEventsMode::ENABLED
     } else {
@@ -55,7 +55,7 @@ pub fn set_enabled(device: &mut Device, enabled: bool) {
 /// value untouched, so rules are non-destructive and can be layered by name
 /// specificity.
 pub fn apply(device: &mut Device, rule: &CompositorDeviceConfig) {
-    let name = device.name().to_owned();
+    let name = device.name().into_owned();
 
     if let Some(enabled) = rule.tap_to_click
         && device.config_tap_finger_count() > 0
@@ -81,7 +81,11 @@ pub fn apply(device: &mut Device, rule: &CompositorDeviceConfig) {
         warn(
             &name,
             "drag-lock",
-            device.config_tap_set_drag_lock_enabled(enabled),
+            device.config_tap_set_drag_lock_enabled(if enabled {
+                smithay::reexports::input::DragLockState::EnabledTimeout
+            } else {
+                smithay::reexports::input::DragLockState::Disabled
+            }),
         );
     }
     if let Some(enabled) = rule.natural_scroll

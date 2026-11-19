@@ -18,10 +18,7 @@ use smithay::{
 use std::{
     collections::BTreeMap,
     process::Command,
-    sync::{
-        Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::Mutex,
     time::{Duration, Instant},
 };
 
@@ -175,35 +172,7 @@ pub(crate) const TITLEBAR_HEIGHT: i32 = 34;
 
 pub(crate) struct XdgDecorationModeState(
     pub Mutex<smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode>,
-    pub AtomicBool,
 );
-
-pub(crate) fn mark_decoration_destroyed(
-    surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-) {
-    smithay::wayland::compositor::with_states(surface, |states| {
-        if let Some(state) = states.data_map.get::<XdgDecorationModeState>() {
-            state.1.store(true, Ordering::Release);
-        }
-    });
-}
-
-pub(crate) fn apply_decoration_destroy_on_commit(
-    surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-) -> bool {
-    smithay::wayland::compositor::with_states(surface, |states| {
-        let Some(state) = states.data_map.get::<XdgDecorationModeState>() else {
-            return false;
-        };
-        if !state.1.swap(false, Ordering::AcqRel) {
-            return false;
-        }
-        if let Ok(mut mode) = state.0.lock() {
-            *mode = smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode::ClientSide;
-        }
-        true
-    })
-}
 
 /// Whether the window uses a compositor-supplied titlebar.
 pub(crate) fn has_compositor_titlebar(window: &Window) -> bool {
@@ -2561,13 +2530,17 @@ impl Villain {
                 self,
                 &smithay::input::pointer::ButtonEvent {
                     serial: SERIAL_COUNTER.next_serial(),
-                    time: 0,
+                    time: smithay::backend::input::InputTime::now(),
                     button,
                     state: smithay::backend::input::ButtonState::Released,
                 },
             );
         }
-        pointer.unset_grab(self, SERIAL_COUNTER.next_serial(), 0);
+        pointer.unset_grab(
+            self,
+            SERIAL_COUNTER.next_serial(),
+            smithay::backend::input::InputTime::now(),
+        );
         pointer.frame(self);
     }
     pub fn refresh_pointer(&mut self, time: u32) {
@@ -2636,7 +2609,7 @@ impl Villain {
             &MotionEvent {
                 location: self.pointer_location,
                 serial: SERIAL_COUNTER.next_serial(),
-                time,
+                time: smithay::backend::input::InputTime::from_millis(time),
             },
         );
         pointer.frame(self);

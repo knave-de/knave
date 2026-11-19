@@ -7,3 +7,8 @@ panes and optionally the cursor. Session and pending-frame counts are capped at
 eight, frames at 8 Mi pixels. Mode changes renew buffer constraints; removed
 outputs stop the session. Cursor-only capture sessions terminate as unsupported.
 See Knave ADR 0005 for backend consent, resource ownership and verification.
+
+Villain exposes Smithay's `zwlr_virtual_pointer_v1` manager. Client access is
+controlled by `[compositor.input].allow_virtual_pointer` (enabled by default);
+events enter the same pointer, focus, and compositor-action path as physical
+pointer events. Disable it when clients must not synthesize pointer input.

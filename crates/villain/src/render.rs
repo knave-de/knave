@@ -88,6 +88,7 @@ pub fn init_winit(
             subpixel: Subpixel::Unknown,
             make: "Villain".into(),
             model: "Nested Winit output".into(),
+            serial_number: String::new(),
         },
     );
     let _global = output.create_global::<Villain>(&state.display_handle);
@@ -139,31 +140,31 @@ pub fn init_winit(
                 if crate::screenshot::pointer_motion(state) {
                     return;
                 }
-                state.refresh_pointer_motion(event.time_msec());
+                state.refresh_pointer_motion(event.time().millis());
             }
             WinitEvent::Input(InputEvent::PointerButton { event }) => {
                 if crate::screenshot::pointer_button(
                     state,
                     event.button_code(),
                     event.state() == smithay::backend::input::ButtonState::Pressed,
-                    event.time_msec(),
+                    event.time().millis(),
                 ) {
                     return;
                 }
                 if state.handle_compositor_button(
                     event.button_code(),
                     event.state(),
-                    event.time_msec(),
+                    event.time().millis(),
                 ) {
                     return;
                 }
-                state.refresh_pointer_and_focus(event.time_msec());
+                state.refresh_pointer_and_focus(event.time().millis());
                 let pointer = state.pointer.clone();
                 pointer.button(
                     state,
                     &ButtonEvent {
                         serial: smithay::utils::SERIAL_COUNTER.next_serial(),
-                        time: event.time_msec(),
+                        time: event.time(),
                         button: event.button_code(),
                         state: event.state(),
                     },
@@ -176,7 +177,7 @@ pub fn init_winit(
                 if state.screenshot.intercepting_pointer() {
                     return;
                 }
-                let mut frame = AxisFrame::new(event.time_msec()).source(event.source());
+                let mut frame = AxisFrame::new(event.time()).source(event.source());
                 for axis in [Axis::Horizontal, Axis::Vertical] {
                     let amount = event
                         .amount(axis)
@@ -210,7 +211,7 @@ pub fn init_winit(
                             code,
                             KeyState::Released,
                             smithay::utils::SERIAL_COUNTER.next_serial(),
-                            0,
+                            smithay::backend::input::InputTime::now(),
                             |_, _, _| smithay::input::keyboard::FilterResult::Forward,
                         );
                     }

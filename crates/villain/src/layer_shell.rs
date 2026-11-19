@@ -278,7 +278,6 @@ impl Villain {
         }
     }
 }
-smithay::delegate_layer_shell!(Villain);
 
 #[cfg(test)]
 #[path = "layer_tests.rs"]

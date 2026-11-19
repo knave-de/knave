@@ -422,7 +422,7 @@ impl Villain {
                 self,
                 &ButtonEvent {
                     serial,
-                    time: 0,
+                    time: smithay::backend::input::InputTime::now(),
                     button,
                     state: ButtonState::Pressed,
                 },

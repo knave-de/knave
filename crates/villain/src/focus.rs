@@ -20,13 +20,13 @@ use crate::state::Villain;
 #[derive(Clone, Debug, PartialEq)]
 pub enum KeyboardFocus {
     Wayland(WlSurface),
-    X11(X11Surface),
+    X11(Box<X11Surface>),
 }
 
 impl KeyboardFocus {
     pub fn for_window(window: &Window) -> Option<Self> {
         if let Some(surface) = window.x11_surface() {
-            Some(Self::X11(surface.clone()))
+            Some(Self::X11(Box::new(surface.clone())))
         } else {
             window
                 .wl_surface()
@@ -63,14 +63,14 @@ impl KeyboardTarget<Villain> for KeyboardFocus {
     ) {
         match self {
             Self::Wayland(surface) => KeyboardTarget::enter(surface, seat, data, keys, serial),
-            Self::X11(surface) => KeyboardTarget::enter(surface, seat, data, keys, serial),
+            Self::X11(surface) => KeyboardTarget::enter(surface.as_ref(), seat, data, keys, serial),
         }
     }
 
     fn leave(&self, seat: &Seat<Villain>, data: &mut Villain, serial: Serial) {
         match self {
             Self::Wayland(surface) => KeyboardTarget::leave(surface, seat, data, serial),
-            Self::X11(surface) => KeyboardTarget::leave(surface, seat, data, serial),
+            Self::X11(surface) => KeyboardTarget::leave(surface.as_ref(), seat, data, serial),
         }
     }
 
@@ -81,14 +81,14 @@ impl KeyboardTarget<Villain> for KeyboardFocus {
         key: KeysymHandle<'_>,
         state: KeyState,
         serial: Serial,
-        time: u32,
+        time: smithay::backend::input::InputTime,
     ) {
         match self {
             Self::Wayland(surface) => {
                 KeyboardTarget::key(surface, seat, data, key, state, serial, time)
             }
             Self::X11(surface) => {
-                KeyboardTarget::key(surface, seat, data, key, state, serial, time)
+                KeyboardTarget::key(surface.as_ref(), seat, data, key, state, serial, time)
             }
         }
     }
@@ -104,7 +104,9 @@ impl KeyboardTarget<Villain> for KeyboardFocus {
             Self::Wayland(surface) => {
                 KeyboardTarget::modifiers(surface, seat, data, modifiers, serial)
             }
-            Self::X11(surface) => KeyboardTarget::modifiers(surface, seat, data, modifiers, serial),
+            Self::X11(surface) => {
+                KeyboardTarget::modifiers(surface.as_ref(), seat, data, modifiers, serial)
+            }
         }
     }
 }

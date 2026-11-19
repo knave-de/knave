@@ -142,6 +142,9 @@ pub struct CompositorInputConfig {
     /// Allow clients to bind the virtual-keyboard Wayland protocol.
     #[serde(default = "default_true")]
     pub allow_virtual_keyboard: bool,
+    /// Allow clients to create compositor-routed virtual pointers.
+    #[serde(default = "default_true")]
+    pub allow_virtual_pointer: bool,
 }
 
 impl Default for CompositorInputConfig {
@@ -151,6 +154,7 @@ impl Default for CompositorInputConfig {
             natural_scroll: true,
             focus_follows_mouse: true,
             allow_virtual_keyboard: true,
+            allow_virtual_pointer: true,
         }
     }
 }
@@ -1085,6 +1089,7 @@ fn apply_config(document: &mut DocumentMut, config: &Config, previous: &Config) 
             input["natural_scroll"] = value(config.compositor.input.natural_scroll);
             input["focus_follows_mouse"] = value(config.compositor.input.focus_follows_mouse);
             input["allow_virtual_keyboard"] = value(config.compositor.input.allow_virtual_keyboard);
+            input["allow_virtual_pointer"] = value(config.compositor.input.allow_virtual_pointer);
             input
         }),
     );

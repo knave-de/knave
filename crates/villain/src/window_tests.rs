@@ -346,6 +346,7 @@ fn finish_opening_frames(state: &Villain) {
             subpixel: smithay::output::Subpixel::Unknown,
             make: "test".into(),
             model: "test".into(),
+            serial_number: String::new(),
         },
     );
     for window in state.space.elements() {
@@ -470,14 +471,14 @@ fn wayland_floating_and_fullscreen_requests() {
                 s,
                 &smithay::input::pointer::GesturePinchBeginEvent {
                     serial: SERIAL_COUNTER.next_serial(),
-                    time: 4,
+                    time: smithay::backend::input::InputTime::from_millis(4),
                     fingers: 2,
                 },
             );
             s.pointer.clone().gesture_pinch_update(
                 s,
                 &smithay::input::pointer::GesturePinchUpdateEvent {
-                    time: 5,
+                    time: smithay::backend::input::InputTime::from_millis(5),
                     delta: (3.0, 4.0).into(),
                     scale: 1.25,
                     rotation: 8.0,
@@ -487,7 +488,7 @@ fn wayland_floating_and_fullscreen_requests() {
                 s,
                 &smithay::input::pointer::GesturePinchEndEvent {
                     serial: SERIAL_COUNTER.next_serial(),
-                    time: 6,
+                    time: smithay::backend::input::InputTime::from_millis(6),
                     cancelled: false,
                 },
             );
@@ -495,7 +496,7 @@ fn wayland_floating_and_fullscreen_requests() {
                 s,
                 &smithay::input::pointer::GestureHoldBeginEvent {
                     serial: SERIAL_COUNTER.next_serial(),
-                    time: 7,
+                    time: smithay::backend::input::InputTime::from_millis(7),
                     fingers: 3,
                 },
             );
@@ -503,7 +504,7 @@ fn wayland_floating_and_fullscreen_requests() {
                 s,
                 &smithay::input::pointer::GestureHoldEndEvent {
                     serial: SERIAL_COUNTER.next_serial(),
-                    time: 8,
+                    time: smithay::backend::input::InputTime::from_millis(8),
                     cancelled: false,
                 },
             );
@@ -618,7 +619,7 @@ fn wayland_floating_and_fullscreen_requests() {
                 s,
                 &smithay::input::pointer::ButtonEvent {
                     serial: SERIAL_COUNTER.next_serial(),
-                    time: 4,
+                    time: smithay::backend::input::InputTime::from_millis(4),
                     button: 0x110,
                     state: ButtonState::Released,
                 },

@@ -30,7 +30,6 @@ impl ForeignToplevelListHandler for Villain {
         &mut self.foreign_toplevel_state
     }
 }
-smithay::delegate_foreign_toplevel_list!(Villain);
 
 pub(crate) fn update_windows(state: &mut Villain) {
     let info = state.window_info();

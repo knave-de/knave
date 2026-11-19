@@ -145,6 +145,7 @@ fn layer_lifecycle_focus_and_workspace_independence() {
             subpixel: smithay::output::Subpixel::Unknown,
             make: "test".into(),
             model: "test".into(),
+            serial_number: String::new(),
         },
     );
     output.change_current_state(
@@ -434,7 +435,7 @@ fn layer_lifecycle_focus_and_workspace_independence() {
                 s,
                 &smithay::input::pointer::ButtonEvent {
                     serial: smithay::utils::Serial::from(900),
-                    time: 0,
+                    time: smithay::backend::input::InputTime::now(),
                     button: 272,
                     state: smithay::backend::input::ButtonState::Pressed,
                 },

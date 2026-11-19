@@ -584,7 +584,12 @@ pub fn handle_keyboard_event<B: InputBackend>(
     state: &mut Villain,
     event: impl KeyboardKeyEvent<B>,
 ) {
-    handle_keyboard_key(state, event.key_code(), event.state(), event.time_msec());
+    handle_keyboard_key(
+        state,
+        event.key_code(),
+        event.state(),
+        event.time().millis(),
+    );
 }
 
 /// True while the focused client holds an active keyboard-shortcuts
@@ -615,170 +620,185 @@ pub(crate) fn handle_keyboard_key(
     let pressed = key_state == KeyState::Pressed;
     let keyboard = state.keyboard.clone();
     let serial = SERIAL_COUNTER.next_serial();
-    let (result, mods_changed) =
-        keyboard.input_intercept(state, code, key_state, |state, mods, key| {
-            let inhibited = shortcuts_inhibited(state);
-            if !pressed
-                && let Some((app_id, session_handle, shortcut_id)) =
-                    state.active_global_shortcuts.remove(&code)
-            {
-                return FilterResult::Intercept(Some(KeyboardAction::Dispatch(
-                    Dispatch::GlobalShortcutDeactivated {
+    let (result, mods_changed) = keyboard
+        .input_intercept(
+            smithay::input::keyboard::KeyboardSource::MAIN,
+            state,
+            code,
+            key_state,
+            |state, mods, key| {
+                let inhibited = shortcuts_inhibited(state);
+                if !pressed
+                    && let Some((app_id, session_handle, shortcut_id)) =
+                        state.active_global_shortcuts.remove(&code)
+                {
+                    return FilterResult::Intercept(Some(KeyboardAction::Dispatch(
+                        Dispatch::GlobalShortcutDeactivated {
+                            app_id,
+                            session_handle,
+                            shortcut_id,
+                        },
+                    )));
+                }
+                if !pressed
+                    && state
+                        .pending_modifier
+                        .as_ref()
+                        .is_some_and(|(pending_code, _)| *pending_code == code)
+                    && let Some((_, dispatch)) = state.pending_modifier.take()
+                {
+                    state.suppressed_keys.remove(&code);
+                    // The press was consumed before the inhibitor activated:
+                    // swallow the release instead of completing the binding, but
+                    // still keep the key from the client. Smithay's intercept path
+                    // below re-delivers the corrected modifier state either way.
+                    if inhibited {
+                        return FilterResult::Intercept(None);
+                    }
+                    return FilterResult::Intercept(Some(KeyboardAction::Dispatch(dispatch)));
+                }
+                if !pressed && state.suppressed_keys.remove(&code) {
+                    return FilterResult::Intercept(None);
+                }
+                if state.suppressed_keys.contains(&code) {
+                    return FilterResult::Intercept(None);
+                }
+                if state.screenshot.selecting() {
+                    if pressed {
+                        state.suppressed_keys.insert(code);
+                        if key
+                            .raw_syms()
+                            .iter()
+                            .any(|symbol| symbol.raw() == keysyms::KEY_Escape)
+                        {
+                            crate::screenshot::keyboard_key(state, keysyms::KEY_Escape, true);
+                        }
+                    }
+                    return FilterResult::Intercept(None);
+                }
+                if state.interaction.is_some() {
+                    if pressed {
+                        state.suppressed_keys.insert(code);
+                        if key
+                            .raw_syms()
+                            .iter()
+                            .any(|s| s.raw() == keysyms::KEY_Escape)
+                        {
+                            return FilterResult::Intercept(Some(
+                                KeyboardAction::FinishInteraction(false),
+                            ));
+                        }
+                        if key
+                            .raw_syms()
+                            .iter()
+                            .any(|s| s.raw() == keysyms::KEY_Return)
+                        {
+                            return FilterResult::Intercept(Some(
+                                KeyboardAction::FinishInteraction(true),
+                            ));
+                        }
+                    }
+                    return FilterResult::Intercept(None);
+                }
+                if pressed
+                    && state
+                        .pending_modifier
+                        .as_ref()
+                        .is_some_and(|(pending_code, _)| *pending_code != code)
+                {
+                    state.pending_modifier = None;
+                }
+                if pressed {
+                    tracing::debug!(?code, sym = ?key.modified_sym(), "key pressed");
+                }
+                if pressed && mods.ctrl && mods.alt {
+                    let sym = key.modified_sym().raw();
+                    let action = if key
+                        .raw_syms()
+                        .iter()
+                        .any(|sym| sym.raw() == keysyms::KEY_BackSpace)
+                    {
+                        Some(KeyboardAction::Dispatch(Dispatch::Quit))
+                    } else if state.tty.is_some()
+                        && (keysyms::KEY_XF86Switch_VT_1..=keysyms::KEY_XF86Switch_VT_12)
+                            .contains(&sym)
+                    {
+                        Some(KeyboardAction::Vt(
+                            (sym - keysyms::KEY_XF86Switch_VT_1 + 1) as i32,
+                        ))
+                    } else {
+                        key.raw_syms().iter().find_map(|sym| {
+                            (state.tty.is_some()
+                                && (keysyms::KEY_F1..=keysyms::KEY_F12).contains(&sym.raw()))
+                            .then(|| KeyboardAction::Vt((sym.raw() - keysyms::KEY_F1 + 1) as i32))
+                        })
+                    };
+                    if let Some(action) = action {
+                        state.suppressed_keys.insert(code);
+                        return FilterResult::Intercept(Some(action));
+                    }
+                }
+                // Inhibition only removes the configurable bindings. Session
+                // escape chords above run regardless, so an inhibited client can
+                // never lock the user out of VT switching or session quit.
+                if pressed
+                    && !inhibited
+                    && let Some(action) = state.config.keybinds.find_modifier_only(
+                        &key.raw_syms(),
+                        mods.ctrl,
+                        mods.alt,
+                        mods.shift,
+                        mods.logo,
+                    )
+                {
+                    state.pending_modifier = Some((code, action));
+                    state.suppressed_keys.insert(code);
+                    return FilterResult::Intercept(None);
+                }
+                if pressed
+                    && !inhibited
+                    && let Some(action) = state
+                        .config
+                        .keybinds
+                        .find(&key.raw_syms(), mods.ctrl, mods.alt, mods.shift, mods.logo)
+                        .or_else(|| {
+                            state.global_keybinds.find(
+                                &key.raw_syms(),
+                                mods.ctrl,
+                                mods.alt,
+                                mods.shift,
+                                mods.logo,
+                            )
+                        })
+                {
+                    if let Dispatch::GlobalShortcutActivated {
                         app_id,
                         session_handle,
                         shortcut_id,
-                    },
-                )));
-            }
-            if !pressed
-                && state
-                    .pending_modifier
-                    .as_ref()
-                    .is_some_and(|(pending_code, _)| *pending_code == code)
-                && let Some((_, dispatch)) = state.pending_modifier.take()
-            {
-                state.suppressed_keys.remove(&code);
-                // The press was consumed before the inhibitor activated:
-                // swallow the release instead of completing the binding, but
-                // still keep the key from the client. Smithay's intercept path
-                // below re-delivers the corrected modifier state either way.
-                if inhibited {
-                    return FilterResult::Intercept(None);
-                }
-                return FilterResult::Intercept(Some(KeyboardAction::Dispatch(dispatch)));
-            }
-            if !pressed && state.suppressed_keys.remove(&code) {
-                return FilterResult::Intercept(None);
-            }
-            if state.suppressed_keys.contains(&code) {
-                return FilterResult::Intercept(None);
-            }
-            if state.screenshot.selecting() {
-                if pressed {
-                    state.suppressed_keys.insert(code);
-                    if key
-                        .raw_syms()
-                        .iter()
-                        .any(|symbol| symbol.raw() == keysyms::KEY_Escape)
+                    } = &action
                     {
-                        crate::screenshot::keyboard_key(state, keysyms::KEY_Escape, true);
+                        state.active_global_shortcuts.insert(
+                            code,
+                            (app_id.clone(), session_handle.clone(), shortcut_id.clone()),
+                        );
                     }
-                }
-                return FilterResult::Intercept(None);
-            }
-            if state.interaction.is_some() {
-                if pressed {
                     state.suppressed_keys.insert(code);
-                    if key
-                        .raw_syms()
-                        .iter()
-                        .any(|s| s.raw() == keysyms::KEY_Escape)
-                    {
-                        return FilterResult::Intercept(Some(KeyboardAction::FinishInteraction(
-                            false,
-                        )));
-                    }
-                    if key
-                        .raw_syms()
-                        .iter()
-                        .any(|s| s.raw() == keysyms::KEY_Return)
-                    {
-                        return FilterResult::Intercept(Some(KeyboardAction::FinishInteraction(
-                            true,
-                        )));
-                    }
+                    return FilterResult::Intercept(Some(KeyboardAction::Dispatch(action)));
                 }
-                return FilterResult::Intercept(None);
-            }
-            if pressed
-                && state
-                    .pending_modifier
-                    .as_ref()
-                    .is_some_and(|(pending_code, _)| *pending_code != code)
-            {
-                state.pending_modifier = None;
-            }
-            if pressed {
-                tracing::debug!(?code, sym = ?key.modified_sym(), "key pressed");
-            }
-            if pressed && mods.ctrl && mods.alt {
-                let sym = key.modified_sym().raw();
-                let action = if key
-                    .raw_syms()
-                    .iter()
-                    .any(|sym| sym.raw() == keysyms::KEY_BackSpace)
-                {
-                    Some(KeyboardAction::Dispatch(Dispatch::Quit))
-                } else if state.tty.is_some()
-                    && (keysyms::KEY_XF86Switch_VT_1..=keysyms::KEY_XF86Switch_VT_12).contains(&sym)
-                {
-                    Some(KeyboardAction::Vt(
-                        (sym - keysyms::KEY_XF86Switch_VT_1 + 1) as i32,
-                    ))
-                } else {
-                    key.raw_syms().iter().find_map(|sym| {
-                        (state.tty.is_some()
-                            && (keysyms::KEY_F1..=keysyms::KEY_F12).contains(&sym.raw()))
-                        .then(|| KeyboardAction::Vt((sym.raw() - keysyms::KEY_F1 + 1) as i32))
-                    })
-                };
-                if let Some(action) = action {
-                    state.suppressed_keys.insert(code);
-                    return FilterResult::Intercept(Some(action));
-                }
-            }
-            // Inhibition only removes the configurable bindings. Session
-            // escape chords above run regardless, so an inhibited client can
-            // never lock the user out of VT switching or session quit.
-            if pressed
-                && !inhibited
-                && let Some(action) = state.config.keybinds.find_modifier_only(
-                    &key.raw_syms(),
-                    mods.ctrl,
-                    mods.alt,
-                    mods.shift,
-                    mods.logo,
-                )
-            {
-                state.pending_modifier = Some((code, action));
-                state.suppressed_keys.insert(code);
-                return FilterResult::Intercept(None);
-            }
-            if pressed
-                && !inhibited
-                && let Some(action) = state
-                    .config
-                    .keybinds
-                    .find(&key.raw_syms(), mods.ctrl, mods.alt, mods.shift, mods.logo)
-                    .or_else(|| {
-                        state.global_keybinds.find(
-                            &key.raw_syms(),
-                            mods.ctrl,
-                            mods.alt,
-                            mods.shift,
-                            mods.logo,
-                        )
-                    })
-            {
-                if let Dispatch::GlobalShortcutActivated {
-                    app_id,
-                    session_handle,
-                    shortcut_id,
-                } = &action
-                {
-                    state.active_global_shortcuts.insert(
-                        code,
-                        (app_id.clone(), session_handle.clone(), shortcut_id.clone()),
-                    );
-                }
-                state.suppressed_keys.insert(code);
-                return FilterResult::Intercept(Some(KeyboardAction::Dispatch(action)));
-            }
-            FilterResult::Forward
-        });
+                FilterResult::Forward
+            },
+        )
+        .unwrap_or((FilterResult::Forward, false));
     let action = match result {
         FilterResult::Forward => {
-            keyboard.input_forward(state, code, key_state, serial, time, mods_changed);
+            keyboard.input_forward(
+                state,
+                code,
+                key_state,
+                serial,
+                smithay::backend::input::InputTime::from_millis(time),
+                mods_changed,
+            );
             None
         }
         FilterResult::Intercept(action) => {
