@@ -673,15 +673,15 @@ impl smithay::wayland::virtual_keyboard::VirtualKeyboardHandler for Villain {
         &mut self,
         event: InputEvent<smithay::wayland::virtual_keyboard::VirtualKeyboardBackend>,
     ) {
-        if !self
-            .virtual_keyboard_allowed
-            .load(std::sync::atomic::Ordering::Relaxed)
+        // Removal still runs while disabled so an active keymap is restored.
+        if !matches!(event, InputEvent::DeviceRemoved { .. })
+            && !self
+                .virtual_keyboard_allowed
+                .load(std::sync::atomic::Ordering::Relaxed)
         {
             return;
         }
-        if let InputEvent::Keyboard { event } = event {
-            crate::keybinds::handle_keyboard_event(self, event);
-        }
+        crate::virtual_keyboard::process_event(self, event);
     }
 }
 

@@ -26,6 +26,12 @@ struct Configure {
     maximized: bool,
     tiled: bool,
 }
+#[derive(Clone, Debug, PartialEq)]
+enum KeyboardLog {
+    Keymap(String),
+    Modifiers(u32),
+    Key(u32, u32),
+}
 #[derive(Default)]
 struct Client {
     configures: HashMap<usize, Configure>,
@@ -39,6 +45,8 @@ struct Client {
     keyboard_modifiers: Vec<u32>,
     keyboard_keys: Vec<u32>,
     keyboard_enters: Vec<(wl_surface::WlSurface, Vec<u8>)>,
+    /// Ordered keymap/modifiers/key events, for sequencing assertions.
+    keyboard_log: Vec<KeyboardLog>,
     inhibitor_states: Vec<bool>,
     closes: usize,
     decoration_modes: HashMap<usize, u32>,
@@ -226,10 +234,32 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for Client {
         _: &QueueHandle<Self>,
     ) {
         match event {
-            wl_keyboard::Event::Modifiers { mods_depressed, .. } => {
-                state.keyboard_modifiers.push(mods_depressed)
+            wl_keyboard::Event::Keymap { fd, size, .. } => {
+                use std::os::unix::fs::FileExt;
+                // Keymap fds may be shared; read without moving their offset.
+                let mut keymap = vec![0; size as usize];
+                std::fs::File::from(fd)
+                    .read_exact_at(&mut keymap, 0)
+                    .unwrap();
+                let keymap = String::from_utf8_lossy(&keymap).into_owned();
+                state.keyboard_log.push(KeyboardLog::Keymap(keymap));
             }
-            wl_keyboard::Event::Key { key, .. } => state.keyboard_keys.push(key),
+            wl_keyboard::Event::Modifiers { mods_depressed, .. } => {
+                state.keyboard_modifiers.push(mods_depressed);
+                state
+                    .keyboard_log
+                    .push(KeyboardLog::Modifiers(mods_depressed));
+            }
+            wl_keyboard::Event::Key {
+                key,
+                state: key_state,
+                ..
+            } => {
+                state.keyboard_keys.push(key);
+                state
+                    .keyboard_log
+                    .push(KeyboardLog::Key(key, key_state.into()));
+            }
             wl_keyboard::Event::Enter { surface, keys, .. } => {
                 state.keyboard_enters.push((surface, keys))
             }
@@ -1670,6 +1700,197 @@ fn virtual_keyboard_global_tracks_policy_reloads_for_existing_registry() {
         while let Ok(inspect) = requests.try_recv() {
             inspect(&mut state);
         }
+        state.display_handle.flush_clients().unwrap();
+    }
+    thread.join().unwrap();
+}
+
+use wayland_protocols_misc::zwp_virtual_keyboard_v1::client::{
+    zwp_virtual_keyboard_manager_v1::ZwpVirtualKeyboardManagerV1,
+    zwp_virtual_keyboard_v1::ZwpVirtualKeyboardV1,
+};
+delegate_noop!(Client: ignore ZwpVirtualKeyboardManagerV1);
+delegate_noop!(Client: ignore ZwpVirtualKeyboardV1);
+
+#[test]
+#[ignore = "requires private Unix sockets and an isolated XDG_RUNTIME_DIR"]
+/// A wtype-style Ctrl+V reaches the focused client under the virtual
+/// keyboard's own keymap and modifiers, and the seat keymap comes back.
+fn virtual_keyboard_keymap_and_modifiers_reach_focused_client() {
+    // Like wtype: keycode 1 (xkb 9) is `v`, so the seat keymap reads it as Escape.
+    const VIRTUAL_KEYMAP: &str = "xkb_keymap {\n\
+        xkb_keycodes \"(unnamed)\" { minimum = 8; maximum = 255; <K1> = 9; <LCTL> = 37; };\n\
+        xkb_types \"(unnamed)\" { include \"complete\" };\n\
+        xkb_compatibility \"(unnamed)\" { include \"complete\" };\n\
+        xkb_symbols \"(unnamed)\" { key <K1> { [ v ] }; key <LCTL> { [ Control_L ] }; \
+        modifier_map Control { <LCTL> }; };\n\
+        };\n";
+    const CONTROL_MASK: u32 = 1 << 2;
+
+    let mut event_loop = EventLoop::try_new().unwrap();
+    let mut state = Villain::new(
+        &mut event_loop,
+        Display::new().unwrap(),
+        crate::config::RuntimeConfig::load().unwrap(),
+    );
+    let (server, client) = UnixStream::pair().unwrap();
+    state
+        .display_handle
+        .insert_client(server, Arc::new(crate::state::ClientState::default()))
+        .unwrap();
+    let (sender, requests) = mpsc::channel::<Inspect>();
+    let thread = std::thread::spawn(move || {
+        let conn = Connection::from_socket(client).unwrap();
+        let (globals, mut queue) = registry_queue_init::<Client>(&conn).unwrap();
+        let qh = queue.handle();
+        let compositor: wl_compositor::WlCompositor = globals.bind(&qh, 1..=4, ()).unwrap();
+        let wm: xdg_wm_base::XdgWmBase = globals.bind(&qh, 1..=6, ()).unwrap();
+        let shm: wl_shm::WlShm = globals.bind(&qh, 1..=1, ()).unwrap();
+        let seat: wl_seat::WlSeat = globals.bind(&qh, 1..=7, ()).unwrap();
+        let _keyboard = seat.get_keyboard(&qh, ());
+        let manager: ZwpVirtualKeyboardManagerV1 = globals.bind(&qh, 1..=1, ()).unwrap();
+        let mut client = Client::default();
+        let settle = |queue: &mut wayland_client::EventQueue<Client>, client: &mut Client| {
+            queue.roundtrip(client).unwrap();
+            queue.roundtrip(client).unwrap();
+        };
+        let temp_file = |label: &str| {
+            let path =
+                std::env::temp_dir().join(format!("villain-vkbd-{label}-{}", std::process::id()));
+            let file = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .unwrap();
+            std::fs::remove_file(path).unwrap();
+            file
+        };
+        let buffer = {
+            let file = temp_file("buffer");
+            file.set_len(400 * 600 * 4).unwrap();
+            let pool = shm.create_pool(file.as_fd(), 400 * 600 * 4, &qh, ());
+            pool.create_buffer(0, 400, 600, 400 * 4, wl_shm::Format::Argb8888, &qh, ())
+        };
+        let surface = compositor.create_surface(&qh, ());
+        let xdg = wm.get_xdg_surface(&surface, &qh, ());
+        let top = xdg.get_toplevel(&qh, 1);
+        top.set_app_id("paste-target".into());
+        surface.commit();
+        settle(&mut queue, &mut client);
+        surface.attach(Some(&buffer), 0, 0);
+        surface.commit();
+        settle(&mut queue, &mut client);
+        inspect(&sender, |state| {
+            state.focus_window(find(state, "paste-target").id);
+        });
+        settle(&mut queue, &mut client);
+        assert!(
+            !client.keyboard_enters.is_empty(),
+            "the window has keyboard focus"
+        );
+        let seat_keymap = client
+            .keyboard_log
+            .iter()
+            .find_map(|event| match event {
+                KeyboardLog::Keymap(keymap) => Some(keymap.clone()),
+                _ => None,
+            })
+            .expect("the seat keymap was sent on bind");
+        assert!(!seat_keymap.contains("<K1>"));
+
+        let keymap_file = temp_file("keymap");
+        {
+            use std::io::Write;
+            (&keymap_file).write_all(VIRTUAL_KEYMAP.as_bytes()).unwrap();
+            (&keymap_file).write_all(&[0]).unwrap();
+        }
+        let paste = |queue: &mut wayland_client::EventQueue<Client>, client: &mut Client| {
+            let keyboard: ZwpVirtualKeyboardV1 = manager.create_virtual_keyboard(&seat, &qh, ());
+            keyboard.keymap(1, keymap_file.as_fd(), VIRTUAL_KEYMAP.len() as u32 + 1);
+            keyboard.modifiers(CONTROL_MASK, 0, 0, 0);
+            keyboard.key(0, 1, 1);
+            keyboard.key(1, 1, 0);
+            keyboard.modifiers(0, 0, 0, 0);
+            settle(queue, client);
+            keyboard
+        };
+        let assert_paste = |log: &[KeyboardLog]| {
+            let keymap = log
+                .iter()
+                .position(|event| matches!(event, KeyboardLog::Keymap(k) if k.contains("<K1>")))
+                .expect("the virtual keymap reaches the client");
+            let ctrl = log
+                .iter()
+                .position(|event| *event == KeyboardLog::Modifiers(CONTROL_MASK))
+                .expect("Ctrl reaches the client");
+            let press = log
+                .iter()
+                .position(|event| *event == KeyboardLog::Key(1, 1))
+                .expect("the key reaches the client");
+            assert!(
+                keymap < ctrl && ctrl < press,
+                "keymap, then Ctrl, then key: {log:?}"
+            );
+            assert_eq!(
+                log.last(),
+                Some(&KeyboardLog::Modifiers(0)),
+                "Ctrl is released"
+            );
+        };
+
+        client.keyboard_log.clear();
+        let first = paste(&mut queue, &mut client);
+        assert_paste(&client.keyboard_log);
+
+        // The next physical key restores the seat keymap before it is handled.
+        client.keyboard_log.clear();
+        inspect(&sender, |state| {
+            use smithay::{backend::input::KeyState, input::keyboard::Keycode};
+            crate::virtual_keyboard::restore_seat_keymap(state);
+            crate::keybinds::handle_keyboard_key(state, Keycode::new(38), KeyState::Pressed, 10);
+            crate::keybinds::handle_keyboard_key(state, Keycode::new(38), KeyState::Released, 11);
+        });
+        settle(&mut queue, &mut client);
+        assert_eq!(
+            client.keyboard_log.first(),
+            Some(&KeyboardLog::Keymap(seat_keymap.clone())),
+            "the seat keymap returns before physical keys: {:?}",
+            client.keyboard_log
+        );
+        assert!(client.keyboard_log.contains(&KeyboardLog::Key(30, 1)));
+        first.destroy();
+        settle(&mut queue, &mut client);
+
+        // An identical keymap must still be re-sent on the next paste.
+        client.keyboard_log.clear();
+        let second = paste(&mut queue, &mut client);
+        assert_paste(&client.keyboard_log);
+
+        // Removing the active device restores the seat keymap too.
+        client.keyboard_log.clear();
+        second.destroy();
+        settle(&mut queue, &mut client);
+        assert_eq!(
+            client.keyboard_log.first(),
+            Some(&KeyboardLog::Keymap(seat_keymap.clone())),
+            "{:?}",
+            client.keyboard_log
+        );
+        inspect(&sender, |state| {
+            assert_eq!(state.keyboard.modifier_state().serialized.depressed, 0);
+        });
+    });
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !thread.is_finished() {
+        assert!(Instant::now() < deadline, "virtual keyboard test timed out");
+        event_loop
+            .dispatch(Duration::from_millis(2), &mut state)
+            .unwrap();
+        while let Ok(inspect) = requests.try_recv() {
+            inspect(&mut state);
+        }
+        state.space.refresh();
         state.display_handle.flush_clients().unwrap();
     }
     thread.join().unwrap();

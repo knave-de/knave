@@ -110,6 +110,7 @@ pub struct Villain {
     pub virtual_keyboard_manager_state:
         smithay::wayland::virtual_keyboard::VirtualKeyboardManagerState,
     pub(crate) virtual_keyboard_allowed: Arc<AtomicBool>,
+    pub(crate) virtual_keymap: crate::virtual_keyboard::VirtualKeymapState,
     pub virtual_pointer_manager_state:
         smithay::wayland::virtual_pointer::VirtualPointerManagerState,
     pub(crate) virtual_pointer_allowed: Arc<AtomicBool>,
@@ -280,6 +281,7 @@ impl Villain {
             ),
             virtual_keyboard_manager_state,
             virtual_keyboard_allowed,
+            virtual_keymap: Default::default(),
             virtual_pointer_manager_state,
             virtual_pointer_allowed,
             cursor_shape_state: CursorShapeManagerState::new::<Self>(&display_handle),

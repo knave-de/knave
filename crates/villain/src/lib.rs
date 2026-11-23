@@ -32,6 +32,7 @@ mod shutdown;
 mod split_grab;
 mod state;
 mod tty;
+mod virtual_keyboard;
 mod window_grab;
 mod workspace_motion;
 mod workspace_navigation;
